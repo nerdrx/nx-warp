@@ -67,7 +67,8 @@ struct VkEncoder::Impl {
     bool planar_cadence = false;
     bool planar_cadence_started = false;
     bool planar_wide_ring = false;
-    bool planar_round = false, planar_colour = false;
+    bool planar_round = false, planar_colour = false, planar_r4 = false;
+    bool planar_no_groups = false;
     /* The inter path: the four-slot reference ring, the parameter buffer
      * Pass W reads, and the predictor it writes.  Allocated even on an
      * intra-only stream, at four bytes each -- an unbound descriptor is
@@ -449,7 +450,10 @@ bool VkEncoder::create(const Config &cfg, const Frame &f, std::string &err,
     d.planar_round = std::getenv("NXVC_PLANAR_ROUND") && std::strcmp(std::getenv("NXVC_PLANAR_ROUND"), "1") == 0;
     d.planar_large_centre = std::getenv("NXVC_PLANAR_LARGE_CENTRE") &&
                             std::strcmp(std::getenv("NXVC_PLANAR_LARGE_CENTRE"), "1") == 0;
+    d.planar_no_groups = std::getenv("NXVC_PLANAR_NO_GROUPS") &&
+                         std::strcmp(std::getenv("NXVC_PLANAR_NO_GROUPS"), "1") == 0;
     d.planar_colour = std::getenv("NXVC_PLANAR_COLOUR") && std::strcmp(std::getenv("NXVC_PLANAR_COLOUR"), "1") == 0;
+    d.planar_r4 = std::getenv("NXVC_PLANAR_R4") && std::strcmp(std::getenv("NXVC_PLANAR_R4"), "1") == 0;
     const char *cadence = std::getenv("NXVC_PLANAR_CADENCE");
     d.planar_cadence = cadence && std::strcmp(cadence, "1") == 0;
     if (d.planar_cadence && (!d.gpu_planar_centre || !cfg.planar_graduated || cfg.atlas)) {
@@ -1797,18 +1801,20 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
                         job.flags |= 0x08000000u;
                     if (fine)
                         job.flags |= 0x10000000u; // fine 4x4 Y cells
-                    else if (d.cfg.planar_graduated && dist >=
+                    else if (!d.planar_no_groups && d.cfg.planar_graduated && dist >=
                              (d.planar_wide_ring ? 12u : 8u))
                         job.flags |= 0x20000000u;
-                    else if (d.cfg.planar_graduated && dist >=
+                    else if (!d.planar_no_groups && d.cfg.planar_graduated && dist >=
                              (d.planar_wide_ring ? 8u : 4u))
                         job.flags |= 0x40000000u;
                     // Wide ring leaves distances 5..7 at the normal 8px size.
                 }
-                // R2/coarse is a 27-byte transmitted body; b_planar is padded
-                // to 26 uints only for the fixed storage binding.
+                // R2 is 27/51 bytes; opt-in R4 uses two-bit labels and
+                // 36 coefficient bytes, hence 53/101. Storage stays padded
+                // to 26 uints for the fixed binding.
                 job.planar_bytes = use_intra ? 0u :
-                                   (fine ? 51u : 27u);
+                                   (d.planar_r4 ? (fine ? 101u : 53u) :
+                                    (fine ? 51u : 27u));
             }
         }
         std::memcpy((uint8_t *)d.b_stage_small.map + (1 << 19), f.jobs.data(),
@@ -1995,7 +2001,8 @@ bool VkEncoder::encode_frame_common(Frame &f, uint32_t frame_number, bool check,
         if (gpu_planar) {
             uint32_t push[7] = {f.fp.width, f.fp.height, f.fp.base_qp,
                                 (uint32_t)f.fp.chroma_qp_off,
-                                d.planar_cadence ? (d.planar_cadence_started ? 1u : 3u) : 0u, frame_number, d.planar_colour ? 1u : 0u};
+                                d.planar_cadence ? (d.planar_cadence_started ? 1u : 3u) : 0u, frame_number,
+                                (d.planar_colour ? 1u : 0u) | (d.planar_r4 ? 2u : 0u)};
             d.planar_cadence_started = true;
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
                               d.p_planar_fit.pipe);

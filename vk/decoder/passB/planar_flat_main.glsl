@@ -15,6 +15,15 @@ int flatSample(int mapBase, int cellShift, int grid,
     return ((map >> (cell & 31)) & 1u) == 0u ? a : b;
 }
 
+int flatSample4(int mapBase, int cellShift, int grid,
+                int x, int y, int a, int b, int c, int d) {
+    int cell = (y >> cellShift) * grid + (x >> cellShift);
+    uint bit = uint(cell * 2);
+    uint map = uPlanar.w[mapBase + int(bit >> 5u)];
+    uint label = (map >> (bit & 31u)) & 3u;
+    return label == 0u ? a : label == 1u ? b : label == 2u ? c : d;
+}
+
 void main() {
     int tid = int(gl_LocalInvocationID.x);
     int tile = int(uOrder.i[gl_WorkGroupID.x]);
@@ -22,6 +31,7 @@ void main() {
     int qp = clamp(pc.p.baseQp + nxvw_rec_qp_delta(rec.w1), 0, 63);
     int base = tile * kPlanarUintsPerTile;
     int cb = base + kPlanarHeaderUints + kPlanarMapUints;
+    bool quad = (uPlanar.w[base] & 3u) == 2u;
     bool fine = (uPlanar.w[base] & 8u) != 0u;
     nxvwIsInterTile = false;
 
@@ -54,6 +64,14 @@ void main() {
         int bc = flatDc(cb, 12, clamp(qp + pc.p.chromaQpOff, 0, 63));
         int ar = flatDc(cb, 6, clamp(qp + pc.p.chromaQpOff, 0, 63));
         int br = flatDc(cb, 15, clamp(qp + pc.p.chromaQpOff, 0, 63));
+        int cy = 0, dy = 0, cc = 0, dc = 0, cr = 0, dr = 0;
+        if (quad) {
+            cy = flatDc(cb, 18, qp); dy = flatDc(cb, 27, qp);
+            cc = flatDc(cb, 21, clamp(qp + pc.p.chromaQpOff, 0, 63));
+            dc = flatDc(cb, 30, clamp(qp + pc.p.chromaQpOff, 0, 63));
+            cr = flatDc(cb, 24, clamp(qp + pc.p.chromaQpOff, 0, 63));
+            dr = flatDc(cb, 33, clamp(qp + pc.p.chromaQpOff, 0, 63));
+        }
 
         int widthY = 64 / stepX, heightY = 64 / stepY;
         for (int idx = tid; idx < widthY * heightY; idx +=
@@ -66,8 +84,10 @@ void main() {
             int px = idx & (widthY - 1), py = idx >> (stepX == 1 ? 6 : 4);
             int x = px * stepX + (stepX == 4 ? 1 : 0);
             int y = py * stepY + (stepY == 4 ? 1 : 0);
-            int value = clamp(flatSample(mapBase, cellShiftY, grid,
-                                         x, y, ay, by), 0, 255);
+            int value = quad ? flatSample4(mapBase, cellShiftY, grid, x, y,
+                                           ay, by, cy, dy) :
+                              flatSample(mapBase, cellShiftY, grid, x, y, ay, by);
+            value = clamp(value, 0, 255);
             ivec2 dst = ivec2(packedX + px, packedY + py);
             if (kUnormStore != 0) imageStore(uOutLumaN, dst,
                                               vec4(nxvw_unorm8(value), 0, 0, 0));
@@ -84,10 +104,13 @@ void main() {
             int px = idx & (widthC - 1), py = idx >> (stepX == 1 ? 5 : 3);
             int x = px * stepX + (stepX == 4 ? 1 : 0);
             int y = py * stepY + (stepY == 4 ? 1 : 0);
-            int cbv = clamp(flatSample(mapBase, cellShiftC, grid,
-                                       x, y, ac, bc), 0, 255);
-            int crv = clamp(flatSample(mapBase,
-                                       cellShiftC, grid, x, y, ar, br), 0, 255);
+            int cbv = quad ? flatSample4(mapBase, cellShiftC, grid, x, y,
+                                         ac, bc, cc, dc) :
+                            flatSample(mapBase, cellShiftC, grid, x, y, ac, bc);
+            int crv = quad ? flatSample4(mapBase, cellShiftC, grid, x, y,
+                                         ar, br, cr, dr) :
+                            flatSample(mapBase, cellShiftC, grid, x, y, ar, br);
+            cbv = clamp(cbv, 0, 255); crv = clamp(crv, 0, 255);
             ivec2 dst = ivec2(packedX / 2 + px, packedY / 2 + py);
             if (kUnormStore != 0) imageStore(uOutCbCrN, dst,
                                               vec4(nxvw_unorm8(cbv), nxvw_unorm8(crv), 0, 0));
@@ -103,6 +126,11 @@ void main() {
         int q = plane == 0 ? qp : clamp(qp + pc.p.chromaQpOff, 0, 63);
         int a = flatDc(cb, plane * 3, q);
         int b = flatDc(cb, 9 + plane * 3, q);
+        int c = 0, d = 0;
+        if (quad) {
+            c = flatDc(cb, 18 + plane * 3, q);
+            d = flatDc(cb, 27 + plane * 3, q);
+        }
         int store = plane == 0 ? 0 : plane == 1 ? pc.p.planeWords0
                             : pc.p.planeWords0 + pc.p.planeWords1;
         int cols = int(uWarpHdr.w[NXVW_WARP_HDR_RING + 2]);
@@ -119,9 +147,18 @@ void main() {
         for (int w = tid; w < (size * size / 2); w += 256) {
             int x = (w * 2) & (size - 1), y = (w * 2) >> lg;
             int grid = 1 << (fine ? 4 : 3);
-            int cell = (y >> shift) * grid + (x >> shift);
-            uint map = uPlanar.w[base + 1 + (cell >> 5)];
-            int value = ((map >> (cell & 31)) & 1u) == 0u ? a : b;
+            int value;
+            if (quad) {
+                uint cell = uint((y >> shift) * grid + (x >> shift));
+                uint bit = cell * 2u;
+                uint map = uPlanar.w[base + 1 + int(bit >> 5u)];
+                uint label = (map >> (bit & 31u)) & 3u;
+                value = label == 0u ? a : label == 1u ? b : label == 2u ? c : d;
+            } else {
+                int cell = (y >> shift) * grid + (x >> shift);
+                uint map = uPlanar.w[base + 1 + (cell >> 5)];
+                value = ((map >> (cell & 31)) & 1u) == 0u ? a : b;
+            }
             // A packed pair cannot cross an aligned 2-, 4- or 8-pixel cell boundary.
             uint packed = pack16x2(value, value);
             sPlane[store + w] = packed;

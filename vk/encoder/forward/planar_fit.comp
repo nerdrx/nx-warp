@@ -25,6 +25,7 @@ shared int cy[256], cu[256], cv[256];
 shared int splitAxis;
 shared int gy, gu, gv, qy0, qy1, qu0, qu1, qv0, qv1;
 shared int fp[48];
+shared int r4c[12], r4sum[12], r4count[4], r4label[256];
 shared uint cadenceReuse, cadenceRefresh, cadencePromote, cadenceQuiet;
 
 int read_sample(uint base, uint i) {
@@ -141,6 +142,124 @@ void main() {
                    int(ccell_size * ccell_size);
     }
     barrier();
+    // Opt-in R4: deterministic four-cluster YCbCr palette.  The first seed
+    // is cell zero; each later seed is the cell farthest from its nearest
+    // prior seed. Two serial Lloyd passes keep ordering deterministic while
+    // weightedY2 makes luma errors count twice.  R2 never enters this branch.
+    if (doFit && (pc.colourAware & 2u) != 0u && lid == 0u) {
+        const int nc = int(dim * dim);
+        for (int k = 0; k < 4; ++k) {
+            int pick = 0, best = -1;
+            for (int i = 0; i < nc; ++i) {
+                int md = 0x7fffffff;
+                for (int j = 0; j < k; ++j) {
+                    int dy = cy[i] - r4c[j * 3 + 0];
+                    int du = cu[i] - r4c[j * 3 + 1];
+                    int dv = cv[i] - r4c[j * 3 + 2];
+                    md = min(md, 2 * dy * dy + du * du + dv * dv);
+                }
+                if (k == 0) md = 0;
+                if (md > best) { best = md; pick = i; }
+            }
+            r4c[k * 3 + 0] = cy[pick];
+            r4c[k * 3 + 1] = cu[pick];
+            r4c[k * 3 + 2] = cv[pick];
+        }
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int k = 0; k < 4; ++k) {
+                r4sum[k * 3 + 0] = r4sum[k * 3 + 1] = r4sum[k * 3 + 2] = 0;
+                r4count[k] = 0;
+            }
+            for (int i = 0; i < nc; ++i) {
+                int pick = 0, best = 0x7fffffff;
+                for (int k = 0; k < 4; ++k) {
+                    int dy = cy[i] - r4c[k * 3 + 0];
+                    int du = cu[i] - r4c[k * 3 + 1];
+                    int dv = cv[i] - r4c[k * 3 + 2];
+                    int d2 = 2 * dy * dy + du * du + dv * dv;
+                    if (d2 < best) { best = d2; pick = k; }
+                }
+                r4label[i] = pick;
+                r4sum[pick * 3 + 0] += cy[i];
+                r4sum[pick * 3 + 1] += cu[i];
+                r4sum[pick * 3 + 2] += cv[i];
+                r4count[pick]++;
+            }
+            for (int k = 0; k < 4; ++k) if (r4count[k] != 0) {
+                r4c[k * 3 + 0] = (r4sum[k * 3 + 0] + r4count[k] / 2) / r4count[k];
+                r4c[k * 3 + 1] = (r4sum[k * 3 + 1] + r4count[k] / 2) / r4count[k];
+                r4c[k * 3 + 2] = (r4sum[k * 3 + 2] + r4count[k] / 2) / r4count[k];
+            }
+        }
+        // Reassign after the final centroid update, then quantize DC slots;
+        // R4 has zero slopes and exactly 9 bytes per region.
+        int tileQP = clamp(int(pc.qp) + jobs[tile].qp_delta, 0, 63);
+        int stepY = nxe_dequant_step(tileQP >> 1, 16);
+        int stepC = nxe_dequant_step(clamp(tileQP + int(pc.chromaQPOffset), 0, 63) >> 1, 16);
+        int q[12];
+        for (int k = 0; k < 4; ++k) {
+            q[k * 3 + 0] = quant(r4c[k * 3 + 0], 128, stepY);
+            q[k * 3 + 1] = quant(r4c[k * 3 + 1], 128, stepC);
+            q[k * 3 + 2] = quant(r4c[k * 3 + 2], 128, stepC);
+        }
+        for (int i = 0; i < nc; ++i) {
+            int pick = 0, best = 0x7fffffff;
+            for (int k = 0; k < 4; ++k) {
+                int dy = cy[i] - r4c[k * 3 + 0];
+                int du = cu[i] - r4c[k * 3 + 1];
+                int dv = cv[i] - r4c[k * 3 + 2];
+                int d2 = 2 * dy * dy + du * du + dv * dv;
+                if (d2 < best) { best = d2; pick = k; }
+            }
+            r4label[i] = pick;
+        }
+        uint map_bytes = fine ? 64u : 16u;
+        uint packed[26]; for (uint i = 0u; i < 26u; ++i) packed[i] = 0u;
+        packed[0] = fine ? 10u : 2u;
+        for (int i = 0; i < nc; ++i) {
+            uint bit = 8u + uint(i * 2); // serialized map starts at byte 1
+            packed[bit >> 5u] |= uint(r4label[i]) << (bit & 31u);
+        }
+        uint co = 1u + map_bytes;
+        for (int i = 0; i < 12; ++i)
+            packed[(co + uint(i) * 3u) >> 2u] |= uint(q[i] & 255) << (((co + uint(i) * 3u) & 3u) * 8u);
+        uint dst = tile * 26u;
+        for (uint i = 0u; i < 26u; ++i) body[dst + i] = packed[i];
+        uint expanded[26]; for (uint i = 0u; i < 26u; ++i) expanded[i] = 0u;
+        expanded[0] = fine ? 10u : 2u;
+        for (uint i = 0u; i < map_bytes; ++i) {
+            uint v = (packed[(1u + i) >> 2u] >> (((1u + i) & 3u) * 8u)) & 255u;
+            expanded[1u + (i >> 2u)] |= v << ((i & 3u) * 8u);
+        }
+        for (uint i = 0u; i < 36u; ++i) {
+            uint v = (packed[(co + i) >> 2u] >> (((co + i) & 3u) * 8u)) & 255u;
+            expanded[17u + (i >> 2u)] |= v << ((i & 3u) * 8u);
+        }
+        for (uint i = 0u; i < 26u; ++i) recon[dst + i] = expanded[i];
+    }
+    barrier();
+    if (doFit && (pc.colourAware & 2u) != 0u) {
+        if ((pc.cadenceMode & 1u) != 0u && lid == 0u) {
+            uint flags = jobs[tile].flags;
+            bool native = (flags & 0x80000000u) != 0u;
+            if (!native) {
+                uint tileQP = uint(clamp(int(pc.qp) + jobs[tile].qp_delta, 0, 63));
+                uint key = tileQP | ((pc.chromaQPOffset & 255u) << 8u) |
+                           ((uint(jobs[tile].qp_delta) & 255u) << 16u);
+                uint state = meta[mt];
+                if (cadenceRefresh != 0u) {
+                    uint promoted = cadencePromote != 0u ? 2u : ((state & 2u) != 0u && cadenceQuiet < 3u ? 2u : 0u);
+                    meta[mt] = 1u | promoted; meta[mt + 1u] = pc.frameNumber;
+                    meta[mt + 2u] = pc.frameNumber; meta[mt + 3u] = key; meta[mt + 4u] = 0u;
+                    meta[mt + 6u]++; if (cadencePromote != 0u) meta[mt + 9u]++;
+                    for (uint i = 0u; i < 48u; ++i) meta[mt + 16u + i] = uint(fp[i]);
+                } else { meta[mt + 2u] = pc.frameNumber; meta[mt + 7u]++; }
+                if (cadenceQuiet == 0u) meta[mt + 8u]++;
+                meta[mt + 10u] = pc.frameNumber - meta[mt + 1u]; meta[mt + 12u] = flags;
+            }
+        }
+        return;
+    }
     // Graduated outer rings may merge neighbouring 8x8 means before the
     // palette split. Host-only job flags select 2x2 or 4x4 cell groups.
     uint group = (jobs[tile].flags & 0x20000000u) != 0u ? 4u :
