@@ -97,6 +97,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Continuous-delivery correction:** off-head Pico tests were sleeping and waking repeatedly despite Android stay-on. One earlier run’s **89.3 fresh updates/s in active windows was only 67.0/s across its covered wall time**. [Fix and validation](bench/results/90fps-2026-09-10/awake-stability/README.md): the awake override and corrected logging produced a **120-second run with zero session stops**, retaining 60 render/decode windows and measuring **89.1 fresh updates/s across 108.3 seconds after warmup**. This is logged source selection, not photon timing or 240 FPS. Historical active-window rates must not be read as uninterrupted delivery.
+
 **Peripheral quality experiments (10 September):** [colour-aware palettes and rounded quality regions](bench/results/90fps-2026-09-10/round-colour/RESULTS.md) preserve chromatic edges that the brightness-only palette missed. On the synthetic colour fixture, U/V error falls about 30%; retained native-centre pixels are unchanged and Pico decoder readbacks match the CPU reference. This changes palette selection, not the 4:2:0 format.
 
 ![Rounded per-eye quality policy](bench/results/90fps-2026-09-10/round-colour/policy-geometry.png)
