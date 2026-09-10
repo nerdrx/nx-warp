@@ -101,7 +101,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 The [zero-wait follow-up](bench/results/90fps-2026-09-10/zero-wait/README.md) keeps **1 ms selected**: disabling the wait saved only **0.31 ms** of source-offset proxy while reducing fresh source selections by about **1.6%**. All four runs stayed awake, but per-run drift limits attribution.
 
-The [bounded JIT sleep experiment](bench/results/90fps-2026-09-10/jit-cap/README.md) reduced source-offset proxy by **1.09 ms** across four trials without average fresh-update loss. It remains experimental pending longer validation; the selected scheduler maximum is unchanged.
+**Selected scheduler cap: 5 ms.** [Four longer 120-second trials](bench/results/90fps-2026-09-10/jit-cap-long/README.md) confirmed the earlier experiment: source-offset proxy **50.64 → 47.69 ms**, fresh selections **88.46 → 89.16 per covered wall-second**, zero session stops. Both pairs improved; these are software measurements, not photon latency. Ready-frame wait remains 1 ms.
 
 **Capture failure recovery:** screenshot readback is now optional when creating the presentation swapchain. A [forced-rejection Pico test](bench/results/90fps-2026-09-10/capture-fallback/README.md) kept streaming for 60 seconds through three unsupported capture requests, with no repeated allocation loop. This improves failure handling, not frame rate.
 
