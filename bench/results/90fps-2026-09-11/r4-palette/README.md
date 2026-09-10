@@ -92,3 +92,14 @@ the R4 colour improvement. Cell stair-steps remain visible: this does not
 eliminate all peripheral artifacts. Smoothing 3 is the candidate for longer tests.
 
 ![R4 with cheaper smoothing 3](smooth3-eye0.png)
+
+## Longer transport-acceleration test interrupted
+
+A 120-second R4/smoothing-3 control with transport SHA2 acceleration off
+completed. The following SHA2-on run stopped producing decoded output after
+502 decoded frames and returned to the lobby; network reception continued.
+The harness rejected it for stale telemetry. Authentication-failure counters
+remained zero, and no decoder exception was logged in this run. This does not
+establish that SHA2 caused the stall. Acceleration remains off while worker
+stability is investigated; the incomplete pair supports no performance claim.
+Raw logs and status files are retained under `logs/r4-sha-*`.
