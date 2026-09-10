@@ -1,0 +1,1 @@
+Runner substitution error requested47500 rather than5000 for control. Client clamps47500 to45000; actual comparison default45ms vs7.5ms. Not evidence against selected5ms. Keep raw script unchanged. Correct direct comparison in jit-cap-direct.

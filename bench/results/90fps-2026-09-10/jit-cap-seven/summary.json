@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "nx-scratch/motion-live/jit-cap-seven-base-a-client.log",
+      "client": {
+        "n": 54,
+        "start": "05:45:40.478",
+        "end": "05:47:26.772",
+        "means": {
+          "fresh_per_s": 88.30555555555556,
+          "iterations": 179.77777777777777,
+          "iterations_per_s": 89.64629629629628,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.148148148148148,
+          "source_offset_ms": 51.785185185185185,
+          "submit_lead_ms": 30.287037037037038,
+          "wait_attempts": 6.777777777777778,
+          "wait_successes": 3.611111111111111,
+          "wait_total_ms": 4.861111111111111
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "05:45:38.439",
+        "end": "05:47:26.749",
+        "means": {
+          "copy_gpu_ms": 0.00036363636363636367,
+          "fence_post_ms": 6.065454545454545,
+          "frames": 180.21818181818182,
+          "frames_per_s": 90.10909090909091,
+          "nxvc_gpu_ms": 4.450909090909091,
+          "queue_ms": 1.5836363636363635
+        }
+      },
+      "label": "jit-cap-seven-base-a",
+      "mode": 47500
+    },
+    {
+      "file": "nx-scratch/motion-live/jit-cap-seven-candidate-a-client.log",
+      "client": {
+        "n": 54,
+        "start": "05:47:43.963",
+        "end": "05:49:30.208",
+        "means": {
+          "fresh_per_s": 89.68518518518519,
+          "iterations": 180.40740740740742,
+          "iterations_per_s": 89.9962962962963,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.5240740740740737,
+          "source_offset_ms": 46.23148148148148,
+          "submit_lead_ms": 26.437037037037037,
+          "wait_attempts": 2.185185185185185,
+          "wait_successes": 1.1481481481481481,
+          "wait_total_ms": 1.5882592592592593
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "05:47:41.926",
+        "end": "05:49:30.239",
+        "means": {
+          "copy_gpu_ms": 0.00018181818181818183,
+          "fence_post_ms": 5.885454545454545,
+          "frames": 180.07272727272726,
+          "frames_per_s": 90.03636363636363,
+          "nxvc_gpu_ms": 4.198181818181818,
+          "queue_ms": 1.6618181818181819
+        }
+      },
+      "label": "jit-cap-seven-candidate-a",
+      "mode": 7500
+    },
+    {
+      "file": "nx-scratch/motion-live/jit-cap-seven-candidate-b-client.log",
+      "client": {
+        "n": 54,
+        "start": "05:49:47.874",
+        "end": "05:51:34.218",
+        "means": {
+          "fresh_per_s": 90.08333333333333,
+          "iterations": 180.57407407407408,
+          "iterations_per_s": 90.0,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.8425925925925926,
+          "source_offset_ms": 47.824074074074076,
+          "submit_lead_ms": 27.74259259259259,
+          "wait_attempts": 0.7037037037037037,
+          "wait_successes": 0.2962962962962963,
+          "wait_total_ms": 0.5851296296296297
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "05:49:45.848",
+        "end": "05:51:34.160",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 6.5,
+          "frames": 180.52727272727273,
+          "frames_per_s": 90.26363636363637,
+          "nxvc_gpu_ms": 4.1036363636363635,
+          "queue_ms": 2.3636363636363638
+        }
+      },
+      "label": "jit-cap-seven-candidate-b",
+      "mode": 7500
+    },
+    {
+      "file": "nx-scratch/motion-live/jit-cap-seven-base-b-client.log",
+      "client": {
+        "n": 54,
+        "start": "05:51:51.652",
+        "end": "05:53:37.980",
+        "means": {
+          "fresh_per_s": 87.06481481481481,
+          "iterations": 179.83333333333334,
+          "iterations_per_s": 89.63703703703703,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.6574074074074074,
+          "source_offset_ms": 48.18703703703704,
+          "submit_lead_ms": 28.307407407407407,
+          "wait_attempts": 12.444444444444445,
+          "wait_successes": 6.7407407407407405,
+          "wait_total_ms": 9.23787037037037
+        }
+      },
+      "decoder": {
+        "n": 55,
+        "start": "05:51:49.611",
+        "end": "05:53:37.955",
+        "means": {
+          "copy_gpu_ms": 0.00018181818181818183,
+          "fence_post_ms": 4.852727272727273,
+          "frames": 180.52727272727273,
+          "frames_per_s": 90.26363636363637,
+          "nxvc_gpu_ms": 4.276363636363636,
+          "queue_ms": 0.5527272727272727
+        }
+      },
+      "label": "jit-cap-seven-base-b",
+      "mode": 47500
+    }
+  ],
+  "mean_of_run_means": {
+    "47500": {
+      "own_gpu_ms": 3.9027777777777777,
+      "fresh_per_s": 87.68518518518519,
+      "source_offset_ms": 49.986111111111114
+    },
+    "7500": {
+      "own_gpu_ms": 3.683333333333333,
+      "fresh_per_s": 89.88425925925927,
+      "source_offset_ms": 47.02777777777778
+    }
+  },
+  "gpu_reduction_percent": 5.622775800711743,
+  "scope": "Four 120-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}
