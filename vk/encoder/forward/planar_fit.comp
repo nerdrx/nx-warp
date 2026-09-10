@@ -40,6 +40,9 @@ int quant(int v, int off, int step) {
 }
 void main() {
     uint tile = gl_WorkGroupID.x, lid = gl_LocalInvocationID.x;
+    // Native centre jobs use INTRA; no stage consumes their PLANAR body.
+    // This uniform return also avoids table setup and palette reductions.
+    if ((jobs[tile].flags & 0x80000000u) != 0u) return;
     nxe_init_tables(lid, 256u);
     barrier();
     // Dispatch covers every tile in both eyes; width/height are per eye.
@@ -47,7 +50,6 @@ void main() {
     if (tile >= nt) return;
     uint ybase = tile * 2048u, cbase = nt * 2048u + tile * 512u;
     uint mt = tile * 64u;
-    if ((pc.cadenceMode & 1u) != 0u && (jobs[tile].flags & 0x80000000u) != 0u) return;
     if ((pc.cadenceMode & 1u) != 0u) {
         if (lid < 48u) {
             uint plane = lid / 16u, k = lid & 15u;
