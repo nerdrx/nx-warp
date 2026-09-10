@@ -1,0 +1,264 @@
+{
+  "runs": [
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-base-a-client.log",
+      "client": {
+        "n": 24,
+        "start": "20:05:54.982",
+        "end": "20:06:41.093",
+        "means": {
+          "fresh_per_s": 77.95833333333333,
+          "iterations": 180.41666666666666,
+          "iterations_per_s": 90.0,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.104166666666667,
+          "source_offset_ms": 55.612500000000004,
+          "submit_lead_ms": 30.325,
+          "wait_attempts": 65.54166666666667,
+          "wait_successes": 41.041666666666664,
+          "wait_total_ms": 45.085791666666665
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "20:05:52.959",
+        "end": "20:06:41.091",
+        "means": {
+          "copy_gpu_ms": 0.0004,
+          "fence_post_ms": 8.172,
+          "frames": 172.28,
+          "frames_per_s": 86.14,
+          "nxvc_gpu_ms": 5.207999999999999,
+          "pass_a_ms": 1.9480000000000002,
+          "pass_b_ms": 3.252,
+          "queue_ms": 2.944
+        }
+      }
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-candidate-a-client.log",
+      "client": {
+        "n": 24,
+        "start": "20:07:12.423",
+        "end": "20:07:58.514",
+        "means": {
+          "fresh_per_s": 75.45833333333333,
+          "iterations": 180.375,
+          "iterations_per_s": 89.99166666666667,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.354166666666667,
+          "source_offset_ms": 55.79583333333333,
+          "submit_lead_ms": 30.75,
+          "wait_attempts": 90.375,
+          "wait_successes": 60.916666666666664,
+          "wait_total_ms": 56.39595833333333
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "20:07:12.380",
+        "end": "20:07:58.568",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 8.475,
+          "frames": 166.83333333333334,
+          "frames_per_s": 83.41666666666667,
+          "nxvc_gpu_ms": 5.245833333333334,
+          "pass_a_ms": 1.9416666666666667,
+          "pass_b_ms": 3.3083333333333336,
+          "queue_ms": 3.2125
+        }
+      }
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-candidate-b-client.log",
+      "client": {
+        "n": 24,
+        "start": "20:08:16.246",
+        "end": "20:09:02.370",
+        "means": {
+          "fresh_per_s": 80.91666666666667,
+          "iterations": 180.45833333333334,
+          "iterations_per_s": 89.99583333333334,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.45,
+          "source_offset_ms": 56.63333333333333,
+          "submit_lead_ms": 30.741666666666664,
+          "wait_attempts": 67.45833333333333,
+          "wait_successes": 48.833333333333336,
+          "wait_total_ms": 41.2325
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "20:08:16.213",
+        "end": "20:09:02.335",
+        "means": {
+          "copy_gpu_ms": 0.0008333333333333334,
+          "fence_post_ms": 8.0375,
+          "frames": 170.0,
+          "frames_per_s": 85.0,
+          "nxvc_gpu_ms": 5.566666666666666,
+          "pass_a_ms": 1.7375,
+          "pass_b_ms": 3.8208333333333333,
+          "queue_ms": 2.4375
+        }
+      }
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-base-b-client.log",
+      "client": {
+        "n": 24,
+        "start": "20:09:21.471",
+        "end": "20:10:07.577",
+        "means": {
+          "fresh_per_s": 81.33333333333333,
+          "iterations": 180.41666666666666,
+          "iterations_per_s": 89.99583333333334,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.05,
+          "source_offset_ms": 54.34583333333333,
+          "submit_lead_ms": 29.325,
+          "wait_attempts": 53.375,
+          "wait_successes": 35.625,
+          "wait_total_ms": 38.10070833333334
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "20:09:19.428",
+        "end": "20:10:07.587",
+        "means": {
+          "copy_gpu_ms": 0.0012,
+          "fence_post_ms": 7.072,
+          "frames": 178.6,
+          "frames_per_s": 89.3,
+          "nxvc_gpu_ms": 5.608,
+          "pass_a_ms": 2.092,
+          "pass_b_ms": 3.516,
+          "queue_ms": 1.4280000000000002
+        }
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-base-a-client.log",
+      "stopping_events": 0,
+      "post_warm_windows": 24,
+      "reported_seconds": 48.0,
+      "covered_wall_seconds": 48.11099999998987,
+      "max_window_gap_seconds": 2.011999999987893,
+      "fresh_per_reported_second": 77.95833333333333,
+      "fresh_per_covered_wall_second": 77.7784706200409,
+      "scope": "Logged render-window coverage after10s. Rounded reporting durations; not panel/photon timing. Includes gaps between windows."
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-candidate-a-client.log",
+      "stopping_events": 0,
+      "post_warm_windows": 24,
+      "reported_seconds": 48.0,
+      "covered_wall_seconds": 48.09100000000035,
+      "max_window_gap_seconds": 2.011000000013155,
+      "fresh_per_reported_second": 75.45833333333333,
+      "fresh_per_covered_wall_second": 75.31554760765994,
+      "scope": "Logged render-window coverage after10s. Rounded reporting durations; not panel/photon timing. Includes gaps between windows."
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-candidate-b-client.log",
+      "stopping_events": 0,
+      "post_warm_windows": 24,
+      "reported_seconds": 48.0,
+      "covered_wall_seconds": 48.12399999999616,
+      "max_window_gap_seconds": 2.0120000000024447,
+      "fresh_per_reported_second": 80.91666666666667,
+      "fresh_per_covered_wall_second": 80.70817055939469,
+      "scope": "Logged render-window coverage after10s. Rounded reporting durations; not panel/photon timing. Includes gaps between windows."
+    },
+    {
+      "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/sha2-transport-base-b-client.log",
+      "stopping_events": 0,
+      "post_warm_windows": 24,
+      "reported_seconds": 48.0,
+      "covered_wall_seconds": 48.10599999999977,
+      "max_window_gap_seconds": 2.0129999999917345,
+      "fresh_per_reported_second": 81.33333333333333,
+      "fresh_per_covered_wall_second": 81.15411798944038,
+      "scope": "Logged render-window coverage after10s. Rounded reporting durations; not panel/photon timing. Includes gaps between windows."
+    }
+  ],
+  "budgets": [
+    {
+      "stages_ms": [
+        5.543769401330377,
+        6.6320177383592025,
+        0.48802660753880267,
+        9.352039911308204,
+        2.6202439024390243,
+        30.956230598669624
+      ],
+      "total_ms": 55.58831485587583,
+      "samples": 4510.0,
+      "windows": 25,
+      "net_us_per_datagram": 26.52
+    },
+    {
+      "stages_ms": [
+        5.9756708804612995,
+        4.104125083166999,
+        1.0840319361277446,
+        9.86389443335551,
+        3.304125083166999,
+        31.44805943668219
+      ],
+      "total_ms": 55.763850077622536,
+      "samples": 4509.0,
+      "windows": 25,
+      "net_us_per_datagram": 15.04
+    },
+    {
+      "stages_ms": [
+        5.852105496453901,
+        4.144038120567376,
+        1.563807624113475,
+        9.563807624113476,
+        4.028346631205674,
+        31.444060283687943
+      ],
+      "total_ms": 56.62415780141844,
+      "samples": 4512.0,
+      "windows": 25,
+      "net_us_per_datagram": 15.24
+    },
+    {
+      "stages_ms": [
+        5.391973392461197,
+        6.520066518847007,
+        0.6080044345898005,
+        8.45239467849224,
+        3.564478935698448,
+        30.047605321507763
+      ],
+      "total_ms": 54.60452328159645,
+      "samples": 4510.0,
+      "windows": 25,
+      "net_us_per_datagram": 26.2
+    }
+  ],
+  "means": {
+    "base": {
+      "source_proxy_ms": 55.09641906873614,
+      "packet_span_ms": 6.576042128603104,
+      "net_us_per_datagram": 26.36,
+      "decode_gpu_ms": 5.4079999999999995,
+      "fresh_per_covered_wall_second": 79.46629430474064
+    },
+    "candidate": {
+      "source_proxy_ms": 56.194003939520485,
+      "packet_span_ms": 4.1240816018671875,
+      "net_us_per_datagram": 15.14,
+      "decode_gpu_ms": 5.40625,
+      "fresh_per_covered_wall_second": 78.01185908352731
+    }
+  }
+}

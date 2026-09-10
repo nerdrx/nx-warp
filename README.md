@@ -107,6 +107,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 [Source-offset budget](bench/results/90fps-2026-09-10/source-budget/README.md): a diagnostic run splits the **57.88 ms proxy** into **31.69 ms presentation lead**, **9.51 ms decode wall**, **6.75 ms packet span**, **3.13 ms ready-frame wait**, **0.81 ms decoder queue** and **6.00 ms source-to-first arrival**. Presentation lead is not automatically removable delay; these are software timings, not photon latency.
 
+[Hardware SHA-256 experiment](bench/results/90fps-2026-09-10/sha2-transport/README.md): identical packet bytes with **42.6% less receiver processing** and packet spans **6.58 → 4.12 ms**. Full-stream source offset worsened **1.10 ms**, so this remains **opt-in and off in the selected profile** pending scheduling work.
+
 **Selected decode improvement:** [64-thread compact flat PLANAR](bench/results/90fps-2026-09-10/compact-flat64/README.md) reduced **Pass B GPU time by 5.3%**, total decode GPU by **4.1%**, and source-offset proxy by **2.34 ms**, with essentially unchanged fresh delivery. A Pico fixture decoded byte-for-byte identically; startup failures and repeat methodology are disclosed.
 
 **New optimization baseline: 2688×2688 per eye.** [Pico measurements and both-eye captures](bench/results/90fps-2026-09-10/resolution150/README.md): **152.6% of previous encoded pixels**, roughly **71 fresh selections/s** versus **88/s** before. Decode GPU time grows **4.41 → 6.54 ms**; source-offset proxy grows **51.40 → 63.97 ms**. This is working higher-resolution support, not a 90/240 FPS success.
