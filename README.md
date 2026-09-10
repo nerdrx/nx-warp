@@ -109,7 +109,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 [Hardware SHA-256 experiment](bench/results/90fps-2026-09-10/sha2-transport/README.md): identical packet bytes with **42.6% less receiver processing** and packet spans **6.58 → 4.12 ms**. Full-stream source offset worsened **1.10 ms**, so this remains **opt-in and off in the selected profile** pending scheduling work.
 
-[Larger sharp centre](bench/results/90fps-2026-09-10/large-centre/README.md): optional **640 → 1024 px** native centre at 2688² per eye, with **80 → 208 native tiles** and a small spatial filter outside it. Host packing checks pass; this is a quality trial with **56% more packed pixels**, not a demonstrated latency win.
+[Larger sharp centre — live correction](bench/results/90fps-2026-09-10/large-centre-live/README.md): **1024px centre** now tested through both Pico eyes after fixing the client buffer size. Lightweight peripheral blur selected; larger palette blocks remain. The animated stress trial gives about **42 fresh selections/s**, so this quality profile is **not a 90 FPS result**.
 
 ![Larger native centre tile masks](bench/results/90fps-2026-09-10/large-centre/centre-layout.png)
 
