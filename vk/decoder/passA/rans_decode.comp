@@ -72,6 +72,8 @@ layout(constant_id = 4) const uint CTX_STRIDE = 16;
 // code is not free on this part, and a specialisation constant is how it gets
 // deleted.
 layout(constant_id = 5) const uint XFORM_LARGE_TOOL = 0;
+// [sparse-layout] 0 = dense, 1 = sparse, 2 = legacy push-constant choice.
+layout(constant_id = 6) const uint SPARSE_LAYOUT = 2;
 
 layout(local_size_x = kWorkgroupSize, local_size_y = 1, local_size_z = 1) in;
 
@@ -128,9 +130,9 @@ layout(push_constant) uniform Push {
     // constant so turning a tool on costs no pipeline rebuild.
     uint tools;
     // [sparse] 1 = scan-order slots plus a per-unit length (syntax_constants.h
-    // section 8); 0 = the dense raster-order layout.  A push constant so the
-    // host can A/B the two layouts without a second pipeline, and because the
-    // branch it selects is workgroup-uniform.
+    // section 8); 0 = the dense raster-order layout. Retained for legacy
+    // dynamic pipelines; production specializes the matching layout so
+    // unused dense scan work can be eliminated.
     uint sparse;
 } pc;
 
@@ -301,6 +303,10 @@ uint g_coef_off;  // int16 index of this tile's region
 uint g_cbf_off;   // uint index of this tile's CBF words
 uint g_ulen_off;  // [sparse] uint index of this tile's unit-length words
 
+bool use_sparse_layout() {
+    return SPARSE_LAYOUT == 2u ? pc.sparse != 0u : SPARSE_LAYOUT != 0u;
+}
+
 int scan_index(int scan_id, int p) {
     // [minor 6] The two large zigzags are a rule, not a table; see
     // nxs_zigzag_pos_to_raster().  They are reached only by the DENSE
@@ -461,7 +467,7 @@ void begin_unit() {
 // index the scan names.  The unit's base and reserved width are the same
 // either way.
 void store_coef_at(int scan_pos, int value) {
-    int slot = pc.sparse != 0u ? scan_pos : scan_index(g_u_scan, scan_pos);
+    int slot = use_sparse_layout() ? scan_pos : scan_index(g_u_scan, scan_pos);
     u_coef.data[g_coef_off + uint(g_u_coef + slot)] = int16_t(value);
 }
 
@@ -469,7 +475,7 @@ void store_coef_at(int scan_pos, int value) {
 // zeroed word: unit `u` belongs to lane `u % LANES`, so the four units sharing
 // a word belong to four different lanes.
 void store_unit_len(int ui, int len) {
-    if (pc.sparse == 0u) return;
+    if (!use_sparse_layout()) return;
     int perWord = nxs_unit_lens_per_word(s_xform[g_slot]);
     int bits = nxs_unit_len_bits(s_xform[g_slot]);
     atomicOr(s_ulen[uint(g_slot) * kUnitLenWordsPerTile +
@@ -899,15 +905,17 @@ void lite_main() {
 
     // The scan tables.  The probability tables are NOT loaded: ENTROPY_LITE
     // has none, and binding 2 goes unread in this mode.
-    for (uint i = tid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
-        uint t = i / uint(kScanStride);
-        uint p = i % uint(kScanStride);
-        uint v = p;  // kScanRaster8 / kScanSmall are the identity
-        if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
-        else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
-        // [minor 6] the 4x4-split scan of 6.8, four concatenated sub-blocks.
-        else if (t == uint(kScan4Split)) v = uint(kScan4SplitTab[p]);
-        s_scan[i] = v;
+    if (SPARSE_LAYOUT != 1u) {
+        for (uint i = tid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
+            uint t = i / uint(kScanStride);
+            uint p = i % uint(kScanStride);
+            uint v = p;  // kScanRaster8 / kScanSmall are the identity
+            if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
+            else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
+            // [minor 6] the 4x4-split scan of 6.8, four concatenated sub-blocks.
+            else if (t == uint(kScan4Split)) v = uint(kScan4SplitTab[p]);
+            s_scan[i] = v;
+        }
     }
 
     // --- tile header, and the tile geometry it implies ---------------------
@@ -983,7 +991,7 @@ void lite_main() {
     // Identical contract to the rANS path: dense zeroes the whole coefficient
     // region, sparse zeroes only the length words and leaves the coefficient
     // slots past LAST untouched.
-    if (pc.sparse == 0u) {
+    if (!use_sparse_layout()) {
         for (uint i = tid; i < pc.coef_stride; i += kWorkgroupSize)
             u_coef.data[g_coef_off + i] = int16_t(0);
     } else {
@@ -1180,7 +1188,7 @@ void lite_main() {
     barrier();
 
     if (tid == 0u) u_status.data[tile] = s_ok[0];
-    if (pc.sparse != 0u)
+    if (use_sparse_layout())
         for (uint i = tid; i < kUnitLenWordsPerTile; i += kWorkgroupSize)
             u_ulen.data[g_ulen_off + i] = s_ulen[i];
 }
@@ -1208,15 +1216,17 @@ void main() {
     const uint kCumWords = uint(kNumTableSets) * CTX_STRIDE * uint(kNumSym);
     for (uint i = lid; i < kCumWords; i += kWorkgroupSize)
         s_cum[i] = u_tables.data[i];
-    for (uint i = lid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
-        uint t = i / uint(kScanStride);
-        uint p = i % uint(kScanStride);
-        uint v = p;  // kScanRaster8 / kScanSmall are the identity
-        if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
-        else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
-        // [minor 6] the 4x4-split scan of 6.8, four concatenated sub-blocks.
-        else if (t == uint(kScan4Split)) v = uint(kScan4SplitTab[p]);
-        s_scan[i] = v;
+    if (SPARSE_LAYOUT != 1u) {
+        for (uint i = lid; i < uint(kNumScans * kScanStride); i += kWorkgroupSize) {
+            uint t = i / uint(kScanStride);
+            uint p = i % uint(kScanStride);
+            uint v = p;  // kScanRaster8 / kScanSmall are the identity
+            if (t == uint(kScanZigzag8)) v = uint(kZigzag8[p]);
+            else if (t == uint(kScanZigzag4)) v = (p < 16u) ? uint(kZigzag4[p]) : p;
+            // [minor 6] the 4x4-split scan of 6.8, four concatenated sub-blocks.
+            else if (t == uint(kScan4Split)) v = uint(kScan4SplitTab[p]);
+            s_scan[i] = v;
+        }
     }
     if (in_group && lane == 0) {
         s_ok[slot] = kStatusOk;
@@ -1333,7 +1343,7 @@ void main() {
     // below, explicit zeros included (a zero run inside a unit is stored, see
     // kPhLevel).  That is the whole of the write-side saving.
     if (valid) {
-        if (pc.sparse == 0u) {
+        if (!use_sparse_layout()) {
             for (uint i = uint(lane); i < pc.coef_stride; i += LANES)
                 u_coef.data[g_coef_off + i] = int16_t(0);
         } else {
@@ -1459,7 +1469,7 @@ void main() {
     if (valid && lane == 0) u_status.data[tile] = s_ok[slot];
     // [sparse] Flush the tile's lengths, coalesced, now that every lane of the
     // tile has finished.
-    if (valid && pc.sparse != 0u) {
+    if (valid && use_sparse_layout()) {
         for (uint i = uint(lane); i < kUnitLenWordsPerTile; i += LANES)
             u_ulen.data[g_ulen_off + i] =
                 s_ulen[uint(slot) * kUnitLenWordsPerTile + i];

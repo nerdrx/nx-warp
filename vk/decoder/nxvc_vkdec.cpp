@@ -1250,9 +1250,11 @@ nxvc_vkd_status make_layouts(D *d) {
 // a v3 frame want different kernels and a frame must not inherit the other's.
 nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
                            uint32_t xform_large, uint32_t entropy_mode,
+                           uint32_t sparse_layout,
                            VkPipeline *out) {
     const uint32_t key =
-        lanes | (ctx_stride << 8) | (xform_large << 16) | (entropy_mode << 17);
+        lanes | (ctx_stride << 8) | (xform_large << 16) |
+        (entropy_mode << 17) | (sparse_layout << 19);
     auto it = d->pipesA.find(key);
     if (it != d->pipesA.end()) {
         *out = it->second;
@@ -1270,11 +1272,13 @@ nxvc_vkd_status pipeline_a(D *d, uint32_t lanes, uint32_t ctx_stride,
     const bool lite = entropy_mode == nxwarp_passA::kEntropyLiteFixed;
     const uint32_t tpg =
         lite ? 1u : nxwarp_passA::nxs_tiles_per_group(lanes);
-    const uint32_t data[6] = {mode,        tpg,        lanes,
-                              entropy_mode, ctx_stride, xform_large};
-    VkSpecializationMapEntry me[6] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
-                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4}};
-    VkSpecializationInfo spec{6, me, sizeof(data), data};
+    const uint32_t data[7] = {mode,        tpg,        lanes,
+                              entropy_mode, ctx_stride, xform_large,
+                              sparse_layout};
+    VkSpecializationMapEntry me[7] = {{0, 0, 4},  {1, 4, 4},  {2, 8, 4},
+                                      {3, 12, 4}, {4, 16, 4}, {5, 20, 4},
+                                      {6, 24, 4}};
+    VkSpecializationInfo spec{7, me, sizeof(data), data};
 
     VkComputePipelineCreateInfo ci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
@@ -3434,8 +3438,12 @@ extern "C" nxvc_vkd_status nxvc_vk_decode_frame_ex(nxvc_vk_decoder *d,
         const uint32_t emode = fp.entropy_lite
                                    ? nxwarp_passA::kEntropyLiteFixed
                                    : nxwarp_passA::kEntropyRans;
+        const uint32_t slayout =
+            std::getenv("NXVC_VKD_PASSA_DYNAMIC_LAYOUT")
+                ? 2u
+                : (fp.push.sparse ? 1u : 0u);
         if ((st = pipeline_a(d, g.lanes, (uint32_t)fp.ctx_stride,
-                             (uint32_t)fp.xform_large, emode, &p)))
+                             (uint32_t)fp.xform_large, emode, slayout, &p)))
             return st;
         vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p);
         const uint32_t push[kPassAPushUints] = {
