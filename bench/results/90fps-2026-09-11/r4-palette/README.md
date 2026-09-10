@@ -66,3 +66,29 @@ windows). This is retained as
 
 The run was not treated as an MTP result. No R4 conclusion is based on that
 failed control; the conclusions above use only the four completed retry runs.
+
+## Smoothing ABBA follow-up
+
+A second four-run ABBA sequence held R4 and the ungrouped-cell path constant
+and compared presentation peripheral smoothing 5 → 3 → 3 → 5. All runs
+completed 60 seconds with 30 render/decode windows. Post-warm-up means from
+the same analyzer were:
+
+| smoothing | fresh source/s | own presentation GPU ms | decoder GPU ms | pass-B ms | source offset ms |
+|---:|---:|---:|---:|---:|---:|
+| 5 (a,b) | 45.80 | 3.28 | 13.31 | 8.34 | 82.28 |
+| 3 (a,b) | 45.72 | 2.73 | 12.91 | 8.36 | 79.11 |
+
+Smoothing 3 therefore saved about 0.55 ms of the presentation GPU proxy and
+3.17 ms of the source-offset proxy, with essentially unchanged fresh source
+rate (−0.08/s). These are software scheduling/display proxies, not MTP or
+motion-to-photon measurements, and this result is not a selection decision.
+Raw statuses are in [`smooth-statuses.json`](smooth-statuses.json), the run
+record in [`smooth-trials.log`](smooth-trials.log), and the four client logs
+under `logs/r4-smooth*-client.log`.
+
+A separate Pico capture with smoothing 3 preserves the larger native centre and
+the R4 colour improvement. Cell stair-steps remain visible: this does not
+eliminate all peripheral artifacts. Smoothing 3 is the candidate for longer tests.
+
+![R4 with cheaper smoothing 3](smooth3-eye0.png)
