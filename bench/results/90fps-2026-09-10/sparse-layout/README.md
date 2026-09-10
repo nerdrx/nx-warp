@@ -1,5 +1,7 @@
 # Compile out unused sparse-decoder work
 
+**Follow-up:** [Four 120-second runs](../sparse-layout-long/README.md) confirm decode and fresh-update gains, but not the 3.69 ms source-offset reduction below. Use the longer report for the current latency conclusion.
+
 **Keep.** At 2688×2688 per eye, four 60-second live Pico runs favor specializing the entropy decoder's coefficient layout. Both adjacent pairs improve decode GPU time, fresh-source rate and source-offset proxy.
 
 | Metric | Dynamic layout | Static layout | Change |

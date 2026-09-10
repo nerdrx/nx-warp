@@ -103,7 +103,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 [Selection timing audit](bench/results/90fps-2026-09-10/selection-delay/README.md): at 2688² per eye, selecting a frame to entering the presentation pass takes **0.047 ms mean** across 8,514 calls. Moving selection later offers little room; this is diagnostic evidence, not an end-to-end latency win.
 
-[Static sparse decoder](bench/results/90fps-2026-09-10/sparse-layout/README.md): compiling out unused dense-layout work at 2688² per eye improves live decode GPU **6.08 → 5.53 ms**, fresh selections **72.7 → 80.5/s**, and source-offset proxy by **3.69 ms** in four short paired runs. Pixel checks pass; longer validation remains.
+[Static sparse decoder — longer validation](bench/results/90fps-2026-09-10/sparse-layout-long/README.md): at 2688² per eye, four 120-second runs improve decode GPU **5.88 → 5.39 ms** and fresh selections **68.9 → 76.9 per covered wall-second**. Source-offset proxy is **61.00 → 61.09 ms**: the earlier short-run latency gain did not reproduce. Pixel checks pass; the optimized decoder remains selected.
 
 **Selected decode improvement:** [64-thread compact flat PLANAR](bench/results/90fps-2026-09-10/compact-flat64/README.md) reduced **Pass B GPU time by 5.3%**, total decode GPU by **4.1%**, and source-offset proxy by **2.34 ms**, with essentially unchanged fresh delivery. A Pico fixture decoded byte-for-byte identically; startup failures and repeat methodology are disclosed.
 
