@@ -109,6 +109,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 [Hardware SHA-256 experiment](bench/results/90fps-2026-09-10/sha2-transport/README.md): identical packet bytes with **42.6% less receiver processing** and packet spans **6.58 → 4.12 ms**. Full-stream source offset worsened **1.10 ms**, so this remains **opt-in and off in the selected profile** pending scheduling work.
 
+[Peripheral colour repair](bench/results/90fps-2026-09-11/r4-palette/README.md): four-colour tile palettes reduce large colour patches in actual Pico captures, with the **1024px native centre retained**. Four moving-scene repeats show **50.05 → 45.33 fresh selections/s** and similar decode GPU time; this is a quality tradeoff, not a speed win. [Removing unnecessary cell grouping](bench/results/90fps-2026-09-11/no-group-cells/README.md) improves contours at essentially unchanged throughput.
+
 [Larger sharp centre — live correction](bench/results/90fps-2026-09-10/large-centre-live/README.md): **1024px centre** now tested through both Pico eyes after fixing the client buffer size. Lightweight peripheral blur selected; larger palette blocks remain. The animated stress trial gives about **42 fresh selections/s**, so this quality profile is **not a 90 FPS result**.
 
 ![Larger native centre tile masks](bench/results/90fps-2026-09-10/large-centre/centre-layout.png)

@@ -1,0 +1,11 @@
+CPU/reference validation (candidate streams, one frame, yuv420p NV12)
+nxv-dec --nv12 --pix yuv420p candidate-r2.nxv -> r2-cpu.nv12: 21676032 bytes
+nxv-dec --nv12 --pix yuv420p candidate-r4.nxv -> r4-cpu.nv12: 21676032 bytes
+
+R2 SHA256: eb4ff10e6dbfa65aa45c1d30ec5f92e23133b6828661678cf86938eec9b940f2
+R4 SHA256: 1f591bbaba4fc85fdfb32610e7c222cf7a2ae07cabb5c2d06110ca7276152454
+
+Dense GPU generic and NXVC_VKD_PLANAR_FLAT outputs match CPU exactly for both R2 and R4.
+Dense R2/R4 output size: 21676032 bytes (5376x2688 yuv420p NV12).
+Compact generic and --compact-flat64 outputs match exactly for both R2 and R4.
+Compact R2/R4 output size: 6220800 bytes (2880x1440 yuv420p NV12).

@@ -1,0 +1,142 @@
+{
+  "base-a": {
+    "file": "nx-scratch/motion-live/no-groups-base-a-client.log",
+    "client": {
+      "n": 24,
+      "start": "00:30:32.762",
+      "end": "00:31:18.938",
+      "means": {
+        "fresh_per_s": 50.541666666666664,
+        "iterations": 127.20833333333333,
+        "iterations_per_s": 63.36666666666667,
+        "older_available": 0.0,
+        "own_gpu_ms": 4.858333333333333,
+        "source_offset_ms": 81.78750000000001,
+        "submit_lead_ms": 38.141666666666666,
+        "wait_attempts": 29.125,
+        "wait_successes": 3.0,
+        "wait_total_ms": 27.867583333333332
+      }
+    },
+    "decoder": {
+      "n": 25,
+      "start": "00:30:30.703",
+      "end": "00:31:18.949",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 15.568,
+        "frames": 102.04,
+        "frames_per_s": 51.02,
+        "nxvc_gpu_ms": 12.868,
+        "pass_a_ms": 4.92,
+        "pass_b_ms": 7.9479999999999995,
+        "queue_ms": 2.668
+      }
+    }
+  },
+  "candidate-a": {
+    "file": "nx-scratch/motion-live/no-groups-candidate-a-client.log",
+    "client": {
+      "n": 24,
+      "start": "00:31:37.492",
+      "end": "00:32:23.650",
+      "means": {
+        "fresh_per_s": 50.208333333333336,
+        "iterations": 135.0,
+        "iterations_per_s": 67.26666666666667,
+        "older_available": 0.0,
+        "own_gpu_ms": 4.529166666666667,
+        "source_offset_ms": 80.625,
+        "submit_lead_ms": 37.38333333333333,
+        "wait_attempts": 42.041666666666664,
+        "wait_successes": 7.458333333333333,
+        "wait_total_ms": 36.88041666666667
+      }
+    },
+    "decoder": {
+      "n": 25,
+      "start": "00:31:35.436",
+      "end": "00:32:23.657",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 15.76,
+        "frames": 100.84,
+        "frames_per_s": 50.42,
+        "nxvc_gpu_ms": 12.972000000000001,
+        "pass_a_ms": 5.008,
+        "pass_b_ms": 7.96,
+        "queue_ms": 2.7680000000000002
+      }
+    }
+  },
+  "candidate-b": {
+    "file": "nx-scratch/motion-live/no-groups-candidate-b-client.log",
+    "client": {
+      "n": 24,
+      "start": "00:32:42.274",
+      "end": "00:33:28.492",
+      "means": {
+        "fresh_per_s": 50.6875,
+        "iterations": 125.66666666666667,
+        "iterations_per_s": 62.55416666666667,
+        "older_available": 0.0,
+        "own_gpu_ms": 4.916666666666667,
+        "source_offset_ms": 81.66250000000001,
+        "submit_lead_ms": 38.358333333333334,
+        "wait_attempts": 26.833333333333332,
+        "wait_successes": 2.5416666666666665,
+        "wait_total_ms": 25.870333333333335
+      }
+    },
+    "decoder": {
+      "n": 25,
+      "start": "00:32:40.225",
+      "end": "00:33:28.476",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 15.548,
+        "frames": 102.2,
+        "frames_per_s": 51.1,
+        "nxvc_gpu_ms": 12.876,
+        "pass_a_ms": 4.94,
+        "pass_b_ms": 7.928,
+        "queue_ms": 2.6239999999999997
+      }
+    }
+  },
+  "base-b": {
+    "file": "nx-scratch/motion-live/no-groups-base-b-client.log",
+    "client": {
+      "n": 24,
+      "start": "00:33:46.956",
+      "end": "00:34:33.135",
+      "means": {
+        "fresh_per_s": 50.4375,
+        "iterations": 125.45833333333333,
+        "iterations_per_s": 62.49583333333334,
+        "older_available": 0.0,
+        "own_gpu_ms": 4.891666666666667,
+        "source_offset_ms": 81.64999999999999,
+        "submit_lead_ms": 38.262499999999996,
+        "wait_attempts": 27.125,
+        "wait_successes": 2.5416666666666665,
+        "wait_total_ms": 26.156375
+      }
+    },
+    "decoder": {
+      "n": 25,
+      "start": "00:33:44.916",
+      "end": "00:34:33.146",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 15.52,
+        "frames": 102.2,
+        "frames_per_s": 51.1,
+        "nxvc_gpu_ms": 12.892000000000001,
+        "pass_a_ms": 4.944,
+        "pass_b_ms": 7.9479999999999995,
+        "queue_ms": 2.6039999999999996
+      }
+    }
+  }
+}

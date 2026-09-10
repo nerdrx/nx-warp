@@ -1,0 +1,10 @@
+Started WiVRn server PID 144726
+{"fdm": 3, "wait_us": 1000, "requested_seconds": 60, "capture": "0", "peripheral_smooth": "5", "scene": "NXWARP_BENCH_FULL_FIELD", "pid": "13870", "last_scene_time_s": 57.99, "complete": false, "elapsed_seconds": 63.42617150300066, "client_alive": true, "render_windows": 14, "decode_windows": 13, "last_render_log_age_s": 32.641999999999825, "render_windows_total": 14, "decode_windows_total": 13, "error": "Insufficient or stale live render/decode telemetry"}
+Traceback (most recent call last):
+  File "/run/media/nerdrx/Lex/claude/nx-scratch/r4-palette/run_trials.py", line 7, in <module>
+    subprocess.run(['python3',str(live/'capture_live.py'),label,'3','1000','60','0','5'],check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['python3', '/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/capture_live.py', 'r4-base-a', '3', '1000', '60', '0', '5']' returned non-zero exit status 1.
