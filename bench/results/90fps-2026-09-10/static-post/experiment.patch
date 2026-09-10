@@ -1,0 +1,144 @@
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index 118803cf..65ee5f0e 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -71,6 +71,17 @@ static int lowpoly_tiny_requested()
+ #endif
+ }
+ 
++static bool static_post_requested()
++{
++#ifdef __ANDROID__
++	char value[PROP_VALUE_MAX] = {};
++	return __system_property_get("debug.wivrn.nx.static_post", value) > 0 && value[0] != '0';
++#else
++	const char * value = std::getenv("WIVRN_NX_STATIC_POST");
++	return value && value[0] != '0';
++#endif
++}
++
+ struct stream_defoveator::vertex
+ {
+ 	// output image position
+@@ -283,7 +294,8 @@ stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view,
+ 	        VkBool32(atlas_r8 && atlas_vertex_warp),
+ 	        int32_t(peripheral_smooth_baked),
+ 	        VkBool32(compact_centre),
+-		int32_t(lowpoly_tiny_baked));
++		int32_t(lowpoly_tiny_baked),
++		VkBool32(static_post_baked));
+ 	auto fragment_shader = load_shader(device, atlas_r8 ? "reprojection_atlas_r8.frag" : "reprojection.frag");
+ 
+ 	vk::pipeline_builder pipeline_info{
+@@ -984,13 +996,16 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 	// toggle, a rare event.
+ 	const bool lowpoly = post.low_poly > 0;
+ 	const int lowpoly_tiny = lowpoly && !post.low_poly_full ? lowpoly_tiny_requested() : 0;
++	const bool static_post = static_post_requested() && post.sharpness == 0.f && post.vignette == 0.f &&
++	                         post.glow == 0.f && post.deband == 0.f && motion.step == 0.f &&
++	                         blend.weight == 0.f;
+ 	const bool neutral_color = std::all_of(scale.begin(), scale.end(), [](float v) { return v == 1.f; }) &&
+ 	                            std::all_of(bias.begin(), bias.end(), [](float v) { return v == 0.f; });
+ 	const bool want_unorm = mutable_alias && neutral_color;
+ 	const int want_peripheral_smooth = atlas_prototype == 0 ? peripheral_smooth_requested() : 0;
+ 	const bool want_compact_centre = inputs[0].compact_centre || inputs[1].compact_centre;
+ 	if (want_compact_centre != compact_centre_baked or want_unorm != unorm_baked or cas_full_kernel != cas_full_baked or fsr != fsr_baked or atlas_prototype != atlas_baked or
+-	    lowpoly != lowpoly_baked or post.low_poly_full != lowpoly_full_baked || lowpoly_tiny != lowpoly_tiny_baked ||
++	    lowpoly != lowpoly_baked or post.low_poly_full != lowpoly_full_baked || lowpoly_tiny != lowpoly_tiny_baked || static_post != static_post_baked ||
+ 	    want_peripheral_smooth != peripheral_smooth_baked)
+ 	{
+ 		reset_pipelines();
+@@ -1001,7 +1016,9 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 		lowpoly_baked = lowpoly;
+ 		lowpoly_full_baked = post.low_poly_full;
+ 		lowpoly_tiny_baked = lowpoly_tiny;
++		static_post_baked = static_post;
+ 		peripheral_smooth_baked = want_peripheral_smooth;
++		spdlog::info("NX static post {}", static_post_baked ? "compiled out" : "active");
+ 		spdlog::info("NX peripheral smoothing mode {}", peripheral_smooth_baked);
+ 		unorm_baked = want_unorm;
+ 		if (mutable_alias)
+diff --git a/client/scenes/stream_defoveator.h b/client/scenes/stream_defoveator.h
+index 8266d08c..903b76bb 100644
+--- a/client/scenes/stream_defoveator.h
++++ b/client/scenes/stream_defoveator.h
+@@ -99,6 +99,7 @@ private:
+ 	bool lowpoly_baked = false;
+ 	bool lowpoly_full_baked = false;
+ 	int lowpoly_tiny_baked = 0;
++	bool static_post_baked = false;
+ 	// Optional two-tap smoothing for the coarse PLANAR periphery. Kept as a
+ 	// specialization constant so the default path is unchanged.
+ 	int peripheral_smooth_baked = 0;
+diff --git a/client/shaders/reprojection.glsl b/client/shaders/reprojection.glsl
+index 9754492c..d0cd04be 100644
+--- a/client/shaders/reprojection.glsl
++++ b/client/shaders/reprojection.glsl
+@@ -160,6 +160,9 @@ layout(constant_id = 8) const bool lowpoly_full_kernel = false;
+ // Optional low-poly approximations: 1 is eight-fetch 3x3, 2 is four-fetch
+ // centre-reuse, 3 is a two-fetch directional hint; all are off by default.
+ layout(constant_id = 12) const int lowpoly_tiny_kernel = 0;
++// Optional compile-out of neutral post-effect branches; host enables only when
++// all corresponding runtime parameters are exactly zero.
++layout(constant_id = 13) const bool static_post = false;
+ // Peripheral smoothing for coarse PLANAR cells. Mode 1 preserves the original
+ // square boundary and two diagonal taps; mode 2 follows the encoder's rounded
+ // tile-centre mask and uses four cardinal taps. The default is compiled out.
+@@ -909,7 +912,7 @@ void main()
+ 		}
+ 	}
+ 
+-	if (motion.x > 0.0)
++	if (!static_post && motion.x > 0.0)
+ 	{
+ 		vec2 texel = 0.5 / vec2(rgb_rect.zw);
+ 		uv = clamp(uv + motion_offset(inUV.xy, inPosition), texel, 1.0 - texel);
+@@ -1107,10 +1110,10 @@ void main()
+ 		// post.x carrying the FSR sharpness. The CAS path is never run while FSR is on, so
+ 		// the two never stack.
+ 		colour.rgb = fsr_easu(uv);
+-		if (post.x > 0.0)
++		if (!static_post && post.x > 0.0)
+ 			colour.rgb = fsr_rcas(uv, colour.rgb, post.x);
+ 	}
+-	else if (post.x > 0.0)
++	else if (!static_post && post.x > 0.0)
+ 	{
+ 		colour.rgb = contrast_adaptive_sharpen(uv, colour.rgb, post.x);
+ 	}
+@@ -1119,7 +1122,7 @@ void main()
+ 	// (gamma) space and only to the colour channels: the alpha stream that carries
+ 	// passthrough transparency below is never touched, so the wash tints the virtual
+ 	// content near the edge without ever making transparent periphery opaque.
+-	if (glow.x > 0.0)
++	if (!static_post && glow.x > 0.0)
+ 		colour.rgb = ambient_glow(colour.rgb, uv, inPosition, glow.x, glow.y);
+ 
+ 	// Edge bleed, second half: past the packed fade distance, decay the stretched edge into
+@@ -1145,7 +1148,7 @@ void main()
+ 	// other effect in this pass works in, and on the colour channels only: the alpha
+ 	// stream that carries passthrough transparency is never blended, so a frame's
+ 	// transparent periphery cannot bleed into the next one's.
+-	if (motion.z > 0.0)
++	if (!static_post && motion.z > 0.0)
+ 		colour.rgb = mix(colour.rgb, sample_prev(uv).rgb, motion.z);
+ 
+ 	if (alpha == 1)
+@@ -1180,7 +1183,7 @@ void main()
+ 		outColor.rgb *= outColor.a;
+ 	}
+ 
+-	if (post.y > 0.0)
++	if (!static_post && post.y > 0.0)
+ 	{
+ 		// Soft peripheral darkening, the center of the view is left untouched
+ 		outColor.rgb *= 1.0 - post.y * smoothstep(post.z, post.w, length(inPosition));
+@@ -1195,7 +1198,7 @@ void main()
+ 	// erases it, and this keeps the cost to two ALU hashes with no texture taps and no
+ 	// gradient-detection kernel (uniform dither is invisible on flat areas and
+ 	// imperceptible on detailed ones, so the extra taps to gate it are not worth it).
+-	if (deband.x > 0.0)
++	if (!static_post && deband.x > 0.0)
+ 	{
+ 		vec2 c = gl_FragCoord.xy;
+ 		float n = dither_noise(c) - dither_noise(c + vec2(37.0, 17.0));
