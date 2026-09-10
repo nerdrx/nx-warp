@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "nx-scratch/motion-live/awake-wait-4a-client.log",
+      "client": {
+        "n": 24,
+        "start": "03:08:53.852",
+        "end": "03:09:39.987",
+        "means": {
+          "fresh_per_s": 89.54166666666667,
+          "iterations": 179.83333333333334,
+          "iterations_per_s": 89.64166666666667,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.3625,
+          "source_offset_ms": 52.199999999999996,
+          "submit_lead_ms": 30.525000000000002,
+          "wait_attempts": 2.0833333333333335,
+          "wait_successes": 1.3333333333333333,
+          "wait_total_ms": 3.5372916666666665
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "03:08:51.795",
+        "end": "03:09:39.939",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 6.852,
+          "frames": 180.48,
+          "frames_per_s": 90.24,
+          "nxvc_gpu_ms": 4.492,
+          "queue_ms": 2.32
+        }
+      },
+      "label": "awake-wait-4a",
+      "mode": 4000
+    },
+    {
+      "file": "nx-scratch/motion-live/awake-wait-1a-client.log",
+      "client": {
+        "n": 24,
+        "start": "03:09:57.359",
+        "end": "03:10:43.494",
+        "means": {
+          "fresh_per_s": 88.58333333333333,
+          "iterations": 179.79166666666666,
+          "iterations_per_s": 89.64166666666667,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.841666666666667,
+          "source_offset_ms": 46.87083333333334,
+          "submit_lead_ms": 27.691666666666666,
+          "wait_attempts": 8.75,
+          "wait_successes": 6.125,
+          "wait_total_ms": 5.07975
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "03:09:57.311",
+        "end": "03:10:43.468",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.166666666666667,
+          "frames": 180.54166666666666,
+          "frames_per_s": 90.27083333333333,
+          "nxvc_gpu_ms": 4.125,
+          "queue_ms": 1.0208333333333333
+        }
+      },
+      "label": "awake-wait-1a",
+      "mode": 1000
+    },
+    {
+      "file": "nx-scratch/motion-live/awake-wait-1b-client.log",
+      "client": {
+        "n": 24,
+        "start": "03:11:00.935",
+        "end": "03:11:47.103",
+        "means": {
+          "fresh_per_s": 88.3125,
+          "iterations": 179.91666666666666,
+          "iterations_per_s": 89.63333333333333,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.775,
+          "source_offset_ms": 46.54583333333333,
+          "submit_lead_ms": 27.579166666666666,
+          "wait_attempts": 8.0,
+          "wait_successes": 4.708333333333333,
+          "wait_total_ms": 5.108791666666667
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "03:10:58.900",
+        "end": "03:11:47.044",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.0,
+          "frames": 180.56,
+          "frames_per_s": 90.28,
+          "nxvc_gpu_ms": 4.12,
+          "queue_ms": 0.84
+        }
+      },
+      "label": "awake-wait-1b",
+      "mode": 1000
+    },
+    {
+      "file": "nx-scratch/motion-live/awake-wait-4b-client.log",
+      "client": {
+        "n": 24,
+        "start": "03:12:04.561",
+        "end": "03:12:50.688",
+        "means": {
+          "fresh_per_s": 89.10416666666667,
+          "iterations": 179.79166666666666,
+          "iterations_per_s": 89.64583333333333,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.9791666666666665,
+          "source_offset_ms": 51.237500000000004,
+          "submit_lead_ms": 29.858333333333334,
+          "wait_attempts": 30.833333333333332,
+          "wait_successes": 29.25,
+          "wait_total_ms": 52.30166666666667
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "03:12:04.525",
+        "end": "03:12:50.644",
+        "means": {
+          "copy_gpu_ms": 0.00125,
+          "fence_post_ms": 5.229166666666667,
+          "frames": 180.45833333333334,
+          "frames_per_s": 90.22916666666667,
+          "nxvc_gpu_ms": 4.483333333333333,
+          "queue_ms": 0.7125
+        }
+      },
+      "label": "awake-wait-4b",
+      "mode": 4000
+    }
+  ],
+  "mean_of_run_means": {
+    "4000": {
+      "own_gpu_ms": 4.170833333333333,
+      "fresh_per_s": 89.32291666666667,
+      "source_offset_ms": 51.71875
+    },
+    "1000": {
+      "own_gpu_ms": 3.8083333333333336,
+      "fresh_per_s": 88.44791666666666,
+      "source_offset_ms": 46.70833333333333
+    }
+  },
+  "gpu_reduction_percent": 8.691308691308686,
+  "scope": "Four 60-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}

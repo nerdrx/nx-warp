@@ -97,6 +97,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
+**Current low-latency profile:** with the faster shader and continuous wake, [four new wait-budget trials](bench/results/90fps-2026-09-10/awake-wait/README.md) favor a **1 ms ready wait**: source-time offset **51.72 → 46.71 ms**, at about **1% fewer fresh updates** (89.08 → 88.17 per covered wall-second). All four runs had zero session stops. Source offset is a software proxy, not measured photon latency. The earlier shorter-wait rejection below concerns an older profile and remains historical evidence.
+
 **Capture failure recovery:** screenshot readback is now optional when creating the presentation swapchain. A [forced-rejection Pico test](bench/results/90fps-2026-09-10/capture-fallback/README.md) kept streaming for 60 seconds through three unsupported capture requests, with no repeated allocation loop. This improves failure handling, not frame rate.
 
 **Continuous-delivery correction:** off-head Pico tests were sleeping and waking repeatedly despite Android stay-on. One earlier run’s **89.3 fresh updates/s in active windows was only 67.0/s across its covered wall time**. [Fix and validation](bench/results/90fps-2026-09-10/awake-stability/README.md): the awake override and corrected logging produced a **120-second run with zero session stops**, retaining 60 render/decode windows and measuring **89.1 fresh updates/s across 108.3 seconds after warmup**. This is logged source selection, not photon timing or 240 FPS. Historical active-window rates must not be read as uninterrupted delivery.
@@ -117,7 +119,7 @@ The selected block softening reuses the presentation sampler with **no extra tex
 
 **Compact mapping simplification:** [four Pico trials](bench/results/90fps-2026-09-10/compact-clamp/README.md) measured **4.33 → 4.18 ms presentation GPU time (3.3% less)** after removing a redundant coordinate clamp, with essentially unchanged fresh-update telemetry. Float32 checks at 200,648 points matched exactly; this does not establish bit-exact GPU output or 240 FPS end to end.
 
-The [shorter-wait follow-up](bench/results/90fps-2026-09-10/fdm-wait/README.md) was rejected: reducing the ready-frame wait from 4 ms to 1 ms lost **8.1% of fresh updates** while reducing source-time offset by only **0.29 ms**. The current profile retains 4 ms.
+The [shorter-wait follow-up](bench/results/90fps-2026-09-10/fdm-wait/README.md) was rejected: reducing the ready-frame wait from 4 ms to 1 ms lost **8.1% of fresh updates** while reducing source-time offset by only **0.29 ms**. That older profile retained 4 ms; the newer continuously awake profile is evaluated above.
 
 Optional Kuwahara approximations reduce extra samples from 16 to [8](bench/results/90fps-2026-09-10/kuwahara-eight-tap/RESULTS.md), [4](bench/results/90fps-2026-09-10/kuwahara-four-tap/RESULTS.md), and [2](bench/results/90fps-2026-09-10/kuwahara-two-tap/RESULTS.md). Isolated Pico RGBA probes measured about 38% lower draw time for eight taps versus sixteen, then a further 22% for four versus eight; the two-tap gain was smaller and varied between runs. These are approximate filters and GPU microbenchmarks, not live latency improvements.
 
