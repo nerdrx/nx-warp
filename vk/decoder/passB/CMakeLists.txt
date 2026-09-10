@@ -94,6 +94,18 @@ add_custom_command(
           ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
   COMMENT "glslc reconstruct.comp (PLANAR flat) -> reconstruct_planar_flat.spv.h"
   VERBATIM)
+set(_flat64_out ${NXVW_PASSB_GEN}/reconstruct_planar_flat64.spv.h)
+list(APPEND NXVW_PASSB_SPV_LIST ${_flat64_out})
+add_custom_command(OUTPUT ${_flat64_out}
+  COMMAND ${CMAKE_COMMAND} -DGLSLC=${NXVW_GLSLC} -DSRC=${NXVW_PASSB_DIR}/reconstruct.comp
+          -DOUT=${_flat64_out} -DNAME=reconstruct_planar_flat64
+          "-DDEFS=-DNXVW_INTRA_DIR=0 -DNXVW_XFORM_LARGE=0 -DNXVW_PLANAR_FLAT_ONLY=1 -DNXVW_COMPACT_FLAT=1"
+          -DINCDIR=${NXVW_PASSB_DIR} -DSTYLE=plain -DDEPFILE=${_flat64_out}.d
+          -P ${NXVW_PASSB_GEN_SPV}
+  DEPENDS ${NXVW_PASSB_DIR}/reconstruct.comp ${NXVW_PASSB_DIR}/planar_flat_main.glsl
+          ${NXVW_PASSB_GEN_SPV} ${NXVW_PASSB_SPV_PASSES_CMAKE}
+  COMMENT "glslc reconstruct.comp (PLANAR compact 64-lane) -> reconstruct_planar_flat64.spv.h"
+  VERBATIM)
 # [inter] A fifth module: the WARP_SKIP kernel.
 #
 # A WARP_SKIP tile codes nothing -- no header, no payload, no coefficients --

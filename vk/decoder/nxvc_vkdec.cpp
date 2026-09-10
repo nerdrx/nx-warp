@@ -48,6 +48,7 @@
 #include "reconstruct_copy.spv.h"
 #include "reconstruct_v1_x8.spv.h"
 #include "reconstruct_planar_flat.spv.h"
+#include "reconstruct_planar_flat64.spv.h"
 #include "reconstruct_x8.spv.h"
 #include "warp_pred.spv.h"
 // [ATLAS] 13.12.3 step 1, and the coded-tile kernel that brackets Pass W.
@@ -228,6 +229,8 @@ struct nxvc_vk_decoder {
     // [passb] skip_kind == 3: the copy path for identity tiles.
     VkShaderModule smBCopy = VK_NULL_HANDLE;
     VkShaderModule smBPlanarFlat = VK_NULL_HANDLE;
+    VkShaderModule smBPlanarFlat64 = VK_NULL_HANDLE;
+    bool compact_flat64 = false;
     bool planar_flat_frame = false;
     bool planar_flat_mixed_frame = false;
     VkShaderModule smB[2][2] = {{VK_NULL_HANDLE, VK_NULL_HANDLE},
@@ -1158,6 +1161,9 @@ nxvc_vkd_status make_layouts(D *d) {
         sm.codeSize = sizeof(reconstruct_planar_flat_spv);
         sm.pCode = reconstruct_planar_flat_spv;
         VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBPlanarFlat));
+        sm.codeSize = sizeof(reconstruct_planar_flat64_spv);
+        sm.pCode = reconstruct_planar_flat64_spv;
+        VKTRY(d, vkCreateShaderModule(d->dev, &sm, nullptr, &d->smBPlanarFlat64));
     }
     sm.codeSize = sizeof(reconstruct_skip_spv);
     sm.pCode = reconstruct_skip_spv;
@@ -1362,6 +1368,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
                    ((uint64_t)(uint32_t)sparse << 48) |
                    ((uint64_t)(uint32_t)(fmt2 + 1) << 44) |
                    ((uint64_t)d->compact_centre << 54) |
+                   ((uint64_t)d->compact_flat64 << 51) |
                    ((uint64_t)(d->compact_centre && d->si.width == 2688) << 53) |
                    ((uint64_t)fmt << 40) | ((uint64_t)sched << 32) | store_words;
     auto it = d->pipesB.find(key);
@@ -1396,7 +1403,7 @@ nxvc_vkd_status pipeline_b(D *d, uint32_t fmt, int32_t fmt2, int32_t sparse,
         ci.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
     ci.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = planar_flat ? d->smBPlanarFlat :
+    ci.stage.module = planar_flat ? ((d->compact_flat64 && d->compact_centre) ? d->smBPlanarFlat64 : d->smBPlanarFlat) :
         skip_kind == 3 ? d->smBCopy
         : skip_kind == 2 ? d->smBSkipStore
         : skip_kind == 1
@@ -1489,6 +1496,7 @@ nxvc_vkd_status make_resources(D *d) {
                     : want == NXVC_VKD_OUT_RGB10A2 ? (uint32_t)nxvw::kOutRgb10A2
                                                    : (uint32_t)nxvw::kOutYcbcr420;
     d->compact_centre = (d->flags & NXVC_VKD_FLAG_COMPACT_CENTRE) != 0;
+    d->compact_flat64 = d->compact_centre && (d->flags & NXVC_VKD_FLAG_COMPACT_FLAT64) != 0;
     if (d->compact_centre &&
         (!(d->flags & NXVC_VKD_FLAG_INDEPENDENT_TILES) ||
          d->out_format != (uint32_t)nxvw::kOutYcbcr420 || si.bit_depth != 8 ||
@@ -2489,6 +2497,7 @@ extern "C" void nxvc_vk_decoder_destroy(nxvc_vk_decoder *d) {
             vkDestroyShaderModule(d->dev, d->smBSkipStore, nullptr);
         if (d->smBCopy) vkDestroyShaderModule(d->dev, d->smBCopy, nullptr);
         if (d->smBPlanarFlat) vkDestroyShaderModule(d->dev, d->smBPlanarFlat, nullptr);
+        if (d->smBPlanarFlat64) vkDestroyShaderModule(d->dev, d->smBPlanarFlat64, nullptr);
         for (auto &kv : d->pipesA) vkDestroyPipeline(d->dev, kv.second, nullptr);
         for (auto &kv : d->pipesB) vkDestroyPipeline(d->dev, kv.second, nullptr);
         if (d->smA) vkDestroyShaderModule(d->dev, d->smA, nullptr);

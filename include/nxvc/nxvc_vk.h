@@ -131,7 +131,9 @@ typedef enum nxvc_vkd_create_flags {
      * Packs each axis from its 64-pixel tile grid: an even quarter-width native
      * centre and each outer band represented at one quarter rate.
      * images()/plane_size()/read_planes() expose compact dimensions. */
-    NXVC_VKD_FLAG_COMPACT_CENTRE = 1u << 8
+    NXVC_VKD_FLAG_COMPACT_CENTRE = 1u << 8,
+    /* Use the opt-in 64-lane compact-flat PLANAR shader variant. */
+    NXVC_VKD_FLAG_COMPACT_FLAT64 = 1u << 9
 } nxvc_vkd_create_flags;
 
 /* --------------------------------------------------------------- create */

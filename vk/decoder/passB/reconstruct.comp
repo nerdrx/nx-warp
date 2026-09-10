@@ -20,7 +20,11 @@
 #include "syntax_constants.h"
 #include "passB_layout.h"
 
+#ifdef NXVW_COMPACT_FLAT
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+#else
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+#endif
 
 // ------------------------------------------------------ specialization
 // 0: display format, kOutRgba8 or kOutRgb10A2.

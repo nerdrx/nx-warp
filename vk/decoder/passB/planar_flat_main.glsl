@@ -55,7 +55,13 @@ void main() {
         int br = flatDc(cb, 15, clamp(qp + pc.p.chromaQpOff, 0, 63));
 
         int widthY = 64 / stepX, heightY = 64 / stepY;
-        for (int idx = tid; idx < widthY * heightY; idx += 256) {
+        for (int idx = tid; idx < widthY * heightY; idx +=
+#ifdef NXVW_COMPACT_FLAT
+             64
+#else
+             256
+#endif
+             ) {
             int px = idx & (widthY - 1), py = idx >> (stepX == 1 ? 6 : 4);
             int x = px * stepX + (stepX == 4 ? 1 : 0);
             int y = py * stepY + (stepY == 4 ? 1 : 0);
@@ -67,7 +73,13 @@ void main() {
             else imageStore(uOutLuma, dst, uvec4(uint(value), 0, 0, 0));
         }
         int widthC = 32 / stepX, heightC = 32 / stepY;
-        for (int idx = tid; idx < widthC * heightC; idx += 256) {
+        for (int idx = tid; idx < widthC * heightC; idx +=
+#ifdef NXVW_COMPACT_FLAT
+             64
+#else
+             256
+#endif
+             ) {
             int px = idx & (widthC - 1), py = idx >> (stepX == 1 ? 5 : 3);
             int x = px * stepX + (stepX == 4 ? 1 : 0);
             int y = py * stepY + (stepY == 4 ? 1 : 0);
