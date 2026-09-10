@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "nx-scratch/motion-live/static-bleed-1a-client.log",
+      "client": {
+        "n": 17,
+        "start": "02:22:38.802",
+        "end": "02:23:23.075",
+        "means": {
+          "fresh_per_s": 88.73529411764706,
+          "iterations": 179.88235294117646,
+          "iterations_per_s": 89.73529411764706,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.823529411764706,
+          "source_offset_ms": 52.59411764705882,
+          "submit_lead_ms": 32.49411764705882,
+          "wait_attempts": 23.941176470588236,
+          "wait_successes": 21.58823529411765,
+          "wait_total_ms": 35.95605882352942
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "02:22:35.417",
+        "end": "02:23:23.529",
+        "means": {
+          "copy_gpu_ms": 0.0004,
+          "fence_post_ms": 5.263999999999999,
+          "frames": 174.44,
+          "frames_per_s": 87.22,
+          "nxvc_gpu_ms": 3.764,
+          "queue_ms": 1.464
+        }
+      },
+      "label": "static-bleed-1a",
+      "mode": 1
+    },
+    {
+      "file": "nx-scratch/motion-live/static-bleed-2a-client.log",
+      "client": {
+        "n": 20,
+        "start": "02:23:40.351",
+        "end": "02:24:26.552",
+        "means": {
+          "fresh_per_s": 84.59423076923078,
+          "iterations": 170.8,
+          "iterations_per_s": 85.19500000000001,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.09,
+          "source_offset_ms": 52.14,
+          "submit_lead_ms": 31.93,
+          "wait_attempts": 10.6,
+          "wait_successes": 9.15,
+          "wait_total_ms": 18.94095
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "02:23:39.824",
+        "end": "02:24:25.961",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.2875000000000005,
+          "frames": 174.83333333333334,
+          "frames_per_s": 87.41666666666667,
+          "nxvc_gpu_ms": 3.829166666666666,
+          "queue_ms": 1.4333333333333333
+        }
+      },
+      "label": "static-bleed-2a",
+      "mode": 2
+    },
+    {
+      "file": "nx-scratch/motion-live/static-bleed-2b-client.log",
+      "client": {
+        "n": 18,
+        "start": "02:24:46.102",
+        "end": "02:25:30.105",
+        "means": {
+          "fresh_per_s": 89.08333333333333,
+          "iterations": 179.83333333333334,
+          "iterations_per_s": 89.76111111111112,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.25,
+          "source_offset_ms": 52.11666666666667,
+          "submit_lead_ms": 31.761111111111113,
+          "wait_attempts": 7.888888888888889,
+          "wait_successes": 6.333333333333333,
+          "wait_total_ms": 15.000055555555555
+        }
+      },
+      "decoder": {
+        "n": 23,
+        "start": "02:24:45.444",
+        "end": "02:25:29.548",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.365217391304348,
+          "frames": 175.7391304347826,
+          "frames_per_s": 87.8695652173913,
+          "nxvc_gpu_ms": 3.8739130434782605,
+          "queue_ms": 1.4608695652173913
+        }
+      },
+      "label": "static-bleed-2b",
+      "mode": 2
+    },
+    {
+      "file": "nx-scratch/motion-live/static-bleed-1b-client.log",
+      "client": {
+        "n": 18,
+        "start": "02:25:49.701",
+        "end": "02:26:33.672",
+        "means": {
+          "fresh_per_s": 88.88888888888889,
+          "iterations": 179.77777777777777,
+          "iterations_per_s": 89.70555555555556,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.705555555555556,
+          "source_offset_ms": 53.52777777777778,
+          "submit_lead_ms": 32.638888888888886,
+          "wait_attempts": 11.833333333333334,
+          "wait_successes": 10.055555555555555,
+          "wait_total_ms": 19.391833333333334
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "02:25:47.735",
+        "end": "02:26:33.838",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 4.929166666666666,
+          "frames": 175.16666666666666,
+          "frames_per_s": 87.58333333333333,
+          "nxvc_gpu_ms": 3.7375000000000003,
+          "queue_ms": 1.1583333333333334
+        }
+      },
+      "label": "static-bleed-1b",
+      "mode": 1
+    }
+  ],
+  "mean_of_run_means": {
+    "1": {
+      "own_gpu_ms": 4.764542483660131,
+      "fresh_per_s": 88.81209150326796,
+      "source_offset_ms": 53.0609477124183
+    },
+    "2": {
+      "own_gpu_ms": 4.17,
+      "fresh_per_s": 86.83878205128205,
+      "source_offset_ms": 52.12833333333333
+    }
+  },
+  "gpu_reduction_percent": 12.47848005761515,
+  "scope": "Four 60-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}

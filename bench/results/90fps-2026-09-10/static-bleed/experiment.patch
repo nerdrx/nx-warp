@@ -1,0 +1,97 @@
+diff --git a/client/scenes/stream_defoveator.cpp b/client/scenes/stream_defoveator.cpp
+index 2e5c0886..a7eeee03 100644
+--- a/client/scenes/stream_defoveator.cpp
++++ b/client/scenes/stream_defoveator.cpp
+@@ -71,14 +71,14 @@ static int lowpoly_tiny_requested()
+ #endif
+ }
+ 
+-static bool static_post_requested()
++static int static_post_requested()
+ {
+ #ifdef __ANDROID__
+ 	char value[PROP_VALUE_MAX] = {};
+-	return __system_property_get("debug.wivrn.nx.static_post", value) > 0 && value[0] != '0';
++	return __system_property_get("debug.wivrn.nx.static_post", value) > 0 ? std::clamp(value[0] - '0', 0, 2) : 0;
+ #else
+ 	const char * value = std::getenv("WIVRN_NX_STATIC_POST");
+-	return value && value[0] != '0';
++	return value ? std::clamp(value[0] - '0', 0, 2) : 0;
+ #endif
+ }
+ 
+@@ -295,7 +295,8 @@ stream_defoveator::pipeline_t & stream_defoveator::ensure_pipeline(size_t view,
+ 	        int32_t(peripheral_smooth_baked),
+ 	        VkBool32(compact_centre),
+ 		int32_t(lowpoly_tiny_baked),
+-		VkBool32(static_post_baked));
++		VkBool32(static_post_baked),
++		VkBool32(static_bleed_baked));
+ 	auto fragment_shader = load_shader(device, atlas_r8 ? "reprojection_atlas_r8.frag" : "reprojection.frag");
+ 
+ 	vk::pipeline_builder pipeline_info{
+@@ -1003,14 +1004,17 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 	// becomes active, retain the general shader for this defoveator's lifetime
+ 	// instead of rebuilding pipelines whenever those values return to zero.
+ 	static_post_disabled |= !neutral_post;
+-	const bool static_post = static_post_requested() && !static_post_disabled;
++	const int static_post_mode = static_post_requested();
++	const bool static_post = static_post_mode > 0 && !static_post_disabled;
++	static_bleed_disabled |= post.bleed_margin != 0.f;
++	const bool static_bleed = static_post_mode > 1 && !static_bleed_disabled;
+ 	const bool neutral_color = std::all_of(scale.begin(), scale.end(), [](float v) { return v == 1.f; }) &&
+ 	                            std::all_of(bias.begin(), bias.end(), [](float v) { return v == 0.f; });
+ 	const bool want_unorm = mutable_alias && neutral_color;
+ 	const int want_peripheral_smooth = atlas_prototype == 0 ? peripheral_smooth_requested() : 0;
+ 	const bool want_compact_centre = inputs[0].compact_centre || inputs[1].compact_centre;
+ 	if (want_compact_centre != compact_centre_baked or want_unorm != unorm_baked or cas_full_kernel != cas_full_baked or fsr != fsr_baked or atlas_prototype != atlas_baked or
+-	    lowpoly != lowpoly_baked or post.low_poly_full != lowpoly_full_baked || lowpoly_tiny != lowpoly_tiny_baked || static_post != static_post_baked ||
++	    lowpoly != lowpoly_baked or post.low_poly_full != lowpoly_full_baked || lowpoly_tiny != lowpoly_tiny_baked || static_post != static_post_baked || static_bleed != static_bleed_baked ||
+ 	    want_peripheral_smooth != peripheral_smooth_baked)
+ 	{
+ 		reset_pipelines();
+@@ -1022,8 +1026,10 @@ void stream_defoveator::defoveate(vk::raii::CommandBuffer & command_buffer,
+ 		lowpoly_full_baked = post.low_poly_full;
+ 		lowpoly_tiny_baked = lowpoly_tiny;
+ 		static_post_baked = static_post;
++		static_bleed_baked = static_bleed;
+ 		peripheral_smooth_baked = want_peripheral_smooth;
+ 		spdlog::info("NX static post {}", static_post_baked ? "compiled out" : "active");
++		spdlog::info("NX static bleed {}", static_bleed_baked ? "compiled out" : "active");
+ 		spdlog::info("NX peripheral smoothing mode {}", peripheral_smooth_baked);
+ 		unorm_baked = want_unorm;
+ 		if (mutable_alias)
+diff --git a/client/scenes/stream_defoveator.h b/client/scenes/stream_defoveator.h
+index 87483eca..c1012dc4 100644
+--- a/client/scenes/stream_defoveator.h
++++ b/client/scenes/stream_defoveator.h
+@@ -101,6 +101,8 @@ private:
+ 	int lowpoly_tiny_baked = 0;
+ 	bool static_post_baked = false;
+ 	bool static_post_disabled = false;
++	bool static_bleed_baked = false;
++	bool static_bleed_disabled = false;
+ 	// Optional two-tap smoothing for the coarse PLANAR periphery. Kept as a
+ 	// specialization constant so the default path is unchanged.
+ 	int peripheral_smooth_baked = 0;
+diff --git a/client/shaders/reprojection.glsl b/client/shaders/reprojection.glsl
+index d0cd04be..9493ab8e 100644
+--- a/client/shaders/reprojection.glsl
++++ b/client/shaders/reprojection.glsl
+@@ -163,6 +163,7 @@ layout(constant_id = 12) const int lowpoly_tiny_kernel = 0;
+ // Optional compile-out of neutral post-effect branches; host enables only when
+ // all corresponding runtime parameters are exactly zero.
+ layout(constant_id = 13) const bool static_post = false;
++layout(constant_id = 14) const bool static_bleed = false;
+ // Peripheral smoothing for coarse PLANAR cells. Mode 1 preserves the original
+ // square boundary and two diagonal taps; mode 2 follows the encoder's rounded
+ // tile-centre mask and uses four cardinal taps. The default is compiled out.
+@@ -889,7 +890,7 @@ void main()
+ 	// block. floor() is the mode, fract() the distance.
+ 	float bleed_mode = floor(glow.w);
+ 	float bleed_fade = fract(glow.w);
+-	bool in_bleed = glow.z > 0.0 && bleed_mode > 0.0 && max(bleed_t.x, bleed_t.y) > 0.0;
++	bool in_bleed = !static_bleed && glow.z > 0.0 && bleed_mode > 0.0 && max(bleed_t.x, bleed_t.y) > 0.0;
+ 	if (in_bleed)
+ 	{
+ 		// Stretch the edge outward. Done before the motion warp so a warped sample and
