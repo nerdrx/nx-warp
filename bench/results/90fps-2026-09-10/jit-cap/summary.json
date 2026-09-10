@@ -1,0 +1,158 @@
+{
+  "runs": [
+    {
+      "file": "nx-scratch/motion-live/jit-cap-base-a-client.log",
+      "client": {
+        "n": 24,
+        "start": "04:08:42.036",
+        "end": "04:09:28.147",
+        "means": {
+          "fresh_per_s": 89.0625,
+          "iterations": 179.75,
+          "iterations_per_s": 89.64999999999999,
+          "older_available": 0.0,
+          "own_gpu_ms": 4.141666666666667,
+          "source_offset_ms": 48.60833333333333,
+          "submit_lead_ms": 28.3875,
+          "wait_attempts": 2.9166666666666665,
+          "wait_successes": 1.2916666666666667,
+          "wait_total_ms": 2.0974166666666667
+        }
+      },
+      "decoder": {
+        "n": 24,
+        "start": "04:08:42.000",
+        "end": "04:09:28.101",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 6.608333333333333,
+          "frames": 180.20833333333334,
+          "frames_per_s": 90.10416666666667,
+          "nxvc_gpu_ms": 4.108333333333333,
+          "queue_ms": 2.4833333333333334
+        }
+      },
+      "label": "jit-cap-base-a",
+      "mode": 45000
+    },
+    {
+      "file": "nx-scratch/motion-live/jit-cap-five-a-client.log",
+      "client": {
+        "n": 24,
+        "start": "04:09:45.615",
+        "end": "04:10:31.667",
+        "means": {
+          "fresh_per_s": 87.66666666666667,
+          "iterations": 180.16666666666666,
+          "iterations_per_s": 89.9875,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.625,
+          "source_offset_ms": 46.9625,
+          "submit_lead_ms": 26.675,
+          "wait_attempts": 13.375,
+          "wait_successes": 8.541666666666666,
+          "wait_total_ms": 8.695625
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "04:09:43.579",
+        "end": "04:10:31.696",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 5.352,
+          "frames": 180.48,
+          "frames_per_s": 90.24,
+          "nxvc_gpu_ms": 4.708,
+          "queue_ms": 0.624
+        }
+      },
+      "label": "jit-cap-five-a",
+      "mode": 5000
+    },
+    {
+      "file": "nx-scratch/motion-live/jit-cap-five-b-client.log",
+      "client": {
+        "n": 24,
+        "start": "04:10:49.156",
+        "end": "04:11:35.267",
+        "means": {
+          "fresh_per_s": 89.77083333333333,
+          "iterations": 180.41666666666666,
+          "iterations_per_s": 90.0,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.4458333333333333,
+          "source_offset_ms": 45.475,
+          "submit_lead_ms": 25.71666666666667,
+          "wait_attempts": 2.5416666666666665,
+          "wait_successes": 1.6666666666666667,
+          "wait_total_ms": 1.5562500000000001
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "04:10:47.129",
+        "end": "04:11:35.275",
+        "means": {
+          "copy_gpu_ms": 0.0012,
+          "fence_post_ms": 5.688,
+          "frames": 180.36,
+          "frames_per_s": 90.18,
+          "nxvc_gpu_ms": 4.296,
+          "queue_ms": 1.376
+        }
+      },
+      "label": "jit-cap-five-b",
+      "mode": 5000
+    },
+    {
+      "file": "nx-scratch/motion-live/jit-cap-base-b-client.log",
+      "client": {
+        "n": 24,
+        "start": "04:11:53.108",
+        "end": "04:12:39.287",
+        "means": {
+          "fresh_per_s": 87.33333333333333,
+          "iterations": 180.0,
+          "iterations_per_s": 89.6375,
+          "older_available": 0.0,
+          "own_gpu_ms": 3.7083333333333335,
+          "source_offset_ms": 46.0,
+          "submit_lead_ms": 27.575,
+          "wait_attempts": 14.25,
+          "wait_successes": 8.916666666666666,
+          "wait_total_ms": 8.72575
+        }
+      },
+      "decoder": {
+        "n": 25,
+        "start": "04:11:51.040",
+        "end": "04:12:39.128",
+        "means": {
+          "copy_gpu_ms": 0.0,
+          "fence_post_ms": 4.692,
+          "frames": 180.28,
+          "frames_per_s": 90.14,
+          "nxvc_gpu_ms": 4.16,
+          "queue_ms": 0.484
+        }
+      },
+      "label": "jit-cap-base-b",
+      "mode": 45000
+    }
+  ],
+  "mean_of_run_means": {
+    "45000": {
+      "own_gpu_ms": 3.925,
+      "fresh_per_s": 88.19791666666666,
+      "source_offset_ms": 47.30416666666666
+    },
+    "5000": {
+      "own_gpu_ms": 3.5354166666666664,
+      "fresh_per_s": 88.71875,
+      "source_offset_ms": 46.21875
+    }
+  },
+  "gpu_reduction_percent": 9.925690021231425,
+  "scope": "Four 60-second synthetic moving-content trials, ABBA order; omit first 10 seconds of available telemetry. Active render windows only, not wall-clock FPS or photon latency."
+}

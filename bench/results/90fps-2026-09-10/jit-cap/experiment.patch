@@ -1,0 +1,23 @@
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index fd02ae4d..f1ef4228 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -1443,6 +1443,18 @@ void scenes::stream::render(const XrFrameState & frame_state)
+ 	// scheduler only ever adapts towards starting EARLIER (client/scenes/stream_jit.h),
+ 	// so the worst it can do is the free-running loop it replaces. Nothing below this
+ 	// point knows it happened; it is the same render() it always was, run later.
++#ifdef __ANDROID__
++	// Experimental startup-only bound; absent property preserves the scheduler.
++	if (jit.frames_seen == 0)
++	{
++		char cap[PROP_VALUE_MAX] = {};
++		if (__system_property_get("debug.wivrn.nx.jit_max_sleep_us", cap) > 0)
++		{
++			jit.max_sleep_ns = int64_t(std::clamp(std::atoi(cap), 0, 45000)) * 1000;
++			jit.sleep_cap_ns = jit.max_sleep_ns;
++		}
++	}
++#endif
+ 	const bool jit_on = jit_enabled();
+ 	const XrTime jit_wake = instance.now();
+ 	const int64_t jit_wake_slack = frame_state.predictedDisplayTime - jit_wake;
