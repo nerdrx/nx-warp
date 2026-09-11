@@ -109,3 +109,5 @@ The [quantized-field follow-up](../bench/results/90fps-2026-09-11/motion-quantiz
 The cap was subsequently [installed and activated on the Pico](../bench/results/90fps-2026-09-11/pico-cap/README.md). Two short moving-scene runs completed, with an actual client log proving step reduction before pose compensation and a headset recording. This establishes functional integration, not 90 fresh FPS, physical-motion quality or lower latency.
 
 The [Pico app-time follow-up](../bench/results/90fps-2026-09-11/pico-motion-clock/README.md) distinguishes requested display timestamps from capture age and checks the coupled image/pose fraction. A live functional run recorded source-clock pose adjustments; object alignment and physical latency remain unproved.
+
+The [visible-object alignment evaluation](../bench/results/90fps-2026-09-11/motion-alignment/README.md) measures progress toward the reference green block position. Median projected progress is about 34% full versus 16% capped on 30 eligible frames. This quantifies remaining position error, not physical latency; occlusion and deformation can bias silhouette centres.
