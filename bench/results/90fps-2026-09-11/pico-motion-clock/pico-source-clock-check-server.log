@@ -1,0 +1,912 @@
+Service published: x0x0x0x0x0x
+Client connected
+Server started, PID 595572
+ INFO [ipc_server_main_common] WiVRn 'nx-atlas-live-920ac878-dirty' starting up...
+Setting the OpenVR compatibility library to /opt/xrizer
+Listening for secondary paths on port 9757
+ INFO [vk_bundle] Vulkan instance created:
+	GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+	queue families: 1 3 1 (main, encode, transfer)
+
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [compositor] compositor: WIVRN_NX_SOURCE_FPS=60 enabled (paced source rate; panel refresh metadata unchanged)
+ INFO [comp_vulkan_formats_log] Supported formats:
+	VK_FORMAT_R16G16B16A16_UNORM: true
+	VK_FORMAT_R16G16B16A16_SFLOAT: true
+	VK_FORMAT_R16G16B16_UNORM: false
+	VK_FORMAT_R16G16B16_SFLOAT: false
+	VK_FORMAT_R8G8B8A8_SRGB: true
+	VK_FORMAT_B8G8R8A8_SRGB: true
+	VK_FORMAT_R8G8B8_SRGB: false
+	VK_FORMAT_R8G8B8A8_UNORM: true
+	VK_FORMAT_B8G8R8A8_UNORM: true
+	VK_FORMAT_R8G8B8_UNORM: false
+	VK_FORMAT_B8G8R8_UNORM: false
+	VK_FORMAT_R5G6B5_UNORM_PACK16: true
+	VK_FORMAT_R32_SFLOAT: true
+	VK_FORMAT_D32_SFLOAT: true
+	VK_FORMAT_D16_UNORM: true
+	VK_FORMAT_X8_D24_UNORM_PACK32: false
+	VK_FORMAT_D24_UNORM_S8_UINT: false
+	VK_FORMAT_D32_SFLOAT_S8_UINT: true
+	VK_FORMAT_S8_UINT: true
+ INFO [print_encoders] Encoder configuration:
+	* vaapi (h265 10-bit)
+	  size: 2688x2688
+	  bitrate: 24.1Mbit/s
+	* vaapi (h265 10-bit)
+	  size: 2688x2688
+	  bitrate: 24.1Mbit/s
+	* vaapi (h265 10-bit)
+	  size: 2688x1344
+	  bitrate: 0.6Mbit/s
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: intra refresh loss recovery has no effect, the VAAPI encoders expose no intra refresh control; lost frames still ask for a keyframe
+ INFO [video_encoder_va] vaapi: reference invalidation has no effect, libavcodec owns the VAAPI reference lists; lost frames still ask for a keyframe
+ INFO [wivrn_hmd] edge bleed: rendering 5.0% overscan, 1.35 deg left / 1.35 deg up on eye 0 (same encoded size, so about 4.8% less sharp)
+ INFO [pipewire_device] pipewire speaker stream created (quantum: 240 frames, 5.00 ms)
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_UNCONNECTED to PW_STREAM_STATE_CONNECTING
+ INFO [pipewire_device] pipewire microphone stream created (quantum: 240 frames, 5.00 ms)
+ INFO [configure] Automatic bitrate enabled, AIMD (v1), ceiling 49.0 Mbit/s, floor 10.0 Mbit/s, radio trend on
+ INFO [set_pacing] Packet pacing enabled, spreading each frame over 40% of a frame period
+ INFO [apply_qos] Wi-Fi QoS marks enabled (video AF41 / AC_VI, control EF / AC_VO)
+ INFO [set_fec] Forward error correction enabled, one parity shard per 8 video shards
+ INFO [set_fec_adaptive] Adaptive error correction enabled, parity ratio between 16+1 and 4+1 with interleaved groups
+ INFO [set_shard_retransmit] Shard retransmission enabled, keeping 1024 kB of recently sent shards per stream
+ WARN [check_socket_path] path not found: /run/user/1000/SlimeVRRpc
+ WARN [check_socket_path] path not found: /run/user/1000/.flatpak/dev.slimevr.SlimeVR/xdg-run/SlimeVRRpc
+ WARN [check_socket_path] path not found: /home/nerdrx/.local/share/dev.slimevr.SlimeVR/SlimeVRRpc
+ERROR [solarxr_ipc_socket_find] failed to resolve socket path
+ INFO [u_linux_try_to_set_realtime_priority_on_thread] Raised priority of thread 'Multi Client Module' to policy: 'SCHED_FIFO', priority: '99'
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_CONNECTING to PW_STREAM_STATE_PAUSED
+ INFO [operator()] Updating interaction profiles: from
+	XRT_DEVICE_TOUCH_CONTROLLER (left)  to XRT_DEVICE_EXT_HAND_INTERACTION
+	XRT_DEVICE_TOUCH_CONTROLLER (right) to XRT_DEVICE_EXT_HAND_INTERACTION
+
+ INFO [client_connected] Client 1 connected
+ INFO [ipc_handle_instance_describe_client] Client info:
+	id: 1
+	application_name: 'HelloXR'
+	pid: 595678
+	extensions:
+		ext_hand_tracking_enabled: false
+		ext_hand_tracking_data_source_enabled: false
+		ext_eye_gaze_interaction_enabled: false
+		ext_future_enabled: false
+		ext_hand_interaction_enabled: false
+		htc_facial_tracking_enabled: false
+		fb_body_tracking_enabled: false
+		meta_body_tracking_full_body_enabled: false
+		meta_body_tracking_calibration_enabled: false
+		meta_body_tracking_fidelity_enabled: false
+		fb_face_tracking2_enabled: false
+		android_face_tracking_enabled: false
+ INFO [update_session_state_locked] Started native session, 1 active app session(s).
+ INFO [motion_begin] Motion smoothing forced on while application is on time (NX base-layer probe)
+ INFO [motion_begin] Motion smoothing active, 42x42 vectors per eye, 2370 kiB of device memory
+ INFO [get_view_poses] geometry[eye 0]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [get_view_poses] geometry[eye 1]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [layer_commit] geometry[eye 0]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [layer_commit] geometry[eye 1]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [layer_commit] motion clock: frame 4 new 1 app_requested_display 408132956463957 compositor 408132956463957 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 5 new 0 app_requested_display 408132956463957 compositor 408132973130624 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 6 new 1 app_requested_display 408132989797291 compositor 408132989797291 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 7 new 1 app_requested_display 408133006463958 compositor 408133006463958 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 8 new 1 app_requested_display 408133023130625 compositor 408133023130625 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 9 new 1 app_requested_display 408133039797292 compositor 408133039797292 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 10 new 1 app_requested_display 408133056225227 compositor 408133056225227 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 11 new 0 app_requested_display 408133056225227 compositor 408133072891894 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 12 new 1 app_requested_display 408133089558561 compositor 408133089558561 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 13 new 1 app_requested_display 408133106225228 compositor 408133106225228 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 14 new 1 app_requested_display 408133122891895 compositor 408133122891895 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 15 new 0 app_requested_display 408133122891895 compositor 408133139558562 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 16 new 1 app_requested_display 408133156029435 compositor 408133156029435 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 17 new 1 app_requested_display 408133172696102 compositor 408133172696102 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 18 new 1 app_requested_display 408133189362769 compositor 408133189362769 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 19 new 0 app_requested_display 408133189362769 compositor 408133206029436 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 20 new 1 app_requested_display 408133222696103 compositor 408133222696103 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 21 new 1 app_requested_display 408133239362770 compositor 408133239362770 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 22 new 1 app_requested_display 408133256029437 compositor 408133256029437 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 23 new 1 app_requested_display 408133272696104 compositor 408133272696104 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 24 new 1 app_requested_display 408133289362771 compositor 408133289362771 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 25 new 0 app_requested_display 408133289362771 compositor 408133306029438 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 26 new 1 app_requested_display 408133322696105 compositor 408133322696105 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 27 new 1 app_requested_display 408133339362772 compositor 408133339362772 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 28 new 1 app_requested_display 408133356029439 compositor 408133356029439 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 29 new 1 app_requested_display 408133372696106 compositor 408133372696106 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 30 new 1 app_requested_display 408133389362773 compositor 408133389362773 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 31 new 1 app_requested_display 408133406029440 compositor 408133406029440 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 32 new 1 app_requested_display 408133422696107 compositor 408133422696107 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 33 new 0 app_requested_display 408133422696107 compositor 408133439362774 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 34 new 1 app_requested_display 408133456029441 compositor 408133456029441 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 35 new 1 app_requested_display 408133472696108 compositor 408133472696108 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 36 new 1 app_requested_display 408133489362775 compositor 408133489362775 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 37 new 1 app_requested_display 408133506029442 compositor 408133506029442 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 38 new 1 app_requested_display 408133522696109 compositor 408133522696109 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 39 new 1 app_requested_display 408133539362776 compositor 408133539362776 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 40 new 1 app_requested_display 408133555890845 compositor 408133555890845 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 41 new 1 app_requested_display 408133572557512 compositor 408133572557512 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 42 new 1 app_requested_display 408133589224179 compositor 408133589224179 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 43 new 1 app_requested_display 408133605890846 compositor 408133605890846 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 44 new 1 app_requested_display 408133622557513 compositor 408133633392584 delta_ms 10.835
+ INFO [layer_commit] motion clock: frame 45 new 0 app_requested_display 408133622557513 compositor 408133654934553 delta_ms 32.377
+ INFO [layer_commit] motion clock: frame 46 new 1 app_requested_display 408133671508928 compositor 408133674472743 delta_ms 2.964
+ INFO [layer_commit] motion clock: frame 47 new 0 app_requested_display 408133671508928 compositor 408133694600360 delta_ms 23.091
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 49.0 -> 19.6 Mbit/s (p90 utilisation 1.00, 2 lost, 21 late over 31 frames)
+ INFO [layer_commit] motion clock: frame 48 new 1 app_requested_display 408133711267027 compositor 408133714906892 delta_ms 3.640
+ INFO [layer_commit] motion clock: frame 49 new 0 app_requested_display 408133711267027 compositor 408133736948499 delta_ms 25.681
+ INFO [layer_commit] motion clock: frame 50 new 1 app_requested_display 408133727933694 compositor 408133755610297 delta_ms 27.677
+ INFO [layer_commit] motion clock: frame 51 new 1 app_requested_display 408133753615166 compositor 408133772276964 delta_ms 18.662
+ INFO [layer_commit] motion clock: frame 52 new 1 app_requested_display 408133788897341 compositor 408133788897341 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 53 new 0 app_requested_display 408133788897341 compositor 408133805564008 delta_ms 16.667
+ INFO [layer_commit] motion clock: frame 54 new 1 app_requested_display 408133805564008 compositor 408133826177771 delta_ms 20.614
+ INFO [layer_commit] motion clock: frame 55 new 1 app_requested_display 408133822230675 compositor 408133842844438 delta_ms 20.614
+ INFO [layer_commit] motion clock: frame 56 new 1 app_requested_display 408133859511105 compositor 408133859511105 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 57 new 1 app_requested_display 408133876177772 compositor 408133877520040 delta_ms 1.342
+ INFO [layer_commit] motion clock: frame 58 new 1 app_requested_display 408133892837933 compositor 408133895050078 delta_ms 2.212
+ INFO [layer_commit] motion clock: frame 59 new 0 app_requested_display 408133892837933 compositor 408133913149907 delta_ms 20.312
+ INFO [layer_commit] motion clock: frame 60 new 1 app_requested_display 408133929816574 compositor 408133929683853 delta_ms -0.133
+ INFO [layer_commit] motion clock: frame 61 new 0 app_requested_display 408133929816574 compositor 408133945460103 delta_ms 15.644
+ INFO [layer_commit] motion clock: frame 62 new 1 app_requested_display 408133946350520 compositor 408133960537270 delta_ms 14.187
+ INFO [layer_commit] motion clock: frame 63 new 1 app_requested_display 408133962126770 compositor 408133979081017 delta_ms 16.954
+ INFO [layer_commit] motion clock: frame 64 new 1 app_requested_display 408133978792045 compositor 408133996319893 delta_ms 17.528
+ INFO [layer_commit] motion clock: frame 65 new 1 app_requested_display 408133995746292 compositor 408134013964839 delta_ms 18.219
+ INFO [layer_commit] motion clock: frame 66 new 1 app_requested_display 408134030631506 compositor 408134030587758 delta_ms -0.044
+ INFO [layer_commit] motion clock: frame 67 new 0 app_requested_display 408134030631506 compositor 408134046475525 delta_ms 15.844
+ INFO [layer_commit] motion clock: frame 68 new 1 app_requested_display 408134063142192 compositor 408134063316074 delta_ms 0.174
+ INFO [layer_commit] motion clock: frame 69 new 0 app_requested_display 408134063142192 compositor 408134079391674 delta_ms 16.249
+ INFO [layer_commit] motion clock: frame 70 new 1 app_requested_display 408134079980619 compositor 408134096147271 delta_ms 16.167
+ INFO [layer_commit] motion clock: frame 71 new 1 app_requested_display 408134112722886 compositor 408134112315810 delta_ms -0.407
+ INFO [layer_commit] motion clock: frame 72 new 1 app_requested_display 408134128982477 compositor 408134128995153 delta_ms 0.013
+ INFO [layer_commit] motion clock: frame 73 new 1 app_requested_display 408134145661820 compositor 408134145661820 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 74 new 1 app_requested_display 408134162328487 compositor 408134162853210 delta_ms 0.525
+ INFO [layer_commit] motion clock: frame 75 new 1 app_requested_display 408134178995154 compositor 408134178739000 delta_ms -0.256
+ INFO [layer_commit] motion clock: frame 76 new 0 app_requested_display 408134178992258 compositor 408134193819145 delta_ms 14.827
+ INFO [layer_commit] motion clock: frame 77 new 1 app_requested_display 408134195402771 compositor 408134210094063 delta_ms 14.691
+ INFO [layer_commit] motion clock: frame 78 new 1 app_requested_display 408134212069438 compositor 408134225490533 delta_ms 13.421
+ INFO [layer_commit] motion clock: frame 79 new 1 app_requested_display 408134227152479 compositor 408134242105878 delta_ms 14.953
+ INFO [layer_commit] motion clock: frame 80 new 1 app_requested_display 408134258823867 compositor 408134258772545 delta_ms -0.051
+ INFO [layer_commit] motion clock: frame 81 new 1 app_requested_display 408134275439212 compositor 408134275849014 delta_ms 0.410
+ INFO [layer_commit] motion clock: frame 82 new 0 app_requested_display 408134275438208 compositor 408134291047356 delta_ms 15.609
+ INFO [layer_commit] motion clock: frame 83 new 1 app_requested_display 408134292514677 compositor 408134305883049 delta_ms 13.368
+ INFO [layer_commit] motion clock: frame 84 new 1 app_requested_display 408134309181344 compositor 408134322549716 delta_ms 13.368
+ INFO [layer_commit] motion clock: frame 85 new 1 app_requested_display 408134324380690 compositor 408134340083162 delta_ms 15.702
+ INFO [layer_commit] motion clock: frame 86 new 1 app_requested_display 408134355883050 compositor 408134355760932 delta_ms -0.122
+ INFO [layer_commit] motion clock: frame 87 new 0 app_requested_display 408134355883050 compositor 408134370878328 delta_ms 14.995
+ INFO [layer_commit] motion clock: frame 88 new 1 app_requested_display 408134372426043 compositor 408134385225204 delta_ms 12.799
+ INFO [layer_commit] motion clock: frame 89 new 1 app_requested_display 408134389092710 compositor 408134403267842 delta_ms 14.175
+ INFO [layer_commit] motion clock: frame 90 new 1 app_requested_display 408134404210106 compositor 408134419934509 delta_ms 15.724
+ INFO [layer_commit] motion clock: frame 91 new 1 app_requested_display 408134418558538 compositor 408134438395727 delta_ms 19.837
+ INFO [layer_commit] motion clock: frame 92 new 1 app_requested_display 408134436601176 compositor 408134454580610 delta_ms 17.979
+ INFO [layer_commit] motion clock: frame 93 new 1 app_requested_display 408134471729061 compositor 408134471548984 delta_ms -0.180
+ INFO [layer_commit] motion clock: frame 94 new 1 app_requested_display 408134488215651 compositor 408134487760476 delta_ms -0.455
+ INFO [layer_commit] motion clock: frame 95 new 0 app_requested_display 408134488214819 compositor 408134503280690 delta_ms 15.066
+ INFO [layer_commit] motion clock: frame 96 new 1 app_requested_display 408134504881486 compositor 408134518080332 delta_ms 13.199
+ INFO [layer_commit] motion clock: frame 97 new 1 app_requested_display 408134534746999 compositor 408134534746999 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 98 new 1 app_requested_display 408134551413666 compositor 408134551778372 delta_ms 0.365
+ INFO [layer_commit] motion clock: frame 99 new 0 app_requested_display 408134551413666 compositor 408134567776635 delta_ms 16.363
+ INFO [layer_commit] motion clock: frame 100 new 1 app_requested_display 408134568445039 compositor 408134582923846 delta_ms 14.479
+ INFO [layer_commit] motion clock: frame 101 new 1 app_requested_display 408134585110160 compositor 408134598963778 delta_ms 13.854
+ INFO [layer_commit] motion clock: frame 102 new 1 app_requested_display 408134601108423 compositor 408134614390517 delta_ms 13.282
+ INFO [layer_commit] motion clock: frame 103 new 1 app_requested_display 408134616255634 compositor 408134697827513 delta_ms 81.572
+ INFO [layer_commit] motion clock: frame 105 new 1 app_requested_display 408134731160847 compositor 408134731160847 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 106 new 1 app_requested_display 408134747827514 compositor 408134748267608 delta_ms 0.440
+ INFO [layer_commit] motion clock: frame 107 new 1 app_requested_display 408134764934275 compositor 408134764475783 delta_ms -0.458
+ INFO [layer_commit] motion clock: frame 108 new 0 app_requested_display 408134764932853 compositor 408134780120109 delta_ms 15.187
+ INFO [operator()] IDR frame needed on stream 0
+ INFO [operator()] IDR frame needed on stream 1
+ INFO [layer_commit] motion clock: frame 109 new 1 app_requested_display 408134781141028 compositor 408134796786776 delta_ms 15.646
+ INFO [layer_commit] motion clock: frame 110 new 1 app_requested_display 408134813453443 compositor 408134813453443 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 111 new 1 app_requested_display 408134830120110 compositor 408134830120110 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 112 new 1 app_requested_display 408134846786777 compositor 408134848933402 delta_ms 2.147
+ INFO [layer_commit] motion clock: frame 113 new 1 app_requested_display 408134863453444 compositor 408134865536057 delta_ms 2.083
+ INFO [layer_commit] motion clock: frame 114 new 1 app_requested_display 408134882266900 compositor 408134882202888 delta_ms -0.064
+ INFO [layer_commit] motion clock: frame 115 new 1 app_requested_display 408134898869555 compositor 408134899679725 delta_ms 0.810
+ INFO [layer_commit] motion clock: frame 116 new 1 app_requested_display 408134915536222 compositor 408134916346392 delta_ms 0.810
+ INFO [layer_commit] motion clock: frame 117 new 1 app_requested_display 408134933013059 compositor 408134933013059 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 118 new 0 app_requested_display 408134933013059 compositor 408134948314069 delta_ms 15.301
+ INFO [layer_commit] motion clock: frame 119 new 1 app_requested_display 408134966346393 compositor 408134966122034 delta_ms -0.224
+ INFO [layer_commit] motion clock: frame 120 new 1 app_requested_display 408134982776835 compositor 408134983398851 delta_ms 0.622
+ INFO [layer_commit] motion clock: frame 121 new 1 app_requested_display 408134999443502 compositor 408135002369250 delta_ms 2.926
+ INFO [layer_commit] motion clock: frame 122 new 1 app_requested_display 408135016732185 compositor 408135019035917 delta_ms 2.304
+ INFO [layer_commit] motion clock: frame 123 new 1 app_requested_display 408135035702584 compositor 408135036848423 delta_ms 1.146
+ INFO [layer_commit] motion clock: frame 124 new 1 app_requested_display 408135052369251 compositor 408135053336799 delta_ms 0.968
+ INFO [layer_commit] motion clock: frame 125 new 1 app_requested_display 408135070181757 compositor 408135070311477 delta_ms 0.130
+ INFO [layer_commit] motion clock: frame 126 new 1 app_requested_display 408135086670133 compositor 408135086663698 delta_ms -0.006
+ INFO [layer_commit] motion clock: frame 127 new 0 app_requested_display 408135086670133 compositor 408135102491277 delta_ms 15.821
+ INFO [layer_commit] motion clock: frame 128 new 1 app_requested_display 408135103330365 compositor 408135119157944 delta_ms 15.828
+ INFO [layer_commit] motion clock: frame 129 new 1 app_requested_display 408135119997032 compositor 408135135022671 delta_ms 15.026
+ INFO [layer_commit] motion clock: frame 130 new 1 app_requested_display 408135135824611 compositor 408135151689338 delta_ms 15.865
+ INFO [layer_commit] motion clock: frame 131 new 1 app_requested_display 408135152491278 compositor 408135167529172 delta_ms 15.038
+ INFO [layer_commit] motion clock: frame 132 new 1 app_requested_display 408135168354459 compositor 408135184194293 delta_ms 15.840
+ INFO [layer_commit] motion clock: frame 133 new 1 app_requested_display 408135185021126 compositor 408135200105582 delta_ms 15.084
+ INFO [layer_commit] motion clock: frame 134 new 1 app_requested_display 408135200860960 compositor 408135215706068 delta_ms 14.845
+ INFO [layer_commit] motion clock: frame 135 new 1 app_requested_display 408135232372735 compositor 408135231990246 delta_ms -0.382
+ INFO [layer_commit] motion clock: frame 136 new 1 app_requested_display 408135248656913 compositor 408135248816195 delta_ms 0.159
+ INFO [layer_commit] motion clock: frame 137 new 1 app_requested_display 408135265482862 compositor 408135265167310 delta_ms -0.316
+ INFO [layer_commit] motion clock: frame 138 new 1 app_requested_display 408135281833977 compositor 408135282110686 delta_ms 0.277
+ INFO [layer_commit] motion clock: frame 139 new 1 app_requested_display 408135298773945 compositor 408135298431186 delta_ms -0.343
+ INFO [layer_commit] motion clock: frame 140 new 1 app_requested_display 408135315097853 compositor 408135315890307 delta_ms 0.792
+ INFO [layer_commit] motion clock: frame 141 new 1 app_requested_display 408135331764520 compositor 408135332212098 delta_ms 0.448
+ INFO [layer_commit] motion clock: frame 142 new 1 app_requested_display 408135348878765 compositor 408135349088643 delta_ms 0.210
+ INFO [layer_commit] motion clock: frame 143 new 1 app_requested_display 408135365755310 compositor 408135365358940 delta_ms -0.396
+ INFO [layer_commit] motion clock: frame 144 new 1 app_requested_display 408135382421977 compositor 408135382838777 delta_ms 0.417
+ INFO [layer_commit] motion clock: frame 145 new 0 app_requested_display 408135382422851 compositor 408135398654442 delta_ms 16.232
+ INFO [layer_commit] motion clock: frame 146 new 1 app_requested_display 408135399506318 compositor 408135414048833 delta_ms 14.543
+ INFO [layer_commit] motion clock: frame 147 new 1 app_requested_display 408135416172985 compositor 408135430738281 delta_ms 14.565
+ INFO [layer_commit] motion clock: frame 148 new 1 app_requested_display 408135431987776 compositor 408135446376619 delta_ms 14.389
+ INFO [layer_commit] motion clock: frame 149 new 1 app_requested_display 408135447382167 compositor 408135462681496 delta_ms 15.299
+ INFO [layer_commit] motion clock: frame 150 new 1 app_requested_display 408135464065719 compositor 408135478480584 delta_ms 14.415
+ INFO [layer_commit] motion clock: frame 151 new 1 app_requested_display 408135496008934 compositor 408135495606242 delta_ms -0.403
+ INFO [layer_commit] motion clock: frame 152 new 0 app_requested_display 408135496008934 compositor 408135511585698 delta_ms 15.577
+ INFO [layer_commit] motion clock: frame 153 new 1 app_requested_display 408135528939576 compositor 408135528732733 delta_ms -0.207
+ INFO [layer_commit] motion clock: frame 154 new 0 app_requested_display 408135528939576 compositor 408135544791849 delta_ms 15.852
+ INFO [layer_commit] motion clock: frame 155 new 1 app_requested_display 408135562066067 compositor 408135562000160 delta_ms -0.066
+ INFO [layer_commit] motion clock: frame 156 new 0 app_requested_display 408135562063225 compositor 408135578060359 delta_ms 15.997
+ INFO [layer_commit] motion clock: frame 157 new 1 app_requested_display 408135595330652 compositor 408135595270265 delta_ms -0.060
+ INFO [layer_commit] motion clock: frame 158 new 0 app_requested_display 408135595330652 compositor 408135611371255 delta_ms 16.041
+ INFO [layer_commit] motion clock: frame 159 new 1 app_requested_display 408135628603599 compositor 408135628634215 delta_ms 0.031
+ INFO [layer_commit] motion clock: frame 160 new 0 app_requested_display 408135628603599 compositor 408135644723905 delta_ms 16.120
+ INFO [layer_commit] motion clock: frame 161 new 1 app_requested_display 408135661967549 compositor 408135661949924 delta_ms -0.018
+ INFO [layer_commit] motion clock: frame 162 new 0 app_requested_display 408135661965887 compositor 408135678017355 delta_ms 16.051
+ INFO [layer_commit] motion clock: frame 163 new 1 app_requested_display 408135695281596 compositor 408135695234053 delta_ms -0.048
+ INFO [layer_commit] motion clock: frame 164 new 0 app_requested_display 408135695281596 compositor 408135711296187 delta_ms 16.015
+ INFO [layer_commit] motion clock: frame 165 new 1 app_requested_display 408135728567387 compositor 408135728518886 delta_ms -0.049
+ INFO [layer_commit] motion clock: frame 166 new 0 app_requested_display 408135728567387 compositor 408135744653283 delta_ms 16.086
+ INFO [layer_commit] motion clock: frame 167 new 1 app_requested_display 408135761852220 compositor 408135761913655 delta_ms 0.061
+ INFO [layer_commit] motion clock: frame 168 new 0 app_requested_display 408135761851514 compositor 408135778074070 delta_ms 16.223
+ INFO [layer_commit] motion clock: frame 169 new 1 app_requested_display 408135795246283 compositor 408135795356630 delta_ms 0.110
+ INFO [layer_commit] motion clock: frame 170 new 0 app_requested_display 408135795246283 compositor 408135811504953 delta_ms 16.259
+ INFO [layer_commit] motion clock: frame 171 new 1 app_requested_display 408135828689964 compositor 408135828242052 delta_ms -0.448
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 19.6 -> 10.0 Mbit/s (p90 utilisation 1.07, 8 lost, 10 late over 109 frames)
+ INFO [layer_commit] motion clock: frame 172 new 1 app_requested_display 408135844908719 compositor 408135845016368 delta_ms 0.108
+ INFO [layer_commit] motion clock: frame 173 new 1 app_requested_display 408135861683035 compositor 408135861683035 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 174 new 0 app_requested_display 408135861683035 compositor 408135877806690 delta_ms 16.124
+ INFO [layer_commit] motion clock: frame 175 new 1 app_requested_display 408135878349702 compositor 408135894473357 delta_ms 16.124
+ INFO [layer_commit] motion clock: frame 176 new 1 app_requested_display 408135911140024 compositor 408135911140024 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 177 new 1 app_requested_display 408135927806691 compositor 408135928303300 delta_ms 0.497
+ INFO [layer_commit] motion clock: frame 178 new 0 app_requested_display 408135927806691 compositor 408135944331792 delta_ms 16.525
+ INFO [layer_commit] motion clock: frame 179 new 1 app_requested_display 408135944969967 compositor 408135960942723 delta_ms 15.973
+ INFO [layer_commit] motion clock: frame 180 new 1 app_requested_display 408135977658746 compositor 408135977603010 delta_ms -0.056
+ INFO [layer_commit] motion clock: frame 181 new 1 app_requested_display 408135994269677 compositor 408135994956452 delta_ms 0.687
+ INFO [layer_commit] motion clock: frame 182 new 1 app_requested_display 408136010936344 compositor 408136011324969 delta_ms 0.389
+ INFO [layer_commit] motion clock: frame 183 new 1 app_requested_display 408136027991636 compositor 408136028226160 delta_ms 0.235
+ INFO [layer_commit] motion clock: frame 184 new 1 app_requested_display 408136044892827 compositor 408136044504440 delta_ms -0.388
+ INFO [layer_commit] motion clock: frame 185 new 1 app_requested_display 408136061559494 compositor 408136061340026 delta_ms -0.219
+ INFO [layer_commit] motion clock: frame 186 new 1 app_requested_display 408136078006693 compositor 408136078232902 delta_ms 0.226
+ INFO [layer_commit] motion clock: frame 187 new 1 app_requested_display 408136094893433 compositor 408136094893433 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 188 new 0 app_requested_display 408136094893433 compositor 408136111047678 delta_ms 16.154
+ INFO [layer_commit] motion clock: frame 189 new 1 app_requested_display 408136128226767 compositor 408136127788214 delta_ms -0.439
+ INFO [layer_commit] motion clock: frame 190 new 0 app_requested_display 408136128226767 compositor 408136143937999 delta_ms 15.711
+ INFO [layer_commit] motion clock: frame 191 new 1 app_requested_display 408136161121548 compositor 408136161254829 delta_ms 0.133
+ INFO [layer_commit] motion clock: frame 192 new 1 app_requested_display 408136177921496 compositor 408136177446897 delta_ms -0.475
+ INFO [layer_commit] motion clock: frame 193 new 1 app_requested_display 408136194115662 compositor 408136194770917 delta_ms 0.655
+ INFO [layer_commit] motion clock: frame 194 new 1 app_requested_display 408136210782329 compositor 408136210949465 delta_ms 0.167
+ INFO [layer_commit] motion clock: frame 195 new 1 app_requested_display 408136227616132 compositor 408136227713304 delta_ms 0.097
+ INFO [layer_commit] motion clock: frame 196 new 1 app_requested_display 408136244379971 compositor 408136243882628 delta_ms -0.497
+ INFO [layer_commit] motion clock: frame 197 new 1 app_requested_display 408136260549295 compositor 408136261218336 delta_ms 0.669
+ INFO [layer_commit] motion clock: frame 198 new 1 app_requested_display 408136277215962 compositor 408136277375098 delta_ms 0.159
+ INFO [layer_commit] motion clock: frame 199 new 1 app_requested_display 408136294038657 compositor 408136294668164 delta_ms 0.630
+ INFO [layer_commit] motion clock: frame 200 new 1 app_requested_display 408136310705324 compositor 408136311417196 delta_ms 0.712
+ INFO [layer_commit] motion clock: frame 201 new 1 app_requested_display 408136328001498 compositor 408136328083863 delta_ms 0.082
+ INFO [layer_commit] motion clock: frame 202 new 1 app_requested_display 408136344750530 compositor 408136344263373 delta_ms -0.487
+ INFO [layer_commit] motion clock: frame 203 new 1 app_requested_display 408136360930040 compositor 408136361024586 delta_ms 0.095
+ INFO [layer_commit] motion clock: frame 204 new 0 app_requested_display 408136360927782 compositor 408136377187715 delta_ms 16.260
+ INFO [layer_commit] motion clock: frame 205 new 1 app_requested_display 408136394355662 compositor 408136394517233 delta_ms 0.162
+ INFO [layer_commit] motion clock: frame 206 new 0 app_requested_display 408136394355662 compositor 408136410724797 delta_ms 16.369
+ INFO [layer_commit] motion clock: frame 207 new 1 app_requested_display 408136411183900 compositor 408136427585905 delta_ms 16.402
+ INFO [layer_commit] motion clock: frame 208 new 1 app_requested_display 408136427391464 compositor 408136443733914 delta_ms 16.342
+ INFO [layer_commit] motion clock: frame 209 new 1 app_requested_display 408136444247672 compositor 408136460395681 delta_ms 16.148
+ INFO [layer_commit] motion clock: frame 210 new 1 app_requested_display 408136460395681 compositor 408136477076493 delta_ms 16.681
+ INFO [layer_commit] motion clock: frame 211 new 1 app_requested_display 408136477062348 compositor 408136493227851 delta_ms 16.166
+ INFO [layer_commit] motion clock: frame 212 new 1 app_requested_display 408136493743160 compositor 408136510107165 delta_ms 16.364
+ INFO [layer_commit] motion clock: frame 213 new 1 app_requested_display 408136509894518 compositor 408136526381279 delta_ms 16.487
+ INFO [layer_commit] motion clock: frame 214 new 1 app_requested_display 408136526773832 compositor 408136543291231 delta_ms 16.517
+ INFO [layer_commit] motion clock: frame 215 new 1 app_requested_display 408136543045558 compositor 408136558962544 delta_ms 15.917
+ INFO [layer_commit] motion clock: frame 216 new 1 app_requested_display 408136559955510 compositor 408136575555579 delta_ms 15.600
+ INFO [layer_commit] motion clock: frame 217 new 1 app_requested_display 408136576622177 compositor 408136591618405 delta_ms 14.996
+ INFO [layer_commit] motion clock: frame 218 new 1 app_requested_display 408136592222246 compositor 408136608389995 delta_ms 16.168
+ INFO [layer_commit] motion clock: frame 219 new 1 app_requested_display 408136608285072 compositor 408136626680961 delta_ms 18.396
+ INFO [layer_commit] motion clock: frame 220 new 1 app_requested_display 408136624951739 compositor 408136643196225 delta_ms 18.244
+ INFO [layer_commit] motion clock: frame 221 new 1 app_requested_display 408136641725739 compositor 408136660761094 delta_ms 19.035
+ INFO [layer_commit] motion clock: frame 222 new 1 app_requested_display 408136677427761 compositor 408136677078996 delta_ms -0.349
+ INFO [layer_commit] motion clock: frame 223 new 1 app_requested_display 408136693745663 compositor 408136693745663 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 224 new 1 app_requested_display 408136710412330 compositor 408136710607517 delta_ms 0.195
+ INFO [layer_commit] motion clock: frame 225 new 1 app_requested_display 408136727078997 compositor 408136726795022 delta_ms -0.284
+ INFO [layer_commit] motion clock: frame 226 new 1 app_requested_display 408136743940851 compositor 408136743657062 delta_ms -0.284
+ INFO [layer_commit] motion clock: frame 227 new 0 app_requested_display 408136743936757 compositor 408136759255407 delta_ms 15.319
+ INFO [layer_commit] motion clock: frame 228 new 1 app_requested_display 408136760124262 compositor 408136778116185 delta_ms 17.992
+ INFO [layer_commit] motion clock: frame 229 new 1 app_requested_display 408136776986302 compositor 408136796453186 delta_ms 19.467
+ INFO [layer_commit] motion clock: frame 230 new 1 app_requested_display 408136794782852 compositor 408136813119853 delta_ms 18.337
+ INFO [layer_commit] motion clock: frame 231 new 1 app_requested_display 408136811449519 compositor 408136830431069 delta_ms 18.982
+ INFO [layer_commit] motion clock: frame 232 new 1 app_requested_display 408136829786520 compositor 408136847097736 delta_ms 17.311
+ INFO [layer_commit] motion clock: frame 233 new 1 app_requested_display 408136863761775 compositor 408136864111518 delta_ms 0.350
+ INFO [layer_commit] motion clock: frame 234 new 0 app_requested_display 408136863761775 compositor 408136879737801 delta_ms 15.976
+ INFO [layer_commit] motion clock: frame 235 new 1 app_requested_display 408136880428442 compositor 408136896404468 delta_ms 15.976
+ INFO [layer_commit] motion clock: frame 236 new 1 app_requested_display 408136913071135 compositor 408136912972849 delta_ms -0.098
+ INFO [layer_commit] motion clock: frame 237 new 1 app_requested_display 408136929737802 compositor 408136929871592 delta_ms 0.134
+ INFO [layer_commit] motion clock: frame 238 new 0 app_requested_display 408136929737802 compositor 408136946184594 delta_ms 16.447
+ INFO [layer_commit] motion clock: frame 239 new 1 app_requested_display 408136946540365 compositor 408136963461386 delta_ms 16.921
+ INFO [layer_commit] motion clock: frame 240 new 1 app_requested_display 408136962853367 compositor 408136980087417 delta_ms 17.234
+ INFO [layer_commit] motion clock: frame 241 new 1 app_requested_display 408136996754084 compositor 408136997184586 delta_ms 0.431
+ INFO [layer_commit] motion clock: frame 242 new 0 app_requested_display 408136996754084 compositor 408137013116720 delta_ms 16.363
+ INFO [layer_commit] motion clock: frame 243 new 1 app_requested_display 408137013420751 compositor 408137030186727 delta_ms 16.766
+ INFO [layer_commit] motion clock: frame 244 new 1 app_requested_display 408137030517920 compositor 408137045860907 delta_ms 15.343
+ INFO [layer_commit] motion clock: frame 245 new 1 app_requested_display 408137046447516 compositor 408137062525036 delta_ms 16.078
+ INFO [layer_commit] motion clock: frame 246 new 1 app_requested_display 408137063517523 compositor 408137078347001 delta_ms 14.829
+ INFO [layer_commit] motion clock: frame 247 new 1 app_requested_display 408137079191703 compositor 408137095013668 delta_ms 15.822
+ INFO [layer_commit] motion clock: frame 248 new 1 app_requested_display 408137111680335 compositor 408137111735673 delta_ms 0.055
+ INFO [layer_commit] motion clock: frame 249 new 1 app_requested_display 408137128402340 compositor 408137128811965 delta_ms 0.410
+ INFO [layer_commit] motion clock: frame 250 new 0 app_requested_display 408137128402340 compositor 408137145236904 delta_ms 16.835
+ INFO [layer_commit] motion clock: frame 251 new 1 app_requested_display 408137145478042 compositor 408137161473807 delta_ms 15.996
+ INFO [layer_commit] motion clock: frame 252 new 1 app_requested_display 408137178140474 compositor 408137178028352 delta_ms -0.112
+ INFO [layer_commit] motion clock: frame 253 new 1 app_requested_display 408137194807141 compositor 408137195297896 delta_ms 0.491
+ INFO [layer_commit] motion clock: frame 254 new 1 app_requested_display 408137211361686 compositor 408137212157125 delta_ms 0.795
+ INFO [layer_commit] motion clock: frame 255 new 0 app_requested_display 408137211361686 compositor 408137228394635 delta_ms 17.033
+ INFO [layer_commit] motion clock: frame 256 new 1 app_requested_display 408137245061302 compositor 408137245202555 delta_ms 0.141
+ INFO [layer_commit] motion clock: frame 257 new 1 app_requested_display 408137261868158 compositor 408137262271217 delta_ms 0.403
+ INFO [layer_commit] motion clock: frame 258 new 0 app_requested_display 408137261868158 compositor 408137279018311 delta_ms 17.150
+ INFO [layer_commit] motion clock: frame 259 new 1 app_requested_display 408137278937884 compositor 408137295166483 delta_ms 16.229
+ INFO [layer_commit] motion clock: frame 260 new 1 app_requested_display 408137311833150 compositor 408137311905440 delta_ms 0.072
+ INFO [layer_commit] motion clock: frame 261 new 0 app_requested_display 408137311833150 compositor 408137329123938 delta_ms 17.291
+ INFO [layer_commit] motion clock: frame 262 new 1 app_requested_display 408137345238774 compositor 408137345059894 delta_ms -0.179
+ INFO [layer_commit] motion clock: frame 263 new 0 app_requested_display 408137345237034 compositor 408137361724821 delta_ms 16.488
+ INFO [layer_commit] motion clock: frame 264 new 1 app_requested_display 408137362455532 compositor 408137377702884 delta_ms 15.247
+ INFO [layer_commit] motion clock: frame 265 new 1 app_requested_display 408137394369551 compositor 408137394369551 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 266 new 1 app_requested_display 408137411036218 compositor 408137411019226 delta_ms -0.017
+ INFO [layer_commit] motion clock: frame 267 new 1 app_requested_display 408137427685893 compositor 408137428212519 delta_ms 0.527
+ INFO [layer_commit] motion clock: frame 268 new 0 app_requested_display 408137427685893 compositor 408137444217895 delta_ms 16.532
+ INFO [layer_commit] motion clock: frame 269 new 1 app_requested_display 408137444353488 compositor 408137460885490 delta_ms 16.532
+ INFO [layer_commit] motion clock: frame 270 new 1 app_requested_display 408137461546781 compositor 408137477453848 delta_ms 15.907
+ INFO [layer_commit] motion clock: frame 271 new 1 app_requested_display 408137477552157 compositor 408137493564755 delta_ms 16.013
+ INFO [layer_commit] motion clock: frame 272 new 1 app_requested_display 408137510787182 compositor 408137510432686 delta_ms -0.354
+ INFO [layer_commit] motion clock: frame 273 new 1 app_requested_display 408137526898089 compositor 408137527806776 delta_ms 0.909
+ INFO [layer_commit] motion clock: frame 274 new 1 app_requested_display 408137543766020 compositor 408137544530446 delta_ms 0.764
+ INFO [layer_commit] motion clock: frame 275 new 0 app_requested_display 408137543762244 compositor 408137560559558 delta_ms 16.797
+ INFO [layer_commit] motion clock: frame 276 new 1 app_requested_display 408137561136334 compositor 408137577274227 delta_ms 16.138
+ INFO [layer_commit] motion clock: frame 277 new 1 app_requested_display 408137577226225 compositor 408137592552358 delta_ms 15.326
+ INFO [layer_commit] motion clock: frame 278 new 1 app_requested_display 408137593940894 compositor 408137609219025 delta_ms 15.278
+ INFO [layer_commit] motion clock: frame 279 new 1 app_requested_display 408137609219025 compositor 408137627131650 delta_ms 17.913
+ INFO [layer_commit] motion clock: frame 280 new 1 app_requested_display 408137643798317 compositor 408137644201471 delta_ms 0.403
+ INFO [layer_commit] motion clock: frame 281 new 1 app_requested_display 408137660463680 compositor 408137661701932 delta_ms 1.238
+ INFO [layer_commit] motion clock: frame 282 new 1 app_requested_display 408137677533501 compositor 408137678036407 delta_ms 0.503
+ INFO [layer_commit] motion clock: frame 283 new 1 app_requested_display 408137695035266 compositor 408137694703074 delta_ms -0.332
+ INFO [layer_commit] motion clock: frame 284 new 0 app_requested_display 408137695035266 compositor 408137711525032 delta_ms 16.490
+ INFO [layer_commit] motion clock: frame 285 new 1 app_requested_display 408137711369741 compositor 408137728612571 delta_ms 17.243
+ INFO [layer_commit] motion clock: frame 286 new 1 app_requested_display 408137728191699 compositor 408137745279238 delta_ms 17.088
+ INFO [layer_commit] motion clock: frame 287 new 1 app_requested_display 408137745277598 compositor 408137762641976 delta_ms 17.364
+ INFO [layer_commit] motion clock: frame 288 new 1 app_requested_display 408137761944265 compositor 408137778691814 delta_ms 16.748
+ INFO [layer_commit] motion clock: frame 289 new 1 app_requested_display 408137779308643 compositor 408137795933857 delta_ms 16.625
+ INFO [layer_commit] motion clock: frame 290 new 1 app_requested_display 408137795358481 compositor 408137811969016 delta_ms 16.611
+ INFO [layer_commit] motion clock: frame 291 new 1 app_requested_display 408137828635683 compositor 408137829124979 delta_ms 0.489
+ INFO [layer_commit] motion clock: frame 292 new 1 app_requested_display 408137845791646 compositor 408137845642221 delta_ms -0.149
+ INFO [layer_commit] motion clock: frame 293 new 0 app_requested_display 408137845790584 compositor 408137861213582 delta_ms 15.423
+ INFO [layer_commit] motion clock: frame 294 new 1 app_requested_display 408137862457251 compositor 408137877816953 delta_ms 15.360
+ INFO [layer_commit] motion clock: frame 295 new 1 app_requested_display 408137894546916 compositor 408137894960349 delta_ms 0.413
+ INFO [layer_commit] motion clock: frame 296 new 1 app_requested_display 408137911150287 compositor 408137911514007 delta_ms 0.364
+ INFO [layer_commit] motion clock: frame 297 new 1 app_requested_display 408137928293683 compositor 408137929217915 delta_ms 0.924
+ INFO [layer_commit] motion clock: frame 298 new 1 app_requested_display 408137944847341 compositor 408137947369828 delta_ms 2.522
+ INFO [layer_commit] motion clock: frame 299 new 1 app_requested_display 408137962547103 compositor 408137964731974 delta_ms 2.185
+ INFO [layer_commit] motion clock: frame 300 new 1 app_requested_display 408137980699016 compositor 408137982390609 delta_ms 1.692
+ INFO [layer_commit] motion clock: frame 301 new 1 app_requested_display 408137998065308 compositor 408137999465680 delta_ms 1.400
+ INFO [layer_commit] motion clock: frame 302 new 0 app_requested_display 408137998065308 compositor 408138014983363 delta_ms 16.918
+ INFO [layer_commit] motion clock: frame 303 new 1 app_requested_display 408138031650030 compositor 408138032060993 delta_ms 0.411
+ INFO [layer_commit] motion clock: frame 304 new 1 app_requested_display 408138048316697 compositor 408138049593696 delta_ms 1.277
+ INFO [layer_commit] motion clock: frame 305 new 0 app_requested_display 408138048316697 compositor 408138066547077 delta_ms 18.230
+ INFO [layer_commit] motion clock: frame 307 new 1 app_requested_display 408138099879069 compositor 408138099879069 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 308 new 1 app_requested_display 408138116545736 compositor 408138117289324 delta_ms 0.744
+ INFO [layer_commit] motion clock: frame 309 new 1 app_requested_display 408138133212403 compositor 408138133449161 delta_ms 0.237
+ INFO [layer_commit] motion clock: frame 310 new 1 app_requested_display 408138150115828 compositor 408138150115828 delta_ms 0.000
+ INFO [operator()] IDR frame needed on stream 0
+ INFO [operator()] IDR frame needed on stream 1
+ INFO [layer_commit] motion clock: frame 311 new 1 app_requested_display 408138166782495 compositor 408138166290989 delta_ms -0.492
+ INFO [layer_commit] motion clock: frame 312 new 1 app_requested_display 408138182957656 compositor 408138182957656 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 313 new 0 app_requested_display 408138182957656 compositor 408138198844195 delta_ms 15.887
+ INFO [layer_commit] motion clock: frame 314 new 1 app_requested_display 408138216290990 compositor 408138215833728 delta_ms -0.457
+ INFO [layer_commit] motion clock: frame 315 new 1 app_requested_display 408138232500395 compositor 408138232189893 delta_ms -0.311
+ INFO [layer_commit] motion clock: frame 316 new 1 app_requested_display 408138248856560 compositor 408138248856560 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 317 new 1 app_requested_display 408138265523227 compositor 408138265141449 delta_ms -0.382
+ INFO [layer_commit] motion clock: frame 318 new 1 app_requested_display 408138281808116 compositor 408138281808116 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 319 new 1 app_requested_display 408138298474311 compositor 408138298537735 delta_ms 0.063
+ INFO [layer_commit] motion clock: frame 320 new 0 app_requested_display 408138298474311 compositor 408138313701870 delta_ms 15.228
+ INFO [layer_commit] motion clock: frame 321 new 1 app_requested_display 408138315204402 compositor 408138330387757 delta_ms 15.183
+ INFO [layer_commit] motion clock: frame 322 new 1 app_requested_display 408138331871069 compositor 408138347730305 delta_ms 15.859
+ INFO [layer_commit] motion clock: frame 323 new 1 app_requested_display 408138347035204 compositor 408138364382019 delta_ms 17.347
+ INFO [layer_commit] motion clock: frame 324 new 1 app_requested_display 408138363718057 compositor 408138382072364 delta_ms 18.354
+ INFO [layer_commit] motion clock: frame 325 new 1 app_requested_display 408138381060605 compositor 408138398468428 delta_ms 17.408
+ INFO [layer_commit] motion clock: frame 326 new 1 app_requested_display 408138397712319 compositor 408138415957828 delta_ms 18.246
+ INFO [layer_commit] motion clock: frame 327 new 1 app_requested_display 408138431801762 compositor 408138432195570 delta_ms 0.394
+ INFO [layer_commit] motion clock: frame 328 new 1 app_requested_display 408138448862237 compositor 408138449557928 delta_ms 0.696
+ INFO [layer_commit] motion clock: frame 329 new 1 app_requested_display 408138465528904 compositor 408138465723824 delta_ms 0.195
+ INFO [layer_commit] motion clock: frame 330 new 0 app_requested_display 408138465526638 compositor 408138481350924 delta_ms 15.824
+ INFO [layer_commit] motion clock: frame 331 new 1 app_requested_display 408138482388225 compositor 408138497661181 delta_ms 15.273
+ INFO [layer_commit] motion clock: frame 332 new 1 app_requested_display 408138499054892 compositor 408138513428111 delta_ms 14.373
+ INFO [layer_commit] motion clock: frame 333 new 1 app_requested_display 408138514684258 compositor 408138529887461 delta_ms 15.203
+ INFO [layer_commit] motion clock: frame 334 new 1 app_requested_display 408138530994515 compositor 408138545819581 delta_ms 14.825
+ INFO [layer_commit] motion clock: frame 335 new 1 app_requested_display 408138546761445 compositor 408138562409003 delta_ms 15.648
+ INFO [layer_commit] motion clock: frame 336 new 1 app_requested_display 408138563220795 compositor 408138578441176 delta_ms 15.220
+ INFO [layer_commit] motion clock: frame 337 new 1 app_requested_display 408138579151299 compositor 408138595074229 delta_ms 15.923
+ INFO [layer_commit] motion clock: frame 338 new 1 app_requested_display 408138595740721 compositor 408138611131618 delta_ms 15.391
+ INFO [layer_commit] motion clock: frame 339 new 1 app_requested_display 408138628407563 compositor 408138628361043 delta_ms -0.047
+ INFO [layer_commit] motion clock: frame 340 new 0 app_requested_display 408138628407563 compositor 408138644470280 delta_ms 16.063
+ INFO [layer_commit] motion clock: frame 341 new 1 app_requested_display 408138661694377 compositor 408138661718149 delta_ms 0.024
+ INFO [layer_commit] motion clock: frame 342 new 0 app_requested_display 408138661694377 compositor 408138677790449 delta_ms 16.096
+ INFO [layer_commit] motion clock: frame 343 new 1 app_requested_display 408138695049319 compositor 408138695024100 delta_ms -0.025
+ INFO [layer_commit] motion clock: frame 344 new 0 app_requested_display 408138695049319 compositor 408138711158532 delta_ms 16.109
+ INFO [layer_commit] motion clock: frame 345 new 1 app_requested_display 408138728357434 compositor 408138728443810 delta_ms 0.086
+ INFO [layer_commit] motion clock: frame 346 new 0 app_requested_display 408138728357434 compositor 408138744589204 delta_ms 16.232
+ INFO [layer_commit] motion clock: frame 347 new 1 app_requested_display 408138761777144 compositor 408138761861812 delta_ms 0.085
+ INFO [layer_commit] motion clock: frame 348 new 1 app_requested_display 408138778528479 compositor 408138778031597 delta_ms -0.497
+ INFO [layer_commit] motion clock: frame 349 new 1 app_requested_display 408138794696060 compositor 408138795333619 delta_ms 0.638
+ INFO [layer_commit] motion clock: frame 350 new 1 app_requested_display 408138811362727 compositor 408138811474197 delta_ms 0.111
+ INFO [layer_commit] motion clock: frame 351 new 1 app_requested_display 408138828140864 compositor 408138828194727 delta_ms 0.054
+ INFO [layer_commit] motion clock: frame 352 new 1 app_requested_display 408138844807531 compositor 408138844328771 delta_ms -0.479
+ INFO [layer_commit] motion clock: frame 353 new 1 app_requested_display 408138860995438 compositor 408138861683225 delta_ms 0.688
+ INFO [layer_commit] motion clock: frame 354 new 1 app_requested_display 408138877660023 compositor 408138878437475 delta_ms 0.777
+ INFO [layer_commit] motion clock: frame 355 new 1 app_requested_display 408138895014477 compositor 408138895104142 delta_ms 0.090
+ INFO [layer_commit] motion clock: frame 356 new 0 app_requested_display 408138895014477 compositor 408138911205032 delta_ms 16.191
+ INFO [layer_commit] motion clock: frame 357 new 1 app_requested_display 408138928437476 compositor 408138927944516 delta_ms -0.493
+ INFO [layer_commit] motion clock: frame 358 new 0 app_requested_display 408138928437476 compositor 408138944102903 delta_ms 15.665
+ INFO [layer_commit] motion clock: frame 359 new 1 app_requested_display 408138961277850 compositor 408138961411125 delta_ms 0.133
+ INFO [layer_commit] motion clock: frame 360 new 1 app_requested_display 408138978077792 compositor 408138977599938 delta_ms -0.478
+ INFO [layer_commit] motion clock: frame 361 new 1 app_requested_display 408138994264561 compositor 408138994930103 delta_ms 0.666
+ INFO [layer_commit] motion clock: frame 362 new 1 app_requested_display 408139010931228 compositor 408139011753148 delta_ms 0.822
+ INFO [layer_commit] motion clock: frame 363 new 1 app_requested_display 408139028263437 compositor 408139028419815 delta_ms 0.156
+ INFO [layer_commit] motion clock: frame 364 new 0 app_requested_display 408139028263437 compositor 408139044586096 delta_ms 16.323
+ INFO [layer_commit] motion clock: frame 365 new 1 app_requested_display 408139061753149 compositor 408139061871267 delta_ms 0.118
+ INFO [layer_commit] motion clock: frame 366 new 0 app_requested_display 408139061751433 compositor 408139077962753 delta_ms 16.211
+ INFO [layer_commit] motion clock: frame 367 new 1 app_requested_display 408139095202885 compositor 408139095193284 delta_ms -0.010
+ INFO [layer_commit] motion clock: frame 368 new 0 app_requested_display 408139095202885 compositor 408139111289757 delta_ms 16.087
+ INFO [layer_commit] motion clock: frame 369 new 1 app_requested_display 408139128526618 compositor 408139128549228 delta_ms 0.023
+ INFO [layer_commit] motion clock: frame 370 new 0 app_requested_display 408139128526618 compositor 408139144696718 delta_ms 16.170
+ INFO [layer_commit] motion clock: frame 371 new 1 app_requested_display 408139161882562 compositor 408139161982258 delta_ms 0.100
+ INFO [layer_commit] motion clock: frame 372 new 0 app_requested_display 408139161880142 compositor 408139178132480 delta_ms 16.252
+ INFO [layer_commit] motion clock: frame 373 new 1 app_requested_display 408139195313172 compositor 408139195414767 delta_ms 0.102
+ INFO [layer_commit] motion clock: frame 374 new 0 app_requested_display 408139195313172 compositor 408139211536292 delta_ms 16.223
+ INFO [layer_commit] motion clock: frame 375 new 1 app_requested_display 408139228748101 compositor 408139228248688 delta_ms -0.499
+ INFO [layer_commit] motion clock: frame 376 new 1 app_requested_display 408139244915355 compositor 408139245049734 delta_ms 0.134
+ INFO [layer_commit] motion clock: frame 377 new 1 app_requested_display 408139261716401 compositor 408139261716401 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 378 new 0 app_requested_display 408139261713625 compositor 408139277851523 delta_ms 16.138
+ INFO [layer_commit] motion clock: frame 379 new 1 app_requested_display 408139295046959 compositor 408139294552617 delta_ms -0.494
+ INFO [layer_commit] motion clock: frame 380 new 0 app_requested_display 408139295046959 compositor 408139310660569 delta_ms 15.614
+ INFO [layer_commit] motion clock: frame 381 new 1 app_requested_display 408139327885951 compositor 408139328029255 delta_ms 0.143
+ INFO [layer_commit] motion clock: frame 382 new 1 app_requested_display 408139344695922 compositor 408139344222836 delta_ms -0.473
+ INFO [layer_commit] motion clock: frame 383 new 1 app_requested_display 408139360889503 compositor 408139361536139 delta_ms 0.647
+ INFO [layer_commit] motion clock: frame 384 new 1 app_requested_display 408139377556170 compositor 408139377736293 delta_ms 0.180
+ INFO [layer_commit] motion clock: frame 385 new 1 app_requested_display 408139394398104 compositor 408139394490307 delta_ms 0.092
+ INFO [layer_commit] motion clock: frame 386 new 0 app_requested_display 408139394398104 compositor 408139410649774 delta_ms 16.252
+ INFO [layer_commit] motion clock: frame 387 new 1 app_requested_display 408139427823641 compositor 408139427972084 delta_ms 0.148
+ INFO [layer_commit] motion clock: frame 388 new 1 app_requested_display 408139444638751 compositor 408139444177588 delta_ms -0.461
+ INFO [layer_commit] motion clock: frame 389 new 1 app_requested_display 408139460844255 compositor 408139461526123 delta_ms 0.682
+ INFO [layer_commit] motion clock: frame 390 new 1 app_requested_display 408139477510922 compositor 408139477669526 delta_ms 0.159
+ INFO [layer_commit] motion clock: frame 391 new 1 app_requested_display 408139494332889 compositor 408139494388301 delta_ms 0.055
+ INFO [layer_commit] motion clock: frame 392 new 0 app_requested_display 408139494332889 compositor 408139510518218 delta_ms 16.185
+ INFO [layer_commit] motion clock: frame 393 new 1 app_requested_display 408139527721635 compositor 408139527898258 delta_ms 0.177
+ INFO [layer_commit] motion clock: frame 394 new 1 app_requested_display 408139544564925 compositor 408139544115979 delta_ms -0.449
+ INFO [layer_commit] motion clock: frame 395 new 1 app_requested_display 408139560782646 compositor 408139561441423 delta_ms 0.659
+ INFO [layer_commit] motion clock: frame 396 new 1 app_requested_display 408139577449313 compositor 408139577664269 delta_ms 0.215
+ INFO [layer_commit] motion clock: frame 397 new 1 app_requested_display 408139594328112 compositor 408139594441701 delta_ms 0.114
+ INFO [layer_commit] motion clock: frame 398 new 1 app_requested_display 408139611108368 compositor 408139610616858 delta_ms -0.492
+ INFO [layer_commit] motion clock: frame 399 new 1 app_requested_display 408139627283525 compositor 408139627953073 delta_ms 0.670
+ INFO [update_emergency] Emergency half-rate: engaging, halving the stream framerate (pinned at 10000000 bps, sustained loss)
+ INFO [set_emergency_framerate] Emergency half-rate engaged: streaming at half the framerate to halve bandwidth
+ INFO [layer_commit] motion clock: frame 400 new 1 app_requested_display 408139643950192 compositor 408139644857138 delta_ms 0.907
+ INFO [layer_commit] motion clock: frame 401 new 1 app_requested_display 408139678190472 compositor 408139678190472 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 402 new 1 app_requested_display 408139711523806 compositor 408139712672035 delta_ms 1.148
+ INFO [layer_commit] motion clock: frame 403 new 1 app_requested_display 408139744857140 compositor 408139744558465 delta_ms -0.299
+ INFO [layer_commit] motion clock: frame 404 new 1 app_requested_display 408139777891799 compositor 408139777892950 delta_ms 0.001
+ INFO [layer_commit] motion clock: frame 405 new 0 app_requested_display 408139777889515 compositor 408139810191195 delta_ms 32.302
+ INFO [layer_commit] motion clock: frame 406 new 1 app_requested_display 408139811224000 compositor 408139841760236 delta_ms 30.536
+ INFO [layer_commit] motion clock: frame 407 new 1 app_requested_display 408139875093714 compositor 408139875061518 delta_ms -0.032
+ INFO [layer_commit] motion clock: frame 408 new 1 app_requested_display 408139908394852 compositor 408139908477648 delta_ms 0.083
+ INFO [layer_commit] motion clock: frame 409 new 0 app_requested_display 408139908394852 compositor 408139940437505 delta_ms 32.043
+ INFO [layer_commit] motion clock: frame 410 new 1 app_requested_display 408139973772149 compositor 408139973525953 delta_ms -0.246
+ INFO [layer_commit] motion clock: frame 411 new 0 app_requested_display 408139973772149 compositor 408140006290643 delta_ms 32.518
+ INFO [layer_commit] motion clock: frame 412 new 1 app_requested_display 408140006859287 compositor 408140039623977 delta_ms 32.765
+ INFO [layer_commit] motion clock: frame 413 new 1 app_requested_display 408140040187999 compositor 408140072284269 delta_ms 32.096
+ INFO [layer_commit] motion clock: frame 414 new 1 app_requested_display 408140072952689 compositor 408140105128907 delta_ms 32.176
+ INFO [layer_commit] motion clock: frame 415 new 1 app_requested_display 408140106286023 compositor 408140140497411 delta_ms 34.211
+ INFO [layer_commit] motion clock: frame 416 new 1 app_requested_display 408140138455609 compositor 408140175652761 delta_ms 37.197
+ INFO [layer_commit] motion clock: frame 417 new 1 app_requested_display 408140171788943 compositor 408140210550946 delta_ms 38.762
+ INFO [layer_commit] motion clock: frame 418 new 1 app_requested_display 408140207157447 compositor 408140245147728 delta_ms 37.990
+ INFO [layer_commit] motion clock: frame 419 new 1 app_requested_display 408140242321121 compositor 408140278482754 delta_ms 36.162
+ INFO [layer_commit] motion clock: frame 420 new 1 app_requested_display 408140277219306 compositor 408140310832654 delta_ms 33.613
+ INFO [layer_commit] motion clock: frame 421 new 1 app_requested_display 408140311816088 compositor 408140344165988 delta_ms 32.350
+ INFO [layer_commit] motion clock: frame 422 new 1 app_requested_display 408140345146892 compositor 408140376788162 delta_ms 31.641
+ INFO [layer_commit] motion clock: frame 423 new 1 app_requested_display 408140377496792 compositor 408140409562800 delta_ms 32.066
+ INFO [layer_commit] motion clock: frame 424 new 1 app_requested_display 408140410830126 compositor 408140442348769 delta_ms 31.519
+ INFO [layer_commit] motion clock: frame 425 new 1 app_requested_display 408140442892128 compositor 408140475189338 delta_ms 32.297
+ INFO [layer_commit] motion clock: frame 426 new 1 app_requested_display 408140508522672 compositor 408140508522672 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 427 new 0 app_requested_display 408140508522672 compositor 408140540345604 delta_ms 31.823
+ INFO [layer_commit] motion clock: frame 428 new 1 app_requested_display 408140573678284 compositor 408140573678284 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 429 new 0 app_requested_display 408140573678284 compositor 408140606150786 delta_ms 32.473
+ INFO [layer_commit] motion clock: frame 430 new 1 app_requested_display 408140607011618 compositor 408140640916554 delta_ms 33.905
+ INFO [layer_commit] motion clock: frame 431 new 1 app_requested_display 408140674245780 compositor 408140674020788 delta_ms -0.225
+ INFO [layer_commit] motion clock: frame 432 new 1 app_requested_display 408140707354122 compositor 408140707354122 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 433 new 0 app_requested_display 408140707354122 compositor 408140739576918 delta_ms 32.223
+ INFO [layer_commit] motion clock: frame 434 new 1 app_requested_display 408140772907364 compositor 408140772533888 delta_ms -0.373
+ INFO [layer_commit] motion clock: frame 435 new 1 app_requested_display 408140805867222 compositor 408140805867222 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 436 new 0 app_requested_display 408140805867222 compositor 408140838434442 delta_ms 32.567
+ INFO [layer_commit] motion clock: frame 437 new 1 app_requested_display 408140839200246 compositor 408140873127793 delta_ms 33.928
+ INFO [layer_commit] motion clock: frame 438 new 1 app_requested_display 408140872533580 compositor 408140908137433 delta_ms 35.604
+ INFO [layer_commit] motion clock: frame 439 new 1 app_requested_display 408140905100800 compositor 408140943217407 delta_ms 38.117
+ INFO [layer_commit] motion clock: frame 440 new 1 app_requested_display 408140939790251 compositor 408140978038846 delta_ms 38.249
+ INFO [layer_commit] motion clock: frame 441 new 1 app_requested_display 408140974799891 compositor 408141010481504 delta_ms 35.682
+ INFO [layer_commit] motion clock: frame 442 new 1 app_requested_display 408141009879865 compositor 408141042792376 delta_ms 32.913
+ INFO [layer_commit] motion clock: frame 443 new 1 app_requested_display 408141044703242 compositor 408141075172636 delta_ms 30.469
+ INFO [layer_commit] motion clock: frame 444 new 1 app_requested_display 408141076123438 compositor 408141107617546 delta_ms 31.494
+ INFO [layer_commit] motion clock: frame 445 new 1 app_requested_display 408141109456772 compositor 408141140141263 delta_ms 30.684
+ INFO [layer_commit] motion clock: frame 446 new 1 app_requested_display 408141141836524 compositor 408141172779954 delta_ms 30.943
+ INFO [layer_commit] motion clock: frame 447 new 1 app_requested_display 408141174281434 compositor 408141206113288 delta_ms 31.832
+ INFO [layer_commit] motion clock: frame 448 new 1 app_requested_display 408141206805151 compositor 408141238854466 delta_ms 32.049
+ INFO [layer_commit] motion clock: frame 449 new 1 app_requested_display 408141239444172 compositor 408141270051889 delta_ms 30.608
+ INFO [layer_commit] motion clock: frame 450 new 1 app_requested_display 408141272777506 compositor 408141302041148 delta_ms 29.264
+ INFO [layer_commit] motion clock: frame 451 new 1 app_requested_display 408141303385223 compositor 408141334181257 delta_ms 30.796
+ INFO [layer_commit] motion clock: frame 452 new 1 app_requested_display 408141336715215 compositor 408141366439656 delta_ms 29.724
+ INFO [layer_commit] motion clock: frame 453 new 1 app_requested_display 408141367511249 compositor 408141398788166 delta_ms 31.277
+ INFO [layer_commit] motion clock: frame 454 new 1 app_requested_display 408141400844583 compositor 408141431221609 delta_ms 30.377
+ INFO [layer_commit] motion clock: frame 455 new 1 app_requested_display 408141432119012 compositor 408141463724831 delta_ms 31.606
+ INFO [layer_commit] motion clock: frame 456 new 1 app_requested_display 408141465452346 compositor 408141496314732 delta_ms 30.862
+ INFO [layer_commit] motion clock: frame 457 new 1 app_requested_display 408141497058165 compositor 408141528998341 delta_ms 31.940
+ INFO [layer_commit] motion clock: frame 458 new 1 app_requested_display 408141530391499 compositor 408141561766813 delta_ms 31.375
+ INFO [layer_commit] motion clock: frame 459 new 1 app_requested_display 408141562979698 compositor 408141594572610 delta_ms 31.593
+ INFO [layer_commit] motion clock: frame 460 new 1 app_requested_display 408141595098445 compositor 408141627424832 delta_ms 32.326
+ INFO [layer_commit] motion clock: frame 461 new 1 app_requested_display 408141628431779 compositor 408141659213179 delta_ms 30.781
+ INFO [layer_commit] motion clock: frame 462 new 1 app_requested_display 408141661236304 compositor 408141691208275 delta_ms 29.972
+ INFO [layer_commit] motion clock: frame 463 new 1 app_requested_display 408141692543539 compositor 408141723295034 delta_ms 30.751
+ INFO [layer_commit] motion clock: frame 464 new 1 app_requested_display 408141725876873 compositor 408141755465407 delta_ms 29.589
+ INFO [layer_commit] motion clock: frame 465 new 1 app_requested_display 408141756626312 compositor 408141787716060 delta_ms 31.090
+ INFO [layer_commit] motion clock: frame 466 new 1 app_requested_display 408141789959646 compositor 408141820066837 delta_ms 30.107
+ INFO [layer_commit] motion clock: frame 467 new 1 app_requested_display 408141821049394 compositor 408141852540182 delta_ms 31.491
+ INFO [layer_commit] motion clock: frame 468 new 1 app_requested_display 408141854381828 compositor 408141885121418 delta_ms 30.740
+ INFO [layer_commit] motion clock: frame 469 new 1 app_requested_display 408141885872616 compositor 408141917767301 delta_ms 31.895
+ INFO [layer_commit] motion clock: frame 470 new 1 app_requested_display 408141919205950 compositor 408141950481654 delta_ms 31.276
+ INFO [layer_commit] motion clock: frame 471 new 1 app_requested_display 408141951785266 compositor 408141983812168 delta_ms 32.027
+ INFO [layer_commit] motion clock: frame 472 new 1 app_requested_display 408141984431149 compositor 408142016579995 delta_ms 32.149
+ INFO [layer_commit] motion clock: frame 473 new 1 app_requested_display 408142017145502 compositor 408142047880459 delta_ms 30.735
+ INFO [layer_commit] motion clock: frame 474 new 1 app_requested_display 408142050474206 compositor 408142079903193 delta_ms 29.429
+ INFO [layer_commit] motion clock: frame 475 new 1 app_requested_display 408142081209163 compositor 408142111586924 delta_ms 30.378
+ INFO [layer_commit] motion clock: frame 476 new 1 app_requested_display 408142113236527 compositor 408142143490821 delta_ms 30.254
+ INFO [layer_commit] motion clock: frame 477 new 1 app_requested_display 408142146564661 compositor 408142175583910 delta_ms 29.019
+ INFO [layer_commit] motion clock: frame 478 new 1 app_requested_display 408142176818955 compositor 408142207870948 delta_ms 31.052
+ INFO [layer_commit] motion clock: frame 479 new 1 app_requested_display 408142210152289 compositor 408142240318635 delta_ms 30.166
+ INFO [layer_commit] motion clock: frame 480 new 1 app_requested_display 408142242244350 compositor 408142272870066 delta_ms 30.626
+ INFO [layer_commit] motion clock: frame 481 new 1 app_requested_display 408142274531388 compositor 408142306203400 delta_ms 31.672
+ INFO [layer_commit] motion clock: frame 482 new 1 app_requested_display 408142306979075 compositor 408142338866608 delta_ms 31.888
+ INFO [layer_commit] motion clock: frame 483 new 1 app_requested_display 408142339532766 compositor 408142371592535 delta_ms 32.060
+ INFO [layer_commit] motion clock: frame 484 new 1 app_requested_display 408142372866100 compositor 408142402854319 delta_ms 29.988
+ INFO [layer_commit] motion clock: frame 485 new 1 app_requested_display 408142405529308 compositor 408142434884927 delta_ms 29.356
+ INFO [layer_commit] motion clock: frame 486 new 1 app_requested_display 408142436183745 compositor 408142467024011 delta_ms 30.840
+ INFO [layer_commit] motion clock: frame 487 new 1 app_requested_display 408142469517079 compositor 408142499256277 delta_ms 29.739
+ INFO [layer_commit] motion clock: frame 488 new 1 app_requested_display 408142500357345 compositor 408142531626594 delta_ms 31.269
+ INFO [layer_commit] motion clock: frame 489 new 1 app_requested_display 408142533685195 compositor 408142564110557 delta_ms 30.425
+ INFO [layer_commit] motion clock: frame 490 new 1 app_requested_display 408142564954444 compositor 408142596675630 delta_ms 31.721
+ INFO [layer_commit] motion clock: frame 491 new 1 app_requested_display 408142598287778 compositor 408142629304784 delta_ms 31.017
+ INFO [layer_commit] motion clock: frame 492 new 1 app_requested_display 408142630003964 compositor 408142661993325 delta_ms 31.989
+ INFO [layer_commit] motion clock: frame 493 new 1 app_requested_display 408142663337298 compositor 408142694733035 delta_ms 31.396
+ INFO [layer_commit] motion clock: frame 494 new 1 app_requested_display 408142695966452 compositor 408142727563439 delta_ms 31.597
+ INFO [layer_commit] motion clock: frame 495 new 1 app_requested_display 408142728655957 compositor 408142760461258 delta_ms 31.805
+ INFO [layer_commit] motion clock: frame 496 new 1 app_requested_display 408142761395667 compositor 408142792313584 delta_ms 30.918
+ INFO [layer_commit] motion clock: frame 497 new 1 app_requested_display 408142794226071 compositor 408142824356209 delta_ms 30.130
+ INFO [layer_commit] motion clock: frame 498 new 1 app_requested_display 408142825646918 compositor 408142856508496 delta_ms 30.862
+ INFO [layer_commit] motion clock: frame 499 new 1 app_requested_display 408142858976368 compositor 408142888789920 delta_ms 29.814
+ INFO [layer_commit] motion clock: frame 500 new 1 app_requested_display 408142889837946 compositor 408142921176493 delta_ms 31.339
+ INFO [layer_commit] motion clock: frame 501 new 1 app_requested_display 408142923171280 compositor 408142953631935 delta_ms 30.461
+ INFO [layer_commit] motion clock: frame 502 new 1 app_requested_display 408142954506499 compositor 408142986143783 delta_ms 31.637
+ INFO [layer_commit] motion clock: frame 503 new 1 app_requested_display 408142986961941 compositor 408143018715865 delta_ms 31.754
+ INFO [layer_commit] motion clock: frame 504 new 1 app_requested_display 408143052049199 compositor 408143052049199 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 505 new 0 app_requested_display 408143052048413 compositor 408143084691557 delta_ms 32.643
+ INFO [layer_commit] motion clock: frame 506 new 1 app_requested_display 408143085381747 compositor 408143117451608 delta_ms 32.070
+ INFO [layer_commit] motion clock: frame 507 new 1 app_requested_display 408143118715081 compositor 408143150285192 delta_ms 31.570
+ INFO [layer_commit] motion clock: frame 508 new 1 app_requested_display 408143151354607 compositor 408143183144704 delta_ms 31.790
+ INFO [layer_commit] motion clock: frame 509 new 1 app_requested_display 408143184114658 compositor 408143215710444 delta_ms 31.596
+ INFO [layer_commit] motion clock: frame 510 new 1 app_requested_display 408143216478038 compositor 408143248753047 delta_ms 32.275
+ INFO [layer_commit] motion clock: frame 511 new 1 app_requested_display 408143249811372 compositor 408143280719205 delta_ms 30.908
+ INFO [layer_commit] motion clock: frame 512 new 1 app_requested_display 408143282083481 compositor 408143312835457 delta_ms 30.752
+ INFO [layer_commit] motion clock: frame 513 new 1 app_requested_display 408143315416815 compositor 408143345021192 delta_ms 29.604
+ INFO [layer_commit] motion clock: frame 514 new 1 app_requested_display 408143346168791 compositor 408143377265155 delta_ms 31.096
+ INFO [layer_commit] motion clock: frame 515 new 1 app_requested_display 408143379497301 compositor 408143409590244 delta_ms 30.093
+ INFO [layer_commit] motion clock: frame 516 new 1 app_requested_display 408143410593665 compositor 408143442026246 delta_ms 31.433
+ INFO [layer_commit] motion clock: frame 517 new 1 app_requested_display 408143443926999 compositor 408143474576169 delta_ms 30.649
+ INFO [layer_commit] motion clock: frame 518 new 1 app_requested_display 408143476258144 compositor 408143507192861 delta_ms 30.935
+ INFO [layer_commit] motion clock: frame 519 new 1 app_requested_display 408143508694146 compositor 408143539870893 delta_ms 31.177
+ INFO [layer_commit] motion clock: frame 520 new 1 app_requested_display 408143541244069 compositor 408143572603011 delta_ms 31.359
+ INFO [layer_commit] motion clock: frame 521 new 1 app_requested_display 408143573855397 compositor 408143605385752 delta_ms 31.530
+ INFO [layer_commit] motion clock: frame 522 new 1 app_requested_display 408143606533429 compositor 408143638241143 delta_ms 31.708
+ INFO [layer_commit] motion clock: frame 523 new 1 app_requested_display 408143639265547 compositor 408143671168093 delta_ms 31.903
+ INFO [layer_commit] motion clock: frame 524 new 1 app_requested_display 408143672048090 compositor 408143703019578 delta_ms 30.971
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 10.0 -> 20.0 Mbit/s (p90 utilisation 0.35, 0 lost, 0 late over 62 frames)
+ INFO [layer_commit] motion clock: frame 525 new 1 app_requested_display 408143704903481 compositor 408143735075186 delta_ms 30.172
+ INFO [layer_commit] motion clock: frame 526 new 1 app_requested_display 408143736352912 compositor 408143767246210 delta_ms 30.893
+ INFO [layer_commit] motion clock: frame 527 new 1 app_requested_display 408143769685700 compositor 408143799529773 delta_ms 29.844
+ INFO [layer_commit] motion clock: frame 528 new 0 app_requested_display 408143769685700 compositor 408143831901192 delta_ms 62.215
+ INFO [layer_commit] motion clock: frame 529 new 1 app_requested_display 408143800578998 compositor 408143864354588 delta_ms 63.776
+ INFO [layer_commit] motion clock: frame 530 new 1 app_requested_display 408143865223708 compositor 408143896897451 delta_ms 31.674
+ INFO [layer_commit] motion clock: frame 531 new 1 app_requested_display 408143898557042 compositor 408143929528512 delta_ms 30.971
+ INFO [layer_commit] motion clock: frame 532 new 1 app_requested_display 408143931010438 compositor 408143962230853 delta_ms 31.220
+ INFO [layer_commit] motion clock: frame 533 new 1 app_requested_display 408143963560887 compositor 408143994698759 delta_ms 31.138
+ INFO [layer_commit] motion clock: frame 534 new 1 app_requested_display 408143996191948 compositor 408144027555852 delta_ms 31.364
+ INFO [layer_commit] motion clock: frame 535 new 1 app_requested_display 408144028894289 compositor 408144060476017 delta_ms 31.582
+ INFO [layer_commit] motion clock: frame 536 new 1 app_requested_display 408144061354707 compositor 408144093424416 delta_ms 32.070
+ INFO [layer_commit] motion clock: frame 537 new 1 app_requested_display 408144093798631 compositor 408144125296985 delta_ms 31.498
+ INFO [layer_commit] motion clock: frame 538 new 1 app_requested_display 408144126757750 compositor 408144157418681 delta_ms 30.661
+ INFO [layer_commit] motion clock: frame 539 new 1 app_requested_display 408144158625655 compositor 408144189664144 delta_ms 31.038
+ INFO [layer_commit] motion clock: frame 540 new 1 app_requested_display 408144190747351 compositor 408144221990430 delta_ms 31.243
+ INFO [layer_commit] motion clock: frame 541 new 1 app_requested_display 408144222997478 compositor 408144254384697 delta_ms 31.387
+ INFO [layer_commit] motion clock: frame 542 new 1 app_requested_display 408144255323016 compositor 408144286855398 delta_ms 31.532
+ INFO [layer_commit] motion clock: frame 543 new 1 app_requested_display 408144288656350 compositor 408144319441749 delta_ms 30.785
+ INFO [layer_commit] motion clock: frame 544 new 1 app_requested_display 408144320188732 compositor 408144352114120 delta_ms 31.925
+ INFO [layer_commit] motion clock: frame 545 new 1 app_requested_display 408144353521382 compositor 408144384825483 delta_ms 31.304
+ INFO [layer_commit] motion clock: frame 546 new 1 app_requested_display 408144386107733 compositor 408144417565169 delta_ms 31.457
+ INFO [layer_commit] motion clock: frame 547 new 1 app_requested_display 408144418780104 compositor 408144450340523 delta_ms 31.560
+ INFO [layer_commit] motion clock: frame 548 new 1 app_requested_display 408144451489957 compositor 408144483167564 delta_ms 31.678
+ INFO [layer_commit] motion clock: frame 549 new 1 app_requested_display 408144484229643 compositor 408144516068488 delta_ms 31.839
+ INFO [layer_commit] motion clock: frame 550 new 1 app_requested_display 408144517004997 compositor 408144549023139 delta_ms 32.018
+ INFO [layer_commit] motion clock: frame 551 new 1 app_requested_display 408144549834232 compositor 408144580892971 delta_ms 31.059
+ INFO [layer_commit] motion clock: frame 552 new 1 app_requested_display 408144582732606 compositor 408144612939648 delta_ms 30.207
+ INFO [layer_commit] motion clock: frame 553 new 1 app_requested_display 408144615687257 compositor 408144645085167 delta_ms 29.398
+ INFO [layer_commit] motion clock: frame 554 new 1 app_requested_display 408144647557089 compositor 408144677324485 delta_ms 29.767
+ INFO [layer_commit] motion clock: frame 555 new 1 app_requested_display 408144679605182 compositor 408144709642939 delta_ms 30.038
+ INFO [layer_commit] motion clock: frame 556 new 1 app_requested_display 408144711750701 compositor 408144742070651 delta_ms 30.320
+ INFO [layer_commit] motion clock: frame 557 new 1 app_requested_display 408144743990019 compositor 408144774566260 delta_ms 30.576
+ INFO [layer_commit] motion clock: frame 558 new 1 app_requested_display 408144776307967 compositor 408144807137456 delta_ms 30.829
+ INFO [layer_commit] motion clock: frame 559 new 1 app_requested_display 408144808735679 compositor 408144839821907 delta_ms 31.086
+ INFO [layer_commit] motion clock: frame 560 new 1 app_requested_display 408144841231288 compositor 408144872591219 delta_ms 31.360
+ INFO [layer_commit] motion clock: frame 561 new 1 app_requested_display 408144873803152 compositor 408144905394191 delta_ms 31.591
+ INFO [layer_commit] motion clock: frame 562 new 1 app_requested_display 408144905923581 compositor 408144938255862 delta_ms 32.332
+ INFO [layer_commit] motion clock: frame 563 new 1 app_requested_display 408144939256915 compositor 408144971152347 delta_ms 31.895
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 20.0 -> 10.0 Mbit/s (p90 utilisation 1.18, 1 lost, 1 late over 23 frames)
+ INFO [layer_commit] motion clock: frame 564 new 1 app_requested_display 408144972059309 compositor 408145002994418 delta_ms 30.935
+ INFO [layer_commit] motion clock: frame 565 new 1 app_requested_display 408145004920980 compositor 408145035054679 delta_ms 30.134
+ INFO [layer_commit] motion clock: frame 566 new 1 app_requested_display 408145037817465 compositor 408145067223505 delta_ms 29.406
+ INFO [layer_commit] motion clock: frame 567 new 1 app_requested_display 408145068386137 compositor 408145099481075 delta_ms 31.095
+ INFO [layer_commit] motion clock: frame 568 new 1 app_requested_display 408145101719471 compositor 408145131833459 delta_ms 30.114
+ INFO [layer_commit] motion clock: frame 569 new 1 app_requested_display 408145132814409 compositor 408145164307824 delta_ms 31.493
+ INFO [layer_commit] motion clock: frame 570 new 1 app_requested_display 408145165163753 compositor 408145196866587 delta_ms 31.703
+ INFO [layer_commit] motion clock: frame 571 new 1 app_requested_display 408145198497087 compositor 408145229281186 delta_ms 30.784
+ INFO [layer_commit] motion clock: frame 572 new 1 app_requested_display 408145230199921 compositor 408145261429960 delta_ms 31.230
+ INFO [layer_commit] motion clock: frame 573 new 1 app_requested_display 408145262612112 compositor 408145294481103 delta_ms 31.869
+ INFO [layer_commit] motion clock: frame 574 new 1 app_requested_display 408145294760886 compositor 408145327521748 delta_ms 32.761
+ INFO [layer_commit] motion clock: frame 575 new 1 app_requested_display 408145327814437 compositor 408145360547190 delta_ms 32.733
+ INFO [layer_commit] motion clock: frame 576 new 1 app_requested_display 408145360860036 compositor 408145392480068 delta_ms 31.620
+ INFO [layer_commit] motion clock: frame 577 new 1 app_requested_display 408145393885478 compositor 408145424576286 delta_ms 30.691
+ INFO [layer_commit] motion clock: frame 578 new 1 app_requested_display 408145425813402 compositor 408145456713273 delta_ms 30.900
+ INFO [layer_commit] motion clock: frame 579 new 1 app_requested_display 408145457910604 compositor 408145488947875 delta_ms 31.037
+ INFO [layer_commit] motion clock: frame 580 new 1 app_requested_display 408145490047591 compositor 408145521286557 delta_ms 31.239
+ INFO [layer_commit] motion clock: frame 581 new 1 app_requested_display 408145522281209 compositor 408145553715327 delta_ms 31.434
+ INFO [layer_commit] motion clock: frame 582 new 1 app_requested_display 408145554620589 compositor 408145586206356 delta_ms 31.586
+ INFO [layer_commit] motion clock: frame 583 new 1 app_requested_display 408145587953923 compositor 408145618779437 delta_ms 30.826
+ INFO [layer_commit] motion clock: frame 584 new 1 app_requested_display 408145619539690 compositor 408145651412943 delta_ms 31.873
+ INFO [layer_commit] motion clock: frame 585 new 1 app_requested_display 408145652111185 compositor 408145684110426 delta_ms 31.999
+ INFO [layer_commit] motion clock: frame 586 new 1 app_requested_display 408145685444519 compositor 408145716908843 delta_ms 31.464
+ INFO [layer_commit] motion clock: frame 587 new 1 app_requested_display 408145718078025 compositor 408145749774755 delta_ms 31.697
+ INFO [layer_commit] motion clock: frame 588 new 1 app_requested_display 408145750779980 compositor 408145782664730 delta_ms 31.885
+ INFO [layer_commit] motion clock: frame 589 new 1 app_requested_display 408145815998064 compositor 408145815593763 delta_ms -0.404
+ INFO [layer_commit] motion clock: frame 590 new 0 app_requested_display 408145815998064 compositor 408145847449984 delta_ms 31.452
+ INFO [layer_commit] motion clock: frame 591 new 1 app_requested_display 408145848927097 compositor 408145879533884 delta_ms 30.607
+ INFO [layer_commit] motion clock: frame 592 new 1 app_requested_display 408145882261425 compositor 408145911741351 delta_ms 29.480
+ INFO [layer_commit] motion clock: frame 593 new 1 app_requested_display 408145914117646 compositor 408145944025448 delta_ms 29.908
+ INFO [layer_commit] motion clock: frame 594 new 1 app_requested_display 408145946201546 compositor 408145976178348 delta_ms 29.977
+ INFO [layer_commit] motion clock: frame 595 new 1 app_requested_display 408145978406109 compositor 408146008678228 delta_ms 30.272
+ INFO [layer_commit] motion clock: frame 596 new 1 app_requested_display 408146010690206 compositor 408146041263653 delta_ms 30.573
+ INFO [layer_commit] motion clock: frame 597 new 1 app_requested_display 408146042843106 compositor 408146073926758 delta_ms 31.084
+ INFO [layer_commit] motion clock: frame 598 new 1 app_requested_display 408146075342002 compositor 408146106636164 delta_ms 31.294
+ INFO [layer_commit] motion clock: frame 599 new 1 app_requested_display 408146107927427 compositor 408146139415137 delta_ms 31.488
+ INFO [layer_commit] motion clock: frame 600 new 1 app_requested_display 408146140590532 compositor 408146172220619 delta_ms 31.630
+ INFO [layer_commit] motion clock: frame 601 new 1 app_requested_display 408146172748713 compositor 408146205075437 delta_ms 32.327
+ INFO [layer_commit] motion clock: frame 602 new 1 app_requested_display 408146205554195 compositor 408146237999295 delta_ms 32.445
+ INFO [layer_commit] motion clock: frame 603 new 1 app_requested_display 408146238408771 compositor 408146269872520 delta_ms 31.464
+ INFO [layer_commit] motion clock: frame 604 new 1 app_requested_display 408146271329639 compositor 408146301933666 delta_ms 30.604
+ INFO [layer_commit] motion clock: frame 605 new 1 app_requested_display 408146303202864 compositor 408146334082170 delta_ms 30.879
+ INFO [layer_commit] motion clock: frame 606 new 1 app_requested_display 408146335267000 compositor 408146366350333 delta_ms 31.083
+ INFO [layer_commit] motion clock: frame 607 new 1 app_requested_display 408146367409898 compositor 408146400955538 delta_ms 33.546
+ INFO [layer_commit] motion clock: frame 608 new 1 app_requested_display 408146399678061 compositor 408146435499727 delta_ms 35.822
+ INFO [layer_commit] motion clock: frame 609 new 1 app_requested_display 408146433011395 compositor 408146469939610 delta_ms 36.928
+ INFO [layer_commit] motion clock: frame 610 new 1 app_requested_display 408146467621414 compositor 408146502064142 delta_ms 34.443
+ INFO [layer_commit] motion clock: frame 611 new 1 app_requested_display 408146503272152 compositor 408146534226488 delta_ms 30.954
+ INFO [layer_commit] motion clock: frame 612 new 1 app_requested_display 408146535397476 compositor 408146568684917 delta_ms 33.287
+ INFO [layer_commit] motion clock: frame 613 new 1 app_requested_display 408146567558280 compositor 408146600735073 delta_ms 33.177
+ INFO [layer_commit] motion clock: frame 614 new 1 app_requested_display 408146600891614 compositor 408146635138507 delta_ms 34.247
+ INFO [layer_commit] motion clock: frame 615 new 1 app_requested_display 408146635350043 compositor 408146669483741 delta_ms 34.134
+ INFO [layer_commit] motion clock: frame 616 new 1 app_requested_display 408146701805175 compositor 408146701533121 delta_ms -0.272
+ INFO [layer_commit] motion clock: frame 617 new 0 app_requested_display 408146701806451 compositor 408146734867731 delta_ms 33.061
+ INFO [layer_commit] motion clock: frame 618 new 1 app_requested_display 408146734867731 compositor 408146768173679 delta_ms 33.306
+ INFO [layer_commit] motion clock: frame 619 new 1 app_requested_display 408146768199223 compositor 408146802596261 delta_ms 34.397
+ INFO [layer_commit] motion clock: frame 620 new 1 app_requested_display 408146834838505 compositor 408146834674778 delta_ms -0.164
+ INFO [layer_commit] motion clock: frame 621 new 0 app_requested_display 408146834838505 compositor 408146868008112 delta_ms 33.170
+ INFO [layer_commit] motion clock: frame 622 new 1 app_requested_display 408146901341446 compositor 408146901229768 delta_ms -0.112
+ INFO [layer_commit] motion clock: frame 623 new 0 app_requested_display 408146901350794 compositor 408146935753498 delta_ms 34.403
+ INFO [layer_commit] motion clock: frame 624 new 1 app_requested_display 408146934572450 compositor 408146970200564 delta_ms 35.628
+ INFO [layer_commit] motion clock: frame 625 new 1 app_requested_display 408146967904636 compositor 408147004430347 delta_ms 36.526
+ INFO [layer_commit] motion clock: frame 626 new 1 app_requested_display 408147003532750 compositor 408147036087715 delta_ms 32.555
+ INFO [layer_commit] motion clock: frame 627 new 1 app_requested_display 408147036866084 compositor 408147067859901 delta_ms 30.994
+ INFO [layer_commit] motion clock: frame 628 new 1 app_requested_display 408147069420755 compositor 408147102226496 delta_ms 32.806
+ INFO [layer_commit] motion clock: frame 629 new 1 app_requested_display 408147102754089 compositor 408147136628028 delta_ms 33.874
+ INFO [layer_commit] motion clock: frame 630 new 1 app_requested_display 408147168893164 compositor 408147168781908 delta_ms -0.111
+ INFO [layer_commit] motion clock: frame 631 new 0 app_requested_display 408147168889982 compositor 408147202112060 delta_ms 33.222
+ INFO [layer_commit] motion clock: frame 632 new 1 app_requested_display 408147203291514 compositor 408147235521508 delta_ms 32.230
+ INFO [layer_commit] motion clock: frame 633 new 1 app_requested_display 408147235445394 compositor 408147269937192 delta_ms 34.492
+ INFO [layer_commit] motion clock: frame 634 new 1 app_requested_display 408147268854090 compositor 408147302074036 delta_ms 33.220
+ INFO [layer_commit] motion clock: frame 635 new 1 app_requested_display 408147302187424 compositor 408147334033085 delta_ms 31.846
+ INFO [layer_commit] motion clock: frame 636 new 1 app_requested_display 408147336603108 compositor 408147368572624 delta_ms 31.970
+ INFO [layer_commit] motion clock: frame 637 new 1 app_requested_display 408147400699753 compositor 408147400823528 delta_ms 0.124
+ INFO [layer_commit] motion clock: frame 638 new 1 app_requested_display 408147434151108 compositor 408147435337628 delta_ms 1.187
+ INFO [layer_commit] motion clock: frame 639 new 1 app_requested_display 408147467484442 compositor 408147467532172 delta_ms 0.048
+ INFO [layer_commit] motion clock: frame 640 new 0 app_requested_display 408147467481554 compositor 408147500862618 delta_ms 33.381
+ INFO [layer_commit] motion clock: frame 641 new 1 app_requested_display 408147534195952 compositor 408147534289535 delta_ms 0.094
+ INFO [layer_commit] motion clock: frame 642 new 1 app_requested_display 408147567529286 compositor 408147568580051 delta_ms 1.051
+ INFO [layer_commit] motion clock: frame 643 new 1 app_requested_display 408147600953531 compositor 408147602900481 delta_ms 1.947
+ INFO [layer_commit] motion clock: frame 644 new 0 app_requested_display 408147600953531 compositor 408147637076751 delta_ms 36.123
+ INFO [layer_commit] motion clock: frame 645 new 1 app_requested_display 408147635244047 compositor 408147671310915 delta_ms 36.067
+ INFO [layer_commit] motion clock: frame 646 new 1 app_requested_display 408147670406205 compositor 408147705270595 delta_ms 34.864
+ INFO [layer_commit] motion clock: frame 647 new 1 app_requested_display 408147703739539 compositor 408147736864393 delta_ms 33.125
+ INFO [layer_commit] motion clock: frame 648 new 1 app_requested_display 408147737973703 compositor 408147768702025 delta_ms 30.728
+ INFO [layer_commit] motion clock: frame 649 new 1 app_requested_display 408147771935177 compositor 408147801117273 delta_ms 29.182
+ INFO [layer_commit] motion clock: frame 650 new 1 app_requested_display 408147802033273 compositor 408147833462602 delta_ms 31.429
+ INFO [layer_commit] motion clock: frame 651 new 1 app_requested_display 408147834450607 compositor 408147868047441 delta_ms 33.597
+ INFO [layer_commit] motion clock: frame 652 new 1 app_requested_display 408147866793514 compositor 408147902567093 delta_ms 35.774
+ INFO [layer_commit] motion clock: frame 653 new 1 app_requested_display 408147900126848 compositor 408147934790425 delta_ms 34.664
+ INFO [layer_commit] motion clock: frame 654 new 1 app_requested_display 408147934711687 compositor 408147967079182 delta_ms 32.367
+ INFO [layer_commit] motion clock: frame 655 new 1 app_requested_display 408147968120561 compositor 408148001639535 delta_ms 33.519
+ INFO [layer_commit] motion clock: frame 656 new 1 app_requested_display 408148000409318 compositor 408148036087414 delta_ms 35.678
+ INFO [layer_commit] motion clock: frame 657 new 1 app_requested_display 408148033742652 compositor 408148068018401 delta_ms 34.276
+ INFO [layer_commit] motion clock: frame 658 new 1 app_requested_display 408148068304351 compositor 408148102324730 delta_ms 34.020
+ INFO [layer_commit] motion clock: frame 659 new 1 app_requested_display 408148102752230 compositor 408148136669071 delta_ms 33.917
+ INFO [layer_commit] motion clock: frame 660 new 1 app_requested_display 408148135658064 compositor 408148168753008 delta_ms 33.095
+ INFO [layer_commit] motion clock: frame 661 new 1 app_requested_display 408148170003249 compositor 408148200917646 delta_ms 30.914
+ INFO [layer_commit] motion clock: frame 662 new 1 app_requested_display 408148202087186 compositor 408148235359377 delta_ms 33.272
+ INFO [layer_commit] motion clock: frame 663 new 1 app_requested_display 408148235420520 compositor 408148269736608 delta_ms 34.316
+ INFO [layer_commit] motion clock: frame 664 new 1 app_requested_display 408148302023505 compositor 408148301836633 delta_ms -0.187
+ INFO [layer_commit] motion clock: frame 665 new 0 app_requested_display 408148302023505 compositor 408148336217146 delta_ms 34.194
+ INFO [layer_commit] motion clock: frame 666 new 1 app_requested_display 408148336400736 compositor 408148370556837 delta_ms 34.156
+ INFO [layer_commit] motion clock: frame 667 new 1 app_requested_display 408148368503037 compositor 408148404803585 delta_ms 36.301
+ INFO [layer_commit] motion clock: frame 668 new 1 app_requested_display 408148402883550 compositor 408148436737294 delta_ms 33.854
+ INFO [layer_commit] motion clock: frame 669 new 1 app_requested_display 408148437223241 compositor 408148468525110 delta_ms 31.302
+ INFO [layer_commit] motion clock: frame 670 new 1 app_requested_display 408148470070462 compositor 408148502840623 delta_ms 32.770
+ INFO [layer_commit] motion clock: frame 671 new 1 app_requested_display 408148503403796 compositor 408148534917250 delta_ms 31.513
+ INFO [layer_commit] motion clock: frame 672 new 1 app_requested_display 408148536173957 compositor 408148567090212 delta_ms 30.916
+ INFO [layer_commit] motion clock: frame 673 new 1 app_requested_display 408148601583918 compositor 408148601573594 delta_ms -0.010
+ INFO [layer_commit] motion clock: frame 674 new 1 app_requested_display 408148634901026 compositor 408148636004267 delta_ms 1.103
+ INFO [layer_commit] motion clock: frame 675 new 1 app_requested_display 408148668234360 compositor 408148668122738 delta_ms -0.112
+ INFO [layer_commit] motion clock: frame 676 new 1 app_requested_display 408148701456072 compositor 408148701456072 delta_ms 0.000
+ INFO [layer_commit] motion clock: frame 677 new 1 app_requested_display 408148734787094 compositor 408148734732910 delta_ms -0.054
+ INFO [layer_commit] motion clock: frame 678 new 0 app_requested_display 408148734787094 compositor 408148769006017 delta_ms 34.219
+ INFO [layer_commit] motion clock: frame 679 new 1 app_requested_display 408148768063416 compositor 408148803115779 delta_ms 35.052
+ INFO [layer_commit] motion clock: frame 680 new 1 app_requested_display 408148802336523 compositor 408148837136917 delta_ms 34.800
+ INFO [layer_commit] motion clock: frame 681 new 1 app_requested_display 408148836449113 compositor 408148868790694 delta_ms 32.342
+ INFO [layer_commit] motion clock: frame 682 new 1 app_requested_display 408148869785217 compositor 408148900501325 delta_ms 30.716
+ INFO [layer_commit] motion clock: frame 683 new 1 app_requested_display 408148902126798 compositor 408148932904187 delta_ms 30.777
+ INFO [layer_commit] motion clock: frame 684 new 1 app_requested_display 408148933834659 compositor 408148967592031 delta_ms 33.757
+ INFO [layer_commit] motion clock: frame 685 new 1 app_requested_display 408148999570855 compositor 408148999993596 delta_ms 0.423
+ INFO [layer_commit] motion clock: frame 686 new 0 app_requested_display 408148999567595 compositor 408149033323670 delta_ms 33.756
+ INFO [layer_commit] motion clock: frame 687 new 1 app_requested_display 408149066657004 compositor 408149067124451 delta_ms 0.467
+ INFO [layer_commit] motion clock: frame 688 new 1 app_requested_display 408149100456261 compositor 408149101762262 delta_ms 1.306
+ INFO [layer_commit] motion clock: frame 689 new 0 app_requested_display 408149100456261 compositor 408149136296816 delta_ms 35.841
+ INFO [layer_commit] motion clock: frame 690 new 1 app_requested_display 408149133789595 compositor 408149168194658 delta_ms 34.405
+ INFO [layer_commit] motion clock: frame 691 new 1 app_requested_display 408149168427158 compositor 408149202671254 delta_ms 34.244
+ INFO [layer_commit] motion clock: frame 692 new 1 app_requested_display 408149201526220 compositor 408149236850499 delta_ms 35.324
+ INFO [layer_commit] motion clock: frame 693 new 1 app_requested_display 408149236004588 compositor 408149268692679 delta_ms 32.688
+ INFO [layer_commit] motion clock: frame 694 new 1 app_requested_display 408149270181817 compositor 408149301035418 delta_ms 30.854
+ INFO [layer_commit] motion clock: frame 695 new 1 app_requested_display 408149302023997 compositor 408149333367517 delta_ms 31.344
+ INFO [layer_commit] motion clock: frame 696 new 1 app_requested_display 408149334368752 compositor 408149365743100 delta_ms 31.374
+ INFO [layer_commit] motion clock: frame 697 new 1 app_requested_display 408149400034185 compositor 408149400419053 delta_ms 0.385
+ INFO [layer_commit] motion clock: frame 698 new 1 app_requested_display 408149433750421 compositor 408149435026456 delta_ms 1.276
+ INFO [layer_commit] motion clock: frame 699 new 0 app_requested_display 408149433750421 compositor 408149467288913 delta_ms 33.538
+ INFO [layer_commit] motion clock: frame 700 new 1 app_requested_display 408149467083977 compositor 408149499565326 delta_ms 32.481
+ INFO [layer_commit] motion clock: frame 701 new 1 app_requested_display 408149501693346 compositor 408149534124999 delta_ms 32.432
+ INFO [layer_commit] motion clock: frame 702 new 1 app_requested_display 408149532898660 compositor 408149568449616 delta_ms 35.551
+ INFO [layer_commit] motion clock: frame 703 new 1 app_requested_display 408149566230842 compositor 408149600472122 delta_ms 34.241
+ INFO [layer_commit] motion clock: frame 704 new 1 app_requested_display 408149600790515 compositor 408149632816248 delta_ms 32.026
+ INFO [layer_commit] motion clock: frame 705 new 1 app_requested_display 408149635115132 compositor 408149665204535 delta_ms 30.089
+ INFO [layer_commit] motion clock: frame 706 new 1 app_requested_display 408149667137582 compositor 408149697657330 delta_ms 30.520
+ INFO [layer_commit] motion clock: frame 707 new 1 app_requested_display 408149699481708 compositor 408149730187628 delta_ms 30.706
+ INFO [layer_commit] motion clock: frame 708 new 1 app_requested_display 408149731869995 compositor 408149762807163 delta_ms 30.937
+ INFO [layer_commit] motion clock: frame 709 new 1 app_requested_display 408149764322034 compositor 408149795519162 delta_ms 31.197
+ INFO [layer_commit] motion clock: frame 710 new 1 app_requested_display 408149796852332 compositor 408149828303229 delta_ms 31.451
+ INFO [layer_commit] motion clock: frame 711 new 1 app_requested_display 408149829471867 compositor 408149861133134 delta_ms 31.661
+ INFO [layer_commit] motion clock: frame 712 new 1 app_requested_display 408149862181462 compositor 408149893992790 delta_ms 31.811
+ INFO [layer_commit] motion clock: frame 713 new 1 app_requested_display 408149894965529 compositor 408149926886326 delta_ms 31.921
+ INFO [layer_commit] motion clock: frame 714 new 1 app_requested_display 408149927795434 compositor 408149958723859 delta_ms 30.928
+ INFO [layer_commit] motion clock: frame 715 new 1 app_requested_display 408149960653088 compositor 408149990771528 delta_ms 30.118
+ INFO [layer_commit] motion clock: frame 716 new 1 app_requested_display 408149993546624 compositor 408150022928945 delta_ms 29.382
+ INFO [layer_commit] motion clock: frame 717 new 1 app_requested_display 408150025384157 compositor 408150055168811 delta_ms 29.785
+ INFO [layer_commit] motion clock: frame 718 new 1 app_requested_display 408150056262127 compositor 408150087523025 delta_ms 31.261
+ INFO [layer_commit] motion clock: frame 719 new 1 app_requested_display 408150089595461 compositor 408150120002849 delta_ms 30.407
+ INFO [layer_commit] motion clock: frame 720 new 1 app_requested_display 408150120856359 compositor 408150152577517 delta_ms 31.721
+ INFO [layer_commit] motion clock: frame 721 new 1 app_requested_display 408150153335263 compositor 408150185206859 delta_ms 31.872
+ INFO [layer_commit] motion clock: frame 722 new 1 app_requested_display 408150185909931 compositor 408150217897688 delta_ms 31.988
+ INFO [layer_commit] motion clock: frame 723 new 1 app_requested_display 408150219243265 compositor 408150250639696 delta_ms 31.396
+ INFO [layer_commit] motion clock: frame 724 new 1 app_requested_display 408150251226610 compositor 408150283431786 delta_ms 32.205
+ INFO [layer_commit] motion clock: frame 725 new 1 app_requested_display 408150284559944 compositor 408150316312585 delta_ms 31.753
+ INFO [layer_commit] motion clock: frame 726 new 1 app_requested_display 408150317301952 compositor 408150349251222 delta_ms 31.949
+ INFO [layer_commit] motion clock: frame 727 new 1 app_requested_display 408150350098454 compositor 408150381101540 delta_ms 31.003
+ INFO [layer_commit] motion clock: frame 728 new 1 app_requested_display 408150382977641 compositor 408150413149753 delta_ms 30.172
+ INFO [layer_commit] motion clock: frame 729 new 1 app_requested_display 408150415916278 compositor 408150445314673 delta_ms 29.398
+ INFO [layer_commit] motion clock: frame 730 new 1 app_requested_display 408150446483087 compositor 408150477594693 delta_ms 31.112
+ INFO [layer_commit] motion clock: frame 731 new 1 app_requested_display 408150479812889 compositor 408150509948914 delta_ms 30.136
+ INFO [layer_commit] motion clock: frame 732 new 1 app_requested_display 408150511977809 compositor 408150542406330 delta_ms 30.429
+ INFO [layer_commit] motion clock: frame 733 new 1 app_requested_display 408150544257829 compositor 408150574930094 delta_ms 30.672
+ INFO [layer_commit] motion clock: frame 734 new 1 app_requested_display 408150576611690 compositor 408150607520792 delta_ms 30.909
+ INFO [layer_commit] motion clock: frame 735 new 1 app_requested_display 408150609069106 compositor 408150640214299 delta_ms 31.145
+ INFO [layer_commit] motion clock: frame 736 new 1 app_requested_display 408150640854126 compositor 408150672995401 delta_ms 32.141
+ INFO [layer_commit] motion clock: frame 737 new 1 app_requested_display 408150674187380 compositor 408150705809091 delta_ms 31.622
+ INFO [layer_commit] motion clock: frame 738 new 1 app_requested_display 408150706328655 compositor 408150738670873 delta_ms 32.342
+ INFO [layer_commit] motion clock: frame 739 new 1 app_requested_display 408150739661989 compositor 408150771569245 delta_ms 31.907
+ INFO [layer_commit] motion clock: frame 740 new 1 app_requested_display 408150772002941 compositor 408150803410229 delta_ms 31.407
+ INFO [layer_commit] motion clock: frame 741 new 1 app_requested_display 408150804901313 compositor 408150835459105 delta_ms 30.558
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 10.0 -> 11.6 Mbit/s (p90 utilisation 0.35, 0 lost, 0 late over 61 frames)
+ INFO [layer_commit] motion clock: frame 742 new 1 app_requested_display 408150836743563 compositor 408150867616408 delta_ms 30.873
+ INFO [layer_commit] motion clock: frame 743 new 1 app_requested_display 408150868792439 compositor 408150899869208 delta_ms 31.077
+ INFO [layer_commit] motion clock: frame 744 new 1 app_requested_display 408150902125773 compositor 408150932199487 delta_ms 30.074
+ INFO [layer_commit] motion clock: frame 745 new 1 app_requested_display 408150934283076 compositor 408150964623659 delta_ms 30.341
+ INFO [layer_commit] motion clock: frame 746 new 1 app_requested_display 408150966531374 compositor 408150997168949 delta_ms 30.638
+ INFO [layer_commit] motion clock: frame 747 new 1 app_requested_display 408150998861653 compositor 408151029788301 delta_ms 30.927
+ INFO [layer_commit] motion clock: frame 748 new 1 app_requested_display 408151031285825 compositor 408151062481326 delta_ms 31.196
+ INFO [layer_commit] motion clock: frame 749 new 1 app_requested_display 408151063836167 compositor 408151095238544 delta_ms 31.402
+ INFO [layer_commit] motion clock: frame 750 new 1 app_requested_display 408151096455519 compositor 408151126906714 delta_ms 30.451
+ INFO [layer_commit] motion clock: frame 751 new 1 app_requested_display 408151129148544 compositor 408151160238359 delta_ms 31.090
+ INFO [layer_commit] motion clock: frame 752 new 1 app_requested_display 408151193572262 compositor 408151193568900 delta_ms -0.003
+ INFO [layer_commit] motion clock: frame 753 new 1 app_requested_display 408151226902234 compositor 408151229021836 delta_ms 2.120
+ INFO [layer_commit] motion clock: frame 754 new 1 app_requested_display 408151260235568 compositor 408151264214200 delta_ms 3.979
+ INFO [layer_commit] motion clock: frame 755 new 1 app_requested_display 408151295687938 compositor 408151299131892 delta_ms 3.444
+ INFO [layer_commit] motion clock: frame 756 new 1 app_requested_display 408151330880302 compositor 408151333845988 delta_ms 2.966
+ INFO [layer_commit] motion clock: frame 757 new 1 app_requested_display 408151365798560 compositor 408151368242280 delta_ms 2.444
+ INFO [layer_commit] motion clock: frame 758 new 0 app_requested_display 408151365798886 compositor 408151400317777 delta_ms 34.519
+ INFO [layer_commit] motion clock: frame 759 new 1 app_requested_display 408151400512982 compositor 408151432519841 delta_ms 32.007
+ INFO [layer_commit] motion clock: frame 760 new 1 app_requested_display 408151433651111 compositor 408151464775394 delta_ms 31.124
+ INFO [layer_commit] motion clock: frame 761 new 1 app_requested_display 408151465852693 compositor 408151497110284 delta_ms 31.258
+ INFO [layer_commit] motion clock: frame 762 new 1 app_requested_display 408151499186027 compositor 408151529662882 delta_ms 30.477
+ INFO [layer_commit] motion clock: frame 763 new 1 app_requested_display 408151531441580 compositor 408151562914770 delta_ms 31.473
+ INFO [layer_commit] motion clock: frame 764 new 1 app_requested_display 408151563782554 compositor 408151596042416 delta_ms 32.260
+ INFO [layer_commit] motion clock: frame 765 new 1 app_requested_display 408151629375750 compositor 408151628968202 delta_ms -0.408
+ INFO [layer_commit] motion clock: frame 766 new 1 app_requested_display 408151662301536 compositor 408151661820349 delta_ms -0.481
+ INFO [layer_commit] motion clock: frame 767 new 0 app_requested_display 408151662298120 compositor 408151694625727 delta_ms 32.328
+ INFO [layer_commit] motion clock: frame 768 new 1 app_requested_display 408151695150267 compositor 408151727419278 delta_ms 32.269
+ INFO [layer_commit] motion clock: frame 769 new 1 app_requested_display 408151728483601 compositor 408151760264697 delta_ms 31.781
+ INFO [layer_commit] motion clock: frame 770 new 1 app_requested_display 408151761295297 compositor 408151791937685 delta_ms 30.642
+ INFO [layer_commit] motion clock: frame 771 new 1 app_requested_display 408151794088848 compositor 408151823800026 delta_ms 29.711
+ INFO [layer_commit] motion clock: frame 772 new 1 app_requested_display 408151826934267 compositor 408151856033758 delta_ms 29.099
+ INFO [layer_commit] motion clock: frame 773 new 1 app_requested_display 408151858600633 compositor 408151888323923 delta_ms 29.723
+ INFO [layer_commit] motion clock: frame 774 new 1 app_requested_display 408151889363372 compositor 408151920712715 delta_ms 31.349
+ INFO [layer_commit] motion clock: frame 775 new 1 app_requested_display 408151921657257 compositor 408151953190667 delta_ms 31.533
+ INFO [layer_commit] motion clock: frame 776 new 1 app_requested_display 408151954047065 compositor 408151985746855 delta_ms 31.700
+ INFO [layer_commit] motion clock: frame 777 new 1 app_requested_display 408151986525017 compositor 408152018368027 delta_ms 31.843
+ INFO [layer_commit] motion clock: frame 778 new 1 app_requested_display 408152019080189 compositor 408152051037663 delta_ms 31.957
+ INFO [layer_commit] motion clock: frame 779 new 1 app_requested_display 408152051701361 compositor 408152083779204 delta_ms 32.078
+ INFO [layer_commit] motion clock: frame 780 new 1 app_requested_display 408152085031415 compositor 408152116605014 delta_ms 31.574
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 11.6 -> 10.0 Mbit/s (p90 utilisation 1.13, 1 lost, 0 late over 22 frames)
+ INFO [layer_commit] motion clock: frame 781 new 1 app_requested_display 408152117701051 compositor 408152149495676 delta_ms 31.795
+ INFO [layer_commit] motion clock: frame 782 new 1 app_requested_display 408152150442592 compositor 408152182419414 delta_ms 31.977
+ INFO [layer_commit] motion clock: frame 783 new 1 app_requested_display 408152183273134 compositor 408152214272768 delta_ms 31.000
+ INFO [layer_commit] motion clock: frame 784 new 1 app_requested_display 408152216163796 compositor 408152246352590 delta_ms 30.189
+ INFO [layer_commit] motion clock: frame 785 new 1 app_requested_display 408152249087534 compositor 408152278551190 delta_ms 29.464
+ INFO [layer_commit] motion clock: frame 786 new 1 app_requested_display 408152280939320 compositor 408152310829177 delta_ms 29.890
+ INFO [layer_commit] motion clock: frame 787 new 1 app_requested_display 408152313019142 compositor 408152343194015 delta_ms 30.175
+ INFO [layer_commit] motion clock: frame 788 new 1 app_requested_display 408152345217742 compositor 408152375627973 delta_ms 30.410
+ INFO [layer_commit] motion clock: frame 789 new 1 app_requested_display 408152377499507 compositor 408152408157048 delta_ms 30.658
+ INFO [layer_commit] motion clock: frame 790 new 1 app_requested_display 408152409864345 compositor 408152440781170 delta_ms 30.917
+ INFO [layer_commit] motion clock: frame 791 new 1 app_requested_display 408152442298303 compositor 408152473487937 delta_ms 31.190
+ INFO [layer_commit] motion clock: frame 792 new 1 app_requested_display 408152474822116 compositor 408152506246394 delta_ms 31.424
+ INFO [layer_commit] motion clock: frame 793 new 1 app_requested_display 408152507446238 compositor 408152539062110 delta_ms 31.616
+ INFO [layer_commit] motion clock: frame 794 new 1 app_requested_display 408152539579728 compositor 408152571905194 delta_ms 32.325
+ INFO [layer_commit] motion clock: frame 795 new 1 app_requested_display 408152572394584 compositor 408152604793439 delta_ms 32.399
+ INFO [layer_commit] motion clock: frame 796 new 1 app_requested_display 408152605237668 compositor 408152636650092 delta_ms 31.412
+ INFO [layer_commit] motion clock: frame 797 new 1 app_requested_display 408152638126773 compositor 408152668708207 delta_ms 30.581
+ INFO [layer_commit] motion clock: frame 798 new 1 app_requested_display 408152669979424 compositor 408152700856253 delta_ms 30.877
+ INFO [layer_commit] motion clock: frame 799 new 1 app_requested_display 408152702037539 compositor 408152733089171 delta_ms 31.052
+ INFO [layer_commit] motion clock: frame 800 new 1 app_requested_display 408152734189587 compositor 408152765429882 delta_ms 31.240
+ INFO [layer_commit] motion clock: frame 801 new 1 app_requested_display 408152767522593 compositor 408152797898268 delta_ms 30.376
+ INFO [layer_commit] motion clock: frame 802 new 1 app_requested_display 408152799755511 compositor 408152830461418 delta_ms 30.706
+ INFO [client_disconnected] Client 1 disconnected
+ INFO [update_session_state_locked] Stopped native session, 0 active app session(s).

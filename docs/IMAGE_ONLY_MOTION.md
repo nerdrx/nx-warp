@@ -107,3 +107,5 @@ The subsequent [actual GPU cap test](../bench/results/90fps-2026-09-11/motion-gp
 The [quantized-field follow-up](../bench/results/90fps-2026-09-11/motion-quantized-cap/README.md) reproduces the signed-byte representation before GPU warping. Its nearly unchanged error indicates that vector precision is not the main source of this scene’s distortion; this is not a full client SNORM/foveation test.
 
 The cap was subsequently [installed and activated on the Pico](../bench/results/90fps-2026-09-11/pico-cap/README.md). Two short moving-scene runs completed, with an actual client log proving step reduction before pose compensation and a headset recording. This establishes functional integration, not 90 fresh FPS, physical-motion quality or lower latency.
+
+The [Pico app-time follow-up](../bench/results/90fps-2026-09-11/pico-motion-clock/README.md) distinguishes requested display timestamps from capture age and checks the coupled image/pose fraction. A live functional run recorded source-clock pose adjustments; object alignment and physical latency remain unproved.
