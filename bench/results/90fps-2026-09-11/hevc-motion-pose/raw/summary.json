@@ -1,0 +1,107 @@
+[
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hevc-pose-on-client.log",
+    "client": {
+      "n": 9,
+      "start": "11:25:22.292",
+      "end": "11:25:38.316",
+      "means": {
+        "fresh_per_s": 56.833333333333336,
+        "iterations": 180.33333333333334,
+        "iterations_per_s": 89.98888888888888,
+        "older_available": 180.22222222222223,
+        "own_gpu_ms": 5.7555555555555555,
+        "source_offset_ms": -10.722222222222221,
+        "submit_lead_ms": 33.32222222222222,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "decoder": {
+      "n": 0,
+      "start": null,
+      "end": null,
+      "means": {}
+    },
+    "label": "hevc-pose-on",
+    "motion": {
+      "matched": 889,
+      "active": 0,
+      "applied": 0,
+      "missing": 100,
+      "unsafe": 0,
+      "mean_active_step": 0
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hevc-pose-off-client.log",
+    "client": {
+      "n": 7,
+      "start": "11:26:00.320",
+      "end": "11:26:12.355",
+      "means": {
+        "fresh_per_s": 58.0,
+        "iterations": 180.28571428571428,
+        "iterations_per_s": 89.91428571428571,
+        "older_available": 186.85714285714286,
+        "own_gpu_ms": 6.114285714285714,
+        "source_offset_ms": -9.571428571428571,
+        "submit_lead_ms": 34.44285714285714,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "decoder": {
+      "n": 0,
+      "start": null,
+      "end": null,
+      "means": {}
+    },
+    "label": "hevc-pose-off",
+    "motion": {
+      "matched": 0,
+      "active": 0,
+      "applied": 0,
+      "missing": 0,
+      "unsafe": 0,
+      "mean_active_step": 0
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hevc-pose-history-client.log",
+    "client": {
+      "n": 9,
+      "start": "11:28:45.139",
+      "end": "11:29:01.184",
+      "means": {
+        "fresh_per_s": 57.666666666666664,
+        "iterations": 180.55555555555554,
+        "iterations_per_s": 89.98888888888888,
+        "older_available": 180.33333333333334,
+        "own_gpu_ms": 6.111111111111111,
+        "source_offset_ms": -7.288888888888888,
+        "submit_lead_ms": 33.63333333333333,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "decoder": {
+      "n": 0,
+      "start": null,
+      "end": null,
+      "means": {}
+    },
+    "label": "hevc-pose-history",
+    "motion": {
+      "matched": 1043,
+      "active": 156,
+      "applied": 156,
+      "missing": 0,
+      "unsafe": 0,
+      "mean_active_step": 0.1645641025641026
+    }
+  }
+]
