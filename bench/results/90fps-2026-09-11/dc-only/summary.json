@@ -1,0 +1,72 @@
+{
+  "dc-base-a": {
+    "file": "nx-scratch/motion-live/dc-base-a-client.log",
+    "client": {
+      "n": 24,
+      "start": "02:24:38.284",
+      "end": "02:25:24.429",
+      "means": {
+        "fresh_per_s": 48.145833333333336,
+        "iterations": 171.08333333333334,
+        "iterations_per_s": 85.27083333333333,
+        "older_available": 0.0,
+        "own_gpu_ms": 2.858333333333333,
+        "source_offset_ms": 75.86666666666666,
+        "submit_lead_ms": 33.5625,
+        "wait_attempts": 87.5,
+        "wait_successes": 12.708333333333334,
+        "wait_total_ms": 79.76308333333334
+      }
+    },
+    "decoder": {
+      "n": 24,
+      "start": "02:24:38.272",
+      "end": "02:25:24.537",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 14.270833333333334,
+        "frames": 96.625,
+        "frames_per_s": 48.3125,
+        "nxvc_gpu_ms": 12.816666666666668,
+        "pass_a_ms": 4.558333333333334,
+        "pass_b_ms": 8.266666666666667,
+        "queue_ms": 1.4291666666666665
+      }
+    }
+  },
+  "dc-candidate-a": {
+    "file": "nx-scratch/motion-live/dc-candidate-a-client.log",
+    "client": {
+      "n": 24,
+      "start": "02:25:44.729",
+      "end": "02:26:30.866",
+      "means": {
+        "fresh_per_s": 50.104166666666664,
+        "iterations": 155.875,
+        "iterations_per_s": 77.72083333333333,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.0124999999999997,
+        "source_offset_ms": 78.30416666666666,
+        "submit_lead_ms": 36.75416666666667,
+        "wait_attempts": 75.5,
+        "wait_successes": 19.833333333333332,
+        "wait_total_ms": 59.72079166666666
+      }
+    },
+    "decoder": {
+      "n": 24,
+      "start": "02:25:44.718",
+      "end": "02:26:30.920",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 15.795833333333334,
+        "frames": 100.41666666666667,
+        "frames_per_s": 50.208333333333336,
+        "nxvc_gpu_ms": 13.966666666666667,
+        "pass_a_ms": 4.954166666666667,
+        "pass_b_ms": 9.008333333333333,
+        "queue_ms": 1.7916666666666667
+      }
+    }
+  }
+}

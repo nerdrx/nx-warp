@@ -1,0 +1,58 @@
+diff --git a/vk/decoder/passB/reconstruct.comp b/vk/decoder/passB/reconstruct.comp
+index 54316e6..b7038b7 100644
+--- a/vk/decoder/passB/reconstruct.comp
++++ b/vk/decoder/passB/reconstruct.comp
+@@ -1483,7 +1483,23 @@ void main() {
+         // the 8x8 path keeps exactly the 64 B of scratch ../README.md prices.
+         int res0[8], res1[8];
+         for (int c = 0; c < 8; ++c) { res0[c] = 0; res1[c] = 0; }
+-
++        bool dcOnly = false;
++
++#ifdef NXVW_DC_ONLY
++        // A one-coefficient 8x8 DCT block contains only DC.  Its inverse is
++        // constant, so evaluate the two existing IDCT DC stages once per
++        // lane and write the block directly.  Keep this opt-in until output
++        // hashes have been checked against the ordinary module.
++        if (coded && tskip == 0 && bs == kBlock && kXformLarge == 0 &&
++            splitFlag == 0 && blockLen == 1) {
++            int dc = dqCoef(blockBase, blockScan, blockLen, planeQp,
++                            wbase, lb, 0);
++            int first = clamp16((dc * kC4 + kIdctRound1) >> kIdctShift1);
++            int value = clamp16((first * kC4 + kIdctRound2) >> kIdctShift2);
++            dcOnly = true;
++            for (int c = 0; c < 8; ++c) { res0[c] = value; res1[c] = value; }
++        }
++#endif
+         if (tskip != 0) {
+             // Transform skip: dequantized coefficients ARE the residual, in
+             // raster order, flat weight.  [REF] reconstruct_plane.
+@@ -1756,7 +1772,7 @@ void main() {
+                 res1[6] = clamp16((t2 + kIdctRound2) >> kIdctShift2);
+                 res1[7] = clamp16((t3 + kIdctRound2) >> kIdctShift2);
+             
+-            } else if (coded) {
++            } else if (coded && !dcOnly) {
+                 int y0, y1, y2, y3, y4, y5, y6, y7;
+                 for (int hf = 0; hf < 2; ++hf) {
+                     int r = (sub << 1) + hf;
+@@ -1804,10 +1820,18 @@ void main() {
+                     int e = (by * 8 + c) * size + bx * 8 + 2 * sub;
+                     sPlane[store + (e >> 1)] = pack16x2(res0[c], res1[c]);
+                 }
++            } else if (dcOnly) {
++                // The row/column barriers remain uniform; only the IDCT work
++                // is removed.  The prediction stage still consumes the
++                // residual arrays, just like the ordinary path.
++                for (int c = 0; c < 8; ++c) {
++                    int e = (by * 8 + c) * size + bx * 8 + 2 * sub;
++                    sPlane[store + (e >> 1)] = pack16x2(res0[c], res1[c]);
++                }
+             }
+             barrier();
+             // Column pass: rows 2*sub, 2*sub+1 of the transposed block.
+-            if (coded && (kSplitTool == 0 || splitFlag == 0)) {
++            if (coded && !dcOnly && (kSplitTool == 0 || splitFlag == 0)) {
+                 int y0, y1, y2, y3, y4, y5, y6, y7;
+                 for (int hf = 0; hf < 2; ++hf) {
+                     int r = (sub << 1) + hf;
