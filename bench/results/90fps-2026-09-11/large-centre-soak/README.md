@@ -30,3 +30,13 @@ Separate 25-second capture run, excluded from timing. These are actual client-re
 ![Actual Pico eye 1](eye1.png)
 
 Raw logs, status, profile and analysis scripts are in [raw](raw/). The frame-time chart is based on logged fresh-source counts, not the display refresh setting.
+
+## Additional 25-minute stability run
+
+Same retained profile, separate 1500-second run. Harness complete: **True**.
+Fresh selections: **52.99/covered wall-second** (53.16/reported second).
+Decode GPU mean: **12.992 ms**, presentation GPU: **3.095 ms**.
+Source-offset proxy: **76.96 ms**.
+Post-warm coverage: 1488.77 seconds; maximum summary gap: 2.028 seconds; logged session stops: 0.
+
+The log label contains “thermal”; this is duration-based stability evidence, **not a temperature, power or thermal-throttling measurement**. It does not establish 90 fresh FPS. Raw logs and both analyses are included alongside the earlier run.
