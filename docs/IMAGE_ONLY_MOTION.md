@@ -91,3 +91,7 @@ The [gallery directory](../bench/results/90fps-2026-09-11/motion-surfaces/README
 Scripts retain the original local sibling paths and need adjustment for another checkout. Python dependencies are NumPy/Pillow, plus OpenCV 5.0.0.93 for DIS and homography experiments; ffmpeg packages the videos. Vulkan validation was enabled. GPU readback outputs are actual computations, but **this work does not measure Pico GPU time, network transport, HEVC decoding, synchronized stereo or motion-to-photon latency**.
 
 No regional method or 8px grid was deployed as a live default. The separately requested tiny-blur default was built and installed for the supported ordinary opaque client motion path; it has an off switch and does not solve regional prediction. The selected large-centre NX runtime configuration remains intact.
+
+## Follow-up: image-only layers and background completion
+
+A [new animated layer experiment](../bench/results/90fps-2026-09-11/motion-layers/README.md) tests rigid colour regions, optical-flow consistency and filling the old silhouette before composition. It isolates two remaining problems: correspondence for fast motion, and visibility when objects uncover or overlap pixels. These CPU diagnostics are not integrated and do not establish a latency improvement.
