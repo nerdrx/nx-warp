@@ -123,3 +123,5 @@ A [zero-motion photometric preference](../bench/results/90fps-2026-09-11/motion-
 A [Pico retention repeat with actual headset recordings](../bench/results/90fps-2026-09-11/pico-retained-repeat/README.md) reproduces fewer estimated-timeline stalls with four retained sources, at increased warp GPU cost and older source timestamps. Screen recordings are separate from timing runs; visual/physical-latency proof remains limited.
 
 The [retained-slot indexing fix](../bench/results/90fps-2026-09-11/retained-slot-fix/README.md) preserves four distinct source IDs even when decoding skips frames. Host regressions and Android compilation pass; it is not yet installed or validated live.
+
+A [causal motion-history comparison](../bench/results/90fps-2026-09-11/motion-temporal-field/README.md) finds a promising 22.22ms offline compromise: 29.5% green-block position progress versus 16.4% for the cap, with a centroid temporal-error diagnostic about 5% higher. A matched-strength control supports a smoothing benefit, but silhouettes remain distorted and no live or physical-latency result is established.
