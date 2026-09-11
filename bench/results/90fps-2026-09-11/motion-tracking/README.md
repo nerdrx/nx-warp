@@ -32,7 +32,7 @@ The initial requirement of 12 tracked corners never activated reuse in this scen
 
 Smaller fragment counts reduce visible damage and CPU work, but exposed-background smears and incorrect object motion remain. Translation-only prediction leaves the rapidly rotating bar at an old orientation. Tests cover basic identity continuity, disappearance, disjoint masks, hue wrap and optional merging. They do not certify perceptual jitter, final straight-edge quality or general object tracking.
 
-The timing table below describes one unisolated host CPU run per variant, including image loading, tracking and composition, excluding future loading/scoring and video generation. It is not a GPU benchmark, throughput claim, Pico measurement or motion-to-photon latency. **No method here is deployed.**
+The timing table below describes one unisolated host CPU run per variant, including image loading, tracking and composition. The merged runner also includes future loading/scoring in its recorded CPU time; the other runners exclude those steps. All exclude video generation. This timing-scope mismatch prevents treating small timing differences as a clean comparison. It is not a GPU benchmark, throughput claim, Pico measurement or motion-to-photon latency. **No method here is deployed.**
 
 Scripts require NumPy, Pillow, OpenCV and ffmpeg. They retain the original sibling `nx-scratch/motion-regions` and `motion-scene` paths; adjust for another checkout. Source animation is the [earlier scene generator](../motion-scene/scene.py). All five variants are preserved, including the inactive cache experiment.
 
