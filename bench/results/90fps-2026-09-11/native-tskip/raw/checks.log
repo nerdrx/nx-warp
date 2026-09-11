@@ -1,0 +1,12 @@
+/run/media/nerdrx/Lex/claude/nx-scratch/nxwarp-atlas-live-build/bin/nxvc-vkenc-api --in /run/media/nerdrx/Lex/claude/nx-scratch/large-centre/fixture.yuv --w 5376 --h 2688 --eyes 2 --frames 1 --qp 40 --entropy lite --inter --intra-period 1 --planar-gpu-centre --centre-quarter --centre-graduated --out /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/base.nxv
+/run/media/nerdrx/Lex/claude/nx-scratch/nxwarp-atlas-live-build/bin/nxv-dec --in /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/base.nxv --out /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/base-cpu.nv12 --pix yuv420p --nv12
+1 frame(s), 5376x2688 yuv420p
+/run/media/nerdrx/Lex/claude/nx-scratch/nxwarp-atlas-live-build/bin/nxvc-vkdec --in /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/base.nxv --out /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/base-gpu.nv12 --format ycbcr420 --nv12 --unorm 0 --stats
+1 frame(s), 5376x2688 yuv420p on AMD Radeon RX 7900 XTX (RADV NAVI31)
+frame 0: 1450238 B, 3528 tiles (0 tskip, 1 lane group(s), 3 dispatches)  parse 0.390  submit 52.734  passA 0.253  passW 0.000  passB 0.180  gpu 1.265  total 54.513 ms
+/run/media/nerdrx/Lex/claude/nx-scratch/nxwarp-atlas-live-build/bin/nxvc-vkenc-api --in /run/media/nerdrx/Lex/claude/nx-scratch/large-centre/fixture.yuv --w 5376 --h 2688 --eyes 2 --frames 1 --qp 40 --entropy lite --inter --intra-period 1 --planar-gpu-centre --centre-quarter --centre-graduated --out /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/skip.nxv
+/run/media/nerdrx/Lex/claude/nx-scratch/nxwarp-atlas-live-build/bin/nxv-dec --in /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/skip.nxv --out /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/skip-cpu.nv12 --pix yuv420p --nv12
+1 frame(s), 5376x2688 yuv420p
+/run/media/nerdrx/Lex/claude/nx-scratch/nxwarp-atlas-live-build/bin/nxvc-vkdec --in /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/skip.nxv --out /run/media/nerdrx/Lex/claude/nx-scratch/native-tskip/skip-gpu.nv12 --format ycbcr420 --nv12 --unorm 0 --stats
+1 frame(s), 5376x2688 yuv420p on AMD Radeon RX 7900 XTX (RADV NAVI31)
+frame 0: 1643418 B, 3528 tiles (416 tskip, 1 lane group(s), 3 dispatches)  parse 0.408  submit 1.144  passA 0.279  passW 0.000  passB 0.165  gpu 1.278  total 2.969 ms

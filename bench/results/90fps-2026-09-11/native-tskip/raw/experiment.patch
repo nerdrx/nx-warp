@@ -1,0 +1,35 @@
+diff --git a/vk/encoder/api/nxvc_vk_enc.cpp b/vk/encoder/api/nxvc_vk_enc.cpp
+index 8f7239a..8e0c6e2 100644
+--- a/vk/encoder/api/nxvc_vk_enc.cpp
++++ b/vk/encoder/api/nxvc_vk_enc.cpp
+@@ -68,6 +68,7 @@ nxvc_vke_status createerr(nxvc_vke_status st, const char *fmt, ...) {
+  * either one has to be made here too, deliberately. */
+ constexpr uint64_t kToolsEmitted =
+     (1ull << 0) |  /* INTRA_DC_PLANE                                        */
++    (1ull << 1) |  /* TRANSFORM_SKIP: opt-in native-centre probe             */
+     (1ull << 10) | /* INTER: with create_info::inter; see the note below    */
+     (1ull << 11) | /* WARP: travels with INTER, never alone                 */
+     (1ull << 6) |  /* CUSTOM_TABLES: tables trained on the frame            */
+@@ -315,6 +316,13 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
+     e->cfg.planar_graduated =
+         e->cfg.planar_gpu_centre &&
+         (ci->flags & NXVC_VKE_FLAG_CENTRE_GRADUATED) != 0;
++    const char *native_tskip = std::getenv("NXVC_NATIVE_TRANSFORM_SKIP");
++    if (native_tskip && std::strcmp(native_tskip, "1") == 0 &&
++        !e->cfg.planar_gpu_centre) {
++        delete e;
++        return createerr(NXVC_VKE_ERR_ARG,
++                         "NXVC_NATIVE_TRANSFORM_SKIP requires GPU_CENTRE PLANAR");
++    }
+     /* 0 means "the default", which is the reference's swept value.  Spelled
+      * here rather than in the Config default so that a caller passing a
+      * zeroed create_info gets the same 8 the harness does. */
+@@ -330,7 +338,7 @@ extern "C" nxvc_vke_status nxvc_vk_encoder_create(const nxvc_vke_create_info *ci
+     e->cfg.wm_id = 0;
+     e->cfg.chroma_qp_off = 0;
+     e->cfg.nsub_log2 = 3; /* eight rANS lanes; paper 6.3 fixes v1 at eight */
+-    e->cfg.tskip = 0;
++    e->cfg.tskip = native_tskip && std::strcmp(native_tskip, "1") == 0 ? 1 : 0;
+     e->cfg.ctx_v2 = true;
+     /* The entropy-side tools of bitstream minor 6, all on.  Every one of them
+      * is lossless -- the coefficients E3 produces are the same either way --

@@ -1,0 +1,72 @@
+[
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/tskip-on-a-client.log",
+    "client": {
+      "n": 9,
+      "start": "09:55:37.392",
+      "end": "09:55:53.426",
+      "means": {
+        "fresh_per_s": 45.44444444444444,
+        "iterations": 155.33333333333334,
+        "iterations_per_s": 77.48888888888888,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.266666666666667,
+        "source_offset_ms": 85.47777777777777,
+        "submit_lead_ms": 37.900000000000006,
+        "wait_attempts": 94.0,
+        "wait_successes": 29.555555555555557,
+        "wait_total_ms": 69.07755555555555
+      }
+    },
+    "decoder": {
+      "n": 9,
+      "start": "09:55:37.352",
+      "end": "09:55:53.423",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 17.12222222222222,
+        "frames": 91.33333333333333,
+        "frames_per_s": 45.666666666666664,
+        "nxvc_gpu_ms": 14.788888888888888,
+        "pass_a_ms": 6.955555555555556,
+        "pass_b_ms": 7.822222222222223,
+        "queue_ms": 2.288888888888889
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/tskip-off-b-client.log",
+    "client": {
+      "n": 9,
+      "start": "09:56:12.360",
+      "end": "09:56:28.420",
+      "means": {
+        "fresh_per_s": 46.666666666666664,
+        "iterations": 122.11111111111111,
+        "iterations_per_s": 60.800000000000004,
+        "older_available": 0.0,
+        "own_gpu_ms": 4.322222222222222,
+        "source_offset_ms": 85.37777777777778,
+        "submit_lead_ms": 39.97777777777778,
+        "wait_attempts": 34.0,
+        "wait_successes": 5.222222222222222,
+        "wait_total_ms": 30.828444444444447
+      }
+    },
+    "decoder": {
+      "n": 9,
+      "start": "09:56:12.290",
+      "end": "09:56:28.374",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 16.833333333333332,
+        "frames": 93.77777777777777,
+        "frames_per_s": 46.888888888888886,
+        "nxvc_gpu_ms": 14.466666666666665,
+        "pass_a_ms": 5.355555555555556,
+        "pass_b_ms": 9.088888888888889,
+        "queue_ms": 2.3444444444444446
+      }
+    }
+  }
+]
