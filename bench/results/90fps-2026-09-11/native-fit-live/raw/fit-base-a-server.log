@@ -1,0 +1,229 @@
+Client connected
+Server started, PID 226251
+ INFO [ipc_server_main_common] WiVRn 'nx-atlas-live-920ac878-dirty' starting up...
+Setting the OpenVR compatibility library to /opt/xrizer
+Listening for secondary paths on port 9757
+ INFO [vk_bundle] Vulkan instance created:
+	GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+	queue families: 1 3 1 (main, encode, transfer)
+
+ INFO [get_encoder_settings] nxwarp: both eyes on stream 0 as one 5376x2688 stereo frame (3528 tiles), stream 1 has no encoder
+ INFO [compositor] compositor: lens mask on, margin 1 tile; the foveation pass flattens what it covers (0 of 0 tiles per eye so far)
+ INFO [comp_vulkan_formats_log] Supported formats:
+	VK_FORMAT_R16G16B16A16_UNORM: true
+	VK_FORMAT_R16G16B16A16_SFLOAT: true
+	VK_FORMAT_R16G16B16_UNORM: false
+	VK_FORMAT_R16G16B16_SFLOAT: false
+	VK_FORMAT_R8G8B8A8_SRGB: true
+	VK_FORMAT_B8G8R8A8_SRGB: true
+	VK_FORMAT_R8G8B8_SRGB: false
+	VK_FORMAT_R8G8B8A8_UNORM: true
+	VK_FORMAT_B8G8R8A8_UNORM: true
+	VK_FORMAT_R8G8B8_UNORM: false
+	VK_FORMAT_B8G8R8_UNORM: false
+	VK_FORMAT_R5G6B5_UNORM_PACK16: true
+	VK_FORMAT_R32_SFLOAT: true
+	VK_FORMAT_D32_SFLOAT: true
+	VK_FORMAT_D16_UNORM: true
+	VK_FORMAT_X8_D24_UNORM_PACK32: false
+	VK_FORMAT_D24_UNORM_S8_UINT: false
+	VK_FORMAT_D32_SFLOAT_S8_UINT: true
+	VK_FORMAT_S8_UINT: true
+ INFO [print_encoders] Encoder configuration:
+	* nxwarp (nxwarp 8-bit)
+	  size: 2688x2688
+	  bitrate: 47.8Mbit/s
+	* nxwarp (nxwarp 8-bit)
+	  size: 2688x1344
+	  bitrate: 1.1Mbit/s
+ INFO [video_encoder_nxwarp] nxwarp: "planar-gpu-centre" enabled (mixed centre/periphery stream)
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "prefer" (nxvc tool bit 35)
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 tools 0x842200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit35), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (84x42 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 0 2688x2688, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (84x42 tiles, intra only, one QP per frame), rate control from QP 28 in 22..40 at 90 Hz, send pacing follows the headset's decode cost, 15..90 fps, 84x42 tiles in 7 band(s), 1166 bytes per transport tile
+ INFO [video_encoder_nxwarp] nxwarp: "planar-gpu-centre" enabled (mixed centre/periphery stream)
+ INFO [video_encoder_nxwarp] nxwarp: "entropy": "auto" -> lite (the headset advertises ENTROPY_LITE)
+ INFO [video_encoder_nxwarp] nxwarp: "snap-identity": 16/16 sample (still tiles become a copy on the headset; error bounded by 0.50 sample)
+ INFO [video_encoder_nxwarp] nxwarp: "planar": "prefer" (nxvc tool bit 35)
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 tools 0x842200c05 (INTRA_DC_PLANE RES_LEVEL INTER WARP CTX_V2 CTX_V3 ENTROPY_LITE bit35), headset 0xdf77a1fff -- negotiated
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 backend: nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (42x21 tiles, intra only, one QP per frame), reading the compositor image directly
+ INFO [video_encoder_nxwarp] nxwarp: stream 2 2688x1344, nxvc_vk_encoder GPU compute encoder, nxvc_vk_encoder (E0/E3/E4/E5, intra only) (42x21 tiles, intra only, one QP per frame), rate control from QP 28 in 22..40 at 90 Hz, send pacing follows the headset's decode cost, 15..90 fps, 42x21 tiles in 4 band(s), 1166 bytes per transport tile
+ INFO [wivrn_hmd] edge bleed: rendering 5.0% overscan, 1.35 deg left / 1.35 deg up on eye 0 (same encoded size, so about 4.8% less sharp)
+ INFO [pipewire_device] pipewire speaker stream created (quantum: 240 frames, 5.00 ms)
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_UNCONNECTED to PW_STREAM_STATE_CONNECTING
+ INFO [pipewire_device] pipewire microphone stream created (quantum: 240 frames, 5.00 ms)
+ INFO [configure] Automatic bitrate enabled, AIMD (v1), ceiling 49.0 Mbit/s, floor 10.0 Mbit/s, radio trend on
+ INFO [set_pacing] Packet pacing enabled, spreading each frame over 40% of a frame period
+ INFO [apply_qos] Wi-Fi QoS marks enabled (video AF41 / AC_VI, control EF / AC_VO)
+ INFO [set_fec] Forward error correction enabled, one parity shard per 8 video shards
+ INFO [set_fec_adaptive] Adaptive error correction enabled, parity ratio between 16+1 and 4+1 with interleaved groups
+ INFO [set_shard_retransmit] Shard retransmission enabled, keeping 1024 kB of recently sent shards per stream
+ WARN [check_socket_path] path not found: /run/user/1000/SlimeVRRpc
+ WARN [check_socket_path] path not found: /run/user/1000/.flatpak/dev.slimevr.SlimeVR/xdg-run/SlimeVRRpc
+ WARN [check_socket_path] path not found: /home/nerdrx/.local/share/dev.slimevr.SlimeVR/SlimeVRRpc
+ERROR [solarxr_ipc_socket_find] failed to resolve socket path
+ INFO [u_linux_try_to_set_realtime_priority_on_thread] Raised priority of thread 'Multi Client Module' to policy: 'SCHED_FIFO', priority: '99'
+ INFO [operator()] Session state changed: XR_SESSION_STATE_VISIBLE
+ INFO [reset_stream] nxwarp: stream 0 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [reset_stream] nxwarp: stream 2 resumed for a new client: transport sequence restarted, stream header resent, next frame coded without a reference
+ INFO [mic_state_changed] Microphone state changed from PW_STREAM_STATE_CONNECTING to PW_STREAM_STATE_PAUSED
+ INFO [operator()] Updating interaction profiles: from 
+	XRT_DEVICE_TOUCH_CONTROLLER (left)  to XRT_DEVICE_EXT_HAND_INTERACTION
+	XRT_DEVICE_TOUCH_CONTROLLER (right) to XRT_DEVICE_EXT_HAND_INTERACTION
+
+ INFO [client_connected] Client 1 connected
+ INFO [ipc_handle_instance_describe_client] Client info:
+	id: 1
+	application_name: 'HelloXR'
+	pid: 226310
+	extensions:
+		ext_hand_tracking_enabled: false
+		ext_hand_tracking_data_source_enabled: false
+		ext_eye_gaze_interaction_enabled: false
+		ext_future_enabled: false
+		ext_hand_interaction_enabled: false
+		htc_facial_tracking_enabled: false
+		fb_body_tracking_enabled: false
+		meta_body_tracking_full_body_enabled: false
+		meta_body_tracking_calibration_enabled: false
+		meta_body_tracking_fidelity_enabled: false
+		fb_face_tracking2_enabled: false
+		android_face_tracking_enabled: false
+ INFO [update_session_state_locked] Started native session, 1 active app session(s).
+ INFO [get_view_poses] geometry[eye 0]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [get_view_poses] geometry[eye 1]: panel fov L-51.99 R51.99 U51.99 D-51.99 -> rendered fov L-53.34 R53.34 U53.34 D-53.34 deg (overscan 0.050)
+ INFO [update_lens_mask] nxwarp: stream 0 lens mask: 204 of 1764 tiles per eye masked (margin 1 tile, fov -53.3/53.3/53.3/-53.3 deg); flattened only: this backend has no skip-map input, so the tiles are coded as whatever the mode search makes of a constant grey
+ INFO [encode] nxwarp: stream 0 rate control on: 42493224 bit/s is 59018 B/frame at 90 Hz, QP band 22..40
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 1.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 1 frames in 2.5 s: 1.6 ms/frame (max 1.6), 133872 B/frame at fixed QP 28, paced to 90.0 fps (client decode not reported yet), 0 composited frame(s) not sent
+ INFO [layer_commit] geometry[eye 0]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [layer_commit] geometry[eye 1]: layer fov (what the app rendered, and what goes on the wire) L-53.34 R53.34 U53.34 D-53.34 deg
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 1.8 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 121 frames in 2.0 s: 1.8 ms/frame (max 2.8), 257253 B/frame vs 102683 target (+151%), QP 39.7 [30..40], controller allows 42.5 Mbit/s (at max QP), paced to 52.1 fps (client decode 15.3 ms), 61 composited frame(s) not sent, binding: bytes (decode 15.3 of 15.5 ms budget, floor +40)
+ INFO [encode] nxwarp: stream 0 tile mapping: 95 frame(s) with per-tile spans, 26 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 the headset did not reconstruct 80 frame(s) since the last report; 80 of them cost an all-intra frame and 0 named a frame older than one already coded intra and cost nothing. Last was frame 83, dropped by the worker backlog
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 15.7 ms is over the 15.2 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +40 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 49.0 -> 19.6 Mbit/s (p90 utilisation 1.17, 3 lost, 4 late over 26 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.0 s: 2.6 ms/frame (max 3.2), 277707 B/frame vs 40981 target (+578%), QP 40.0 [40..40], controller allows 17.0 Mbit/s (at max QP), paced to 51.8 fps (client decode 16.7 ms), 75 composited frame(s) not sent, binding: bytes (decode 16.7 of 15.4 ms budget, floor +40)
+ INFO [encode] nxwarp: stream 0 tile mapping: 50 frame(s) with per-tile spans, 55 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 19.6 -> 10.0 Mbit/s (p90 utilisation 1.08, 0 lost, 1 late over 93 frames)
+ WARN [run_rate_control] nxwarp: stream 0 cannot reach its bitrate ceiling: at max QP 40 the frames are 291903 B and the ceiling allows 21292 B (8672086 bit/s at the 50.9 fps this stream is budgeted at, 90 Hz composited). This is the smallest frame this quantiser can make of this picture — raise the ceiling, lower the resolution, or raise "max-qp"
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.0 s: 2.6 ms/frame (max 3.0), 286877 B/frame vs 20270 target (+1315%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.4 fps (client decode 16.5 ms), 77 composited frame(s) not sent, binding: bytes (decode 16.5 of 15.0 ms budget, floor +39)
+ INFO [encode] nxwarp: stream 0 tile mapping: 32 frame(s) with per-tile spans, 73 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: engaging, halving the stream framerate (pinned at 10000000 bps, sustained loss)
+ INFO [set_emergency_framerate] Emergency half-rate engaged: streaming at half the framerate to halve bandwidth
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 106 frames in 2.0 s: 2.6 ms/frame (max 3.0), 264693 B/frame vs 24089 target (+999%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 51.2 fps (client decode 17.8 ms), 75 composited frame(s) not sent, binding: bytes (decode 17.8 of 15.6 ms budget, floor +38)
+ INFO [encode] nxwarp: stream 0 tile mapping: 55 frame(s) with per-tile spans, 51 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 90 frames in 2.0 s: 2.6 ms/frame (max 3.0), 263935 B/frame vs 24089 target (+996%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 56.3 fps (client decode 15.1 ms), 0 composited frame(s) not sent, binding: bytes (decode 15.1 of 14.2 ms budget, floor +37)
+ INFO [encode] nxwarp: stream 0 tile mapping: 70 frame(s) with per-tile spans, 20 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 10.0 -> 20.0 Mbit/s (p90 utilisation 0.57, 0 lost, 0 late over 90 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.6 ms/frame (max 2.8), 274179 B/frame vs 48178 target (+469%), QP 40.0 [40..40], controller allows 17.3 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.8 fps (client decode 16.1 ms), 0 composited frame(s) not sent, binding: bytes (decode 16.1 of 14.9 ms budget, floor +36)
+ INFO [encode] nxwarp: stream 0 tile mapping: 84 frame(s) with per-tile spans, 7 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 20.0 -> 20.7 Mbit/s (p90 utilisation 0.57, 0 lost, 0 late over 77 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 90 frames in 2.0 s: 2.7 ms/frame (max 2.9), 268124 B/frame vs 49797 target (+438%), QP 40.0 [40..40], controller allows 17.9 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 55.8 fps (client decode 14.8 ms), 0 composited frame(s) not sent, binding: bytes (decode 14.8 of 14.4 ms budget, floor +35)
+ INFO [encode] nxwarp: stream 0 tile mapping: 90 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: link clean for 5000 ms, restoring full framerate
+ INFO [set_emergency_framerate] Emergency half-rate restored: streaming at full framerate again
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 20.7 -> 10.0 Mbit/s (p90 utilisation 1.02, 0 lost, 0 late over 44 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 101 frames in 2.0 s: 2.6 ms/frame (max 2.9), 254279 B/frame vs 20110 target (+1164%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.7 fps (client decode 16.6 ms), 40 composited frame(s) not sent, binding: bytes (decode 16.6 of 14.8 ms budget, floor +34)
+ INFO [encode] nxwarp: stream 0 tile mapping: 101 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 108 frames in 2.0 s: 2.6 ms/frame (max 2.9), 254958 B/frame vs 20182 target (+1163%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.7 fps (client decode 16.2 ms), 73 composited frame(s) not sent, binding: bytes (decode 16.2 of 14.9 ms budget, floor +33)
+ INFO [encode] nxwarp: stream 0 tile mapping: 103 frame(s) with per-tile spans, 5 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: engaging, halving the stream framerate (pinned at 10000000 bps, sustained loss)
+ INFO [set_emergency_framerate] Emergency half-rate engaged: streaming at half the framerate to halve bandwidth
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 2.6 ms/frame (max 3.0), 271236 B/frame vs 24089 target (+1026%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.0 fps (client decode 16.3 ms), 37 composited frame(s) not sent, binding: bytes (decode 16.3 of 15.1 ms budget, floor +32)
+ INFO [encode] nxwarp: stream 0 tile mapping: 62 frame(s) with per-tile spans, 36 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 90 frames in 2.0 s: 2.7 ms/frame (max 3.1), 297692 B/frame vs 24089 target (+1136%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 54.2 fps (client decode 15.6 ms), 0 composited frame(s) not sent, binding: bytes (decode 15.6 of 14.8 ms budget, floor +31)
+ INFO [encode] nxwarp: stream 0 tile mapping: 7 frame(s) with per-tile spans, 83 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 10.0 -> 11.6 Mbit/s (p90 utilisation 0.57, 0 lost, 0 late over 90 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.7 ms/frame (max 2.9), 302948 B/frame vs 28011 target (+982%), QP 40.0 [40..40], controller allows 10.1 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.8 fps (client decode 16.6 ms), 0 composited frame(s) not sent, binding: bytes (decode 16.6 of 14.8 ms budget, floor +30)
+ INFO [encode] nxwarp: stream 0 tile mapping: 9 frame(s) with per-tile spans, 82 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: link clean for 5000 ms, restoring full framerate
+ INFO [set_emergency_framerate] Emergency half-rate restored: streaming at full framerate again
+ INFO [evaluate_aimd] Automatic bitrate: congestion, 11.6 -> 10.0 Mbit/s (p90 utilisation 0.95, 0 lost, 0 late over 92 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 95 frames in 2.0 s: 2.6 ms/frame (max 2.9), 292056 B/frame vs 21613 target (+1251%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 50.3 fps (client decode 16.7 ms), 23 composited frame(s) not sent, binding: bytes (decode 16.7 of 16.0 ms budget, floor +29)
+ INFO [encode] nxwarp: stream 0 tile mapping: 71 frame(s) with per-tile spans, 24 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.0 s: 2.6 ms/frame (max 2.9), 281098 B/frame vs 21071 target (+1234%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 51.3 fps (client decode 16.6 ms), 77 composited frame(s) not sent, binding: bytes (decode 16.6 of 15.6 ms budget, floor +28)
+ INFO [encode] nxwarp: stream 0 tile mapping: 72 frame(s) with per-tile spans, 33 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: engaging, halving the stream framerate (pinned at 10000000 bps, sustained loss)
+ INFO [set_emergency_framerate] Emergency half-rate engaged: streaming at half the framerate to halve bandwidth
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 102 frames in 2.0 s: 2.6 ms/frame (max 2.8), 279734 B/frame vs 24089 target (+1061%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 54.5 fps (client decode 15.2 ms), 57 composited frame(s) not sent, binding: bytes (decode 15.2 of 14.7 ms budget, floor +27)
+ INFO [encode] nxwarp: stream 0 tile mapping: 66 frame(s) with per-tile spans, 36 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.6 ms/frame (max 3.0), 273761 B/frame vs 24089 target (+1036%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 59.0 fps (client decode 14.0 ms), 0 composited frame(s) not sent, binding: bytes (decode 14.0 of 13.6 ms budget, floor +26)
+ INFO [encode] nxwarp: stream 0 tile mapping: 68 frame(s) with per-tile spans, 23 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 90 frames in 2.0 s: 2.6 ms/frame (max 3.0), 242658 B/frame vs 24089 target (+907%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 56.7 fps (client decode 15.1 ms), 0 composited frame(s) not sent, binding: bytes (decode 15.1 of 14.1 ms budget, floor +25)
+ INFO [encode] nxwarp: stream 0 tile mapping: 84 frame(s) with per-tile spans, 6 with the fixed-chunk fallback ("tile-map": "auto")
+ WARN [run_rate_control] nxwarp: stream 0 cannot reach its bitrate ceiling: at max QP 40 the frames are 245070 B and the ceiling allows 24089 B (8672086 bit/s at the 45.0 fps this stream is budgeted at, 45 Hz composited). This is the smallest frame this quantiser can make of this picture — raise the ceiling, lower the resolution, or raise "max-qp"
+ INFO [update_emergency] Emergency half-rate: link clean for 5000 ms, restoring full framerate
+ INFO [evaluate_aimd] Automatic bitrate: spare capacity, 10.0 -> 12.4 Mbit/s (p90 utilisation 0.54, 0 lost, 0 late over 91 frames)
+ INFO [set_emergency_framerate] Emergency half-rate restored: streaming at full framerate again
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 92 frames in 2.0 s: 2.6 ms/frame (max 2.8), 248256 B/frame vs 23285 target (+966%), QP 40.0 [40..40], controller allows 10.8 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 57.7 fps (client decode 16.0 ms), 3 composited frame(s) not sent, binding: bytes (decode 16.0 of 13.8 ms budget, floor +24)
+ INFO [encode] nxwarp: stream 0 tile mapping: 92 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 12.4 -> 10.0 Mbit/s (p90 utilisation 1.04, 0 lost, 0 late over 25 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 105 frames in 2.0 s: 2.7 ms/frame (max 3.2), 268003 B/frame vs 21070 target (+1172%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 51.5 fps (client decode 16.0 ms), 76 composited frame(s) not sent, binding: bytes (decode 16.0 of 15.5 ms budget, floor +23)
+ INFO [encode] nxwarp: stream 0 tile mapping: 96 frame(s) with per-tile spans, 9 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [run_decode_rate_control] nxwarp: stream 0 decode 16.8 ms is over the 15.5 ms budget but 2 quantiser steps moved it less than 3%: holding the floor at +40 and releasing it. The decode is not paying for bits here (coded tiles 100% of the frame).
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 107 frames in 2.0 s: 2.6 ms/frame (max 3.0), 255159 B/frame vs 19575 target (+1204%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 55.4 fps (client decode 15.6 ms), 75 composited frame(s) not sent, binding: bytes (decode 15.6 of 14.4 ms budget, floor +40)
+ INFO [encode] nxwarp: stream 0 tile mapping: 100 frame(s) with per-tile spans, 7 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: engaging, halving the stream framerate (pinned at 10000000 bps, sustained loss)
+ INFO [set_emergency_framerate] Emergency half-rate engaged: streaming at half the framerate to halve bandwidth
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 95 frames in 2.0 s: 2.7 ms/frame (max 3.2), 243684 B/frame vs 24089 target (+912%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 58.2 fps (client decode 14.3 ms), 20 composited frame(s) not sent, binding: bytes (decode 14.3 of 13.8 ms budget, floor +39)
+ INFO [encode] nxwarp: stream 0 tile mapping: 85 frame(s) with per-tile spans, 10 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.7 ms/frame (max 3.0), 257212 B/frame vs 24089 target (+968%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 56.9 fps (client decode 14.8 ms), 0 composited frame(s) not sent, binding: bytes (decode 14.8 of 14.1 ms budget, floor +38)
+ INFO [encode] nxwarp: stream 0 tile mapping: 46 frame(s) with per-tile spans, 45 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.7 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.7 ms/frame (max 3.3), 282665 B/frame vs 24089 target (+1073%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 57.4 fps (client decode 15.0 ms), 0 composited frame(s) not sent, binding: bytes (decode 15.0 of 13.9 ms budget, floor +37)
+ INFO [encode] nxwarp: stream 0 tile mapping: 30 frame(s) with per-tile spans, 61 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: link clean for 5000 ms, restoring full framerate
+ INFO [evaluate_aimd] Automatic bitrate: spare capacity, 10.0 -> 12.4 Mbit/s (p90 utilisation 0.56, 0 lost, 0 late over 90 frames)
+ INFO [set_emergency_framerate] Emergency half-rate restored: streaming at full framerate again
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 12.4 -> 10.0 Mbit/s (p90 utilisation 1.13, 0 lost, 0 late over 25 frames)
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 98 frames in 2.0 s: 2.6 ms/frame (max 2.9), 287875 B/frame vs 21029 target (+1269%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 51.5 fps (client decode 16.8 ms), 42 composited frame(s) not sent, binding: bytes (decode 16.8 of 15.5 ms budget, floor +36)
+ INFO [encode] nxwarp: stream 0 tile mapping: 6 frame(s) with per-tile spans, 92 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 106 frames in 2.0 s: 2.6 ms/frame (max 3.1), 264993 B/frame vs 20529 target (+1191%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.1 fps (client decode 15.2 ms), 74 composited frame(s) not sent, binding: bytes (decode 15.2 of 15.2 ms budget, floor +35)
+ INFO [encode] nxwarp: stream 0 tile mapping: 47 frame(s) with per-tile spans, 59 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: engaging, halving the stream framerate (pinned at 10000000 bps, sustained loss)
+ INFO [set_emergency_framerate] Emergency half-rate engaged: streaming at half the framerate to halve bandwidth
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 103 frames in 2.0 s: 2.6 ms/frame (max 2.8), 267387 B/frame vs 24089 target (+1010%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 53.1 fps (client decode 15.8 ms), 57 composited frame(s) not sent, binding: bytes (decode 15.8 of 15.1 ms budget, floor +34)
+ INFO [encode] nxwarp: stream 0 tile mapping: 95 frame(s) with per-tile spans, 8 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 90 frames in 2.0 s: 2.6 ms/frame (max 3.0), 268086 B/frame vs 24089 target (+1013%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 56.2 fps (client decode 15.5 ms), 0 composited frame(s) not sent, binding: bytes (decode 15.5 of 14.2 ms budget, floor +33)
+ INFO [encode] nxwarp: stream 0 tile mapping: 57 frame(s) with per-tile spans, 33 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.6 ms/frame (max 3.0), 268919 B/frame vs 24089 target (+1016%), QP 40.0 [40..40], controller allows 8.7 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 56.9 fps (client decode 15.0 ms), 0 composited frame(s) not sent, binding: bytes (decode 15.0 of 14.1 ms budget, floor +32)
+ INFO [encode] nxwarp: stream 0 tile mapping: 91 frame(s) with per-tile spans, 0 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [update_emergency] Emergency half-rate: link clean for 5000 ms, restoring full framerate
+ INFO [evaluate_aimd] Automatic bitrate: spare capacity, 10.0 -> 12.4 Mbit/s (p90 utilisation 0.58, 0 lost, 0 late over 90 frames)
+ INFO [set_emergency_framerate] Emergency half-rate restored: streaming at full framerate again
+ INFO [encode] nxwarp: stream 0 stereo compose 0.000 ms/frame (max 0.000), 0.0% of the 2.6 ms encode
+ INFO [encode] nxwarp: stream 0 encoded 91 frames in 2.0 s: 2.6 ms/frame (max 3.0), 270236 B/frame vs 23541 target (+1048%), QP 40.0 [40..40], controller allows 10.8 Mbit/s (CEILING UNREACHABLE, pinned at max QP), paced to 57.3 fps (client decode 15.0 ms), 2 composited frame(s) not sent, binding: bytes (decode 15.0 of 14.0 ms budget, floor +31)
+ INFO [encode] nxwarp: stream 0 tile mapping: 86 frame(s) with per-tile spans, 5 with the fixed-chunk fallback ("tile-map": "auto")
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 12.4 -> 10.0 Mbit/s (p90 utilisation 1.03, 0 lost, 0 late over 25 frames)
+ INFO [client_disconnected] Client 1 disconnected
+ INFO [update_session_state_locked] Stopped native session, 0 active app session(s).

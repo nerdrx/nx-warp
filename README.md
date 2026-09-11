@@ -38,7 +38,7 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 | Application | Rendered stereo VR through **custom WiVRn NX** |
 | Implementation | C++20 and Vulkan compute/graphics; library identifier `nxvc` |
 | Primary measured hardware | Radeon RX 7900 XTX host; Pico 4 / Adreno 650 headset |
-| Native output in recent captures | **2160 × 2160 per eye**; sequence fixture uses a padded 4352 × 2176 stereo atlas |
+| Native output in current profile | **2688 × 2688 per eye**, with a **1024px native sharp centre**; older captures use different dimensions |
 | Live integration | WiVRn NX [`atlas-live`](https://github.com/nerdrx/wivrn-nx/tree/atlas-live); experimental renderer switches remain opt-in |
 | Presentation target | **90 → 120 → 144 → 180 → 240 Hz**; recent live Pico captures use 90 Hz |
 | Evidence | Controlled comparisons, raw timings, fixture/build identities and actual captures |
@@ -96,6 +96,11 @@ Presentation       warp → warp → warp → warp → warp → …
 Stable references, disocclusion handling and bounded image age are essential. Queueing more work can increase throughput while making the displayed image older.
 
 ## Measured results
+
+**Current selected profile (September 11):** 2688 × 2688 output per eye, with the required **1024px native sharp centre retained**. Two-colour peripheral tiles, ungrouped cells and lightweight smoothing prioritize speed. Recent full-field animation trials deliver **about 53 fresh selections/s**, with roughly **13 ms decode GPU time**. **90 fresh FPS is not yet achieved with this centre.** Older near-90 results below use different profiles and must not be read as current large-centre performance.
+
+[Native encoder work removal](bench/results/90fps-2026-09-11/native-fit-live/README.md) preserves encoded output but has no robust live throughput win in four short repeats. [Splitting native reconstruction by colour plane](bench/results/90fps-2026-09-11/plane-split/README.md) failed to help; its reduced-shared-memory variant fell to about 42 fresh selections/s and was removed. [Centre-cost diagnostics](bench/results/90fps-2026-09-11/centre-cost/README.md) explain why shrinking the centre helps, but smaller centres are **not selected**.
+
 
 [Five-minute sustained run](bench/results/90fps-2026-09-10/res150-soak/README.md): **~71 fresh selections/s**, **~72 ms source-offset proxy**, zero session stops; vendor GPU temperature peaked at **81°C**. Sustained load is a remaining limitation.
 
