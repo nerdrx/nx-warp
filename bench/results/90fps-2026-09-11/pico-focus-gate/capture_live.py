@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Headless synthetic-motion trial. Preserve logs even if the client dies."""
+import json,os,re,signal,subprocess,sys,time
+from pathlib import Path
+ROOT=Path('/run/media/nerdrx/Lex/claude');OUT=ROOT/'nx-scratch/motion-live'
+ADB='/home/nerdrx/.local/bin/adb';PKG='org.meumeu.wivrn.nx.warp'
+label,fdm,wait=sys.argv[1:4];duration=int(sys.argv[4]) if len(sys.argv)>4 else 90
+capture=sys.argv[5] if len(sys.argv)>5 else '0'
+smooth=sys.argv[6] if len(sys.argv)>6 else '0'
+children=[];pid=None;started=time.monotonic()
+server=ROOT/'nx-scratch/peripheral-smoothing/copy-baseline-server.log';offset=server.stat().st_size
+status={'fdm':int(fdm),'wait_us':int(wait),'requested_seconds':duration,'capture':capture,'peripheral_smooth':smooth,'scene':'NXWARP_BENCH_FULL_FIELD'}
+def adb(*args):return subprocess.check_output([ADB,*args],text=True).strip()
+def start(name,args,env=None):
+ f=(OUT/f'{label}-{name}.log').open('w');p=subprocess.Popen(args,stdout=f,stderr=subprocess.STDOUT,start_new_session=True,env=env);children.append((p,f));return p
+try:
+ # Pico off-head proximity sleep ignores Android stay-on; require continuous wake.
+ if adb('shell','getprop','pvr.factorytest.never.sleep') != '1':
+  adb('shell','setprop','pvr.factorytest.never.sleep','1')
+ if adb('shell','getprop','pvr.factorytest.never.sleep') != '1':
+  raise RuntimeError('Cannot keep Pico continuously awake for the trial')
+ adb('shell','input','keyevent','KEYCODE_WAKEUP')
+ adb('shell','am','force-stop',PKG)
+ for key,value in {'fdm':fdm,'ready_wait_us':wait,'capture':capture,'compact_centre':'1','planar_centre':'1','borrowed_output':'1','peripheral_smooth':smooth}.items():adb('shell','setprop','debug.wivrn.nx.'+key,value)
+ adb('shell','setprop','debug.wivrn.jit','1')
+ adb('shell','am','start','-a','android.intent.action.VIEW','-d','wivrn://192.168.1.2',PKG)
+ for _ in range(20):
+  try:pid=adb('shell','pidof',PKG).split()[0];break
+  except (subprocess.CalledProcessError,IndexError):time.sleep(.1)
+ if not pid:raise RuntimeError('Client did not start')
+ start('client',[ADB,'logcat','--pid='+pid,'-v','threadtime','WiVRn:I','PxrMetric:I','*:S'])
+ status['pid']=pid
+ time.sleep(3)
+ env=os.environ.copy();env['XR_RUNTIME_JSON']=str(ROOT/'nx-scratch/wivrn-atlas-live-current-build/openxr_wivrn-dev.json');env['NXWARP_BENCH_FULL_FIELD']='1'
+ binary=ROOT/'nx-scratch/hello-xr-bench-build/src/tests/hello_xr/hello_xr'
+ scene=start('scene',['gamescope','--backend','headless','-W','1280','-H','720','--','sh','-c',f'tail -f /dev/null | stdbuf -oL {binary} -g Vulkan2'],env)
+ trial_start=time.monotonic();capture_step=0
+ while time.monotonic()-trial_start<duration:
+  time.sleep(min(2,max(.01,duration-(time.monotonic()-trial_start))))
+  if capture != '0' and capture_step < 2 and time.monotonic()-trial_start >= (capture_step+1)*10:
+   capture_step += 1
+   adb('shell','setprop','debug.wivrn.nx.capture',capture+str(capture_step))
+  if 'Unsupported graphics API' in (OUT/f'{label}-scene.log').read_text(errors='replace'):
+   raise RuntimeError('Benchmark binary lacks requested graphics backend')
+  if scene.poll() is not None:raise RuntimeError('Headless scene exited early')
+  if adb('shell','pidof',PKG).split()[0]!=pid:raise RuntimeError('Client process changed')
+ if 'NXWARP_BENCH_FULL_FIELD frame ' not in (OUT/f'{label}-scene.log').read_text(errors='replace'):
+  raise RuntimeError('Synthetic scene did not report advancing frames')
+ times=re.findall(r'NXWARP_BENCH_FULL_FIELD frame \d+ t=([0-9.]+) s', (OUT/f'{label}-scene.log').read_text(errors='replace'))
+ status['last_scene_time_s']=float(times[-1]) if times else 0
+ if status['last_scene_time_s'] < duration-10:raise RuntimeError('Scene animation did not advance through trial end')
+ status['complete']=True
+except Exception as e:
+ status['complete']=False;status['error']=str(e)
+finally:
+ status['elapsed_seconds']=time.monotonic()-started
+ if pid and not (OUT/f'{label}-client.log').exists():
+  with (OUT/f'{label}-client.log').open('w') as f:subprocess.run([ADB,'logcat','-d','--pid='+pid,'-v','threadtime','WiVRn:I','PxrMetric:I','*:S'],stdout=f)
+ try:status['client_alive']=bool(pid and pid in adb('shell','pidof',PKG).split())
+ except subprocess.CalledProcessError:status['client_alive']=False
+ if not status.get('complete') and not status['client_alive']:
+  with (OUT/f'{label}-crash.log').open('w') as f:subprocess.run([ADB,'logcat','-d','-b','crash','-v','threadtime'],stdout=f)
+ for p,f in reversed(children):
+  try:os.killpg(p.pid,signal.SIGTERM)
+  except ProcessLookupError:pass
+  try:p.wait(timeout=5)
+  except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait()
+  f.close()
+ with server.open('rb') as f:f.seek(offset);(OUT/f'{label}-server.log').write_bytes(f.read())
+ if status.get('complete') and duration >= 60:
+  try:
+   measured=json.loads(subprocess.check_output([sys.executable,str(OUT/'analyze_live.py'),str(OUT/f'{label}-client.log')],text=True))
+   status['render_windows']=measured['client']['n'];status['decode_windows']=measured['decoder']['n']
+   def seconds(t):
+    h,m,s=map(float,t.split(':'));return h*3600+m*60+s
+   age=(seconds(adb('shell','date','+%H:%M:%S'))-seconds(measured['client']['end']))%86400
+   if age > 86399:age=0
+   status['last_render_log_age_s']=age
+   log_text=(OUT/f'{label}-client.log').read_text(errors='replace')
+   status['render_windows_total']=len(re.findall(r'render: \d+ iterations',log_text))
+   status['decode_windows_total']=len(re.findall(r'nxwarp\[\d+\]: \d+ frames in',log_text))
+   if min(status['render_windows'],status['decode_windows']) < min(30,duration//3) or min(status['render_windows_total'],status['decode_windows_total']) < duration//3 or age > 10:
+    raise RuntimeError('Insufficient or stale live render/decode telemetry')
+  except Exception as e:
+   status['complete']=False;status['error']=str(e)
+ # Completion of app work does not establish a visible headset comparison.
+ from importlib.util import spec_from_file_location, module_from_spec
+ spec=spec_from_file_location('pico_focus_check', ROOT/'nx-warp/bench/tools/pico_focus_check.py')
+ focus_module=module_from_spec(spec);spec.loader.exec_module(focus_module)
+ focus_log=OUT/f'{label}-client.log'
+ status['headset_visibility']=focus_module.focus_status(focus_log.read_text(errors='replace') if focus_log.exists() else '')
+ if os.environ.get('NX_REQUIRE_FOCUSED') == '1' and not status['headset_visibility']['focus_gate_passed']:
+  status['complete']=False
+  status['error']='Headset focus gate failed; visual test cannot be accepted'
+ (OUT/f'{label}-status.json').write_text(json.dumps(status,indent=2)+'\n')
+ print(json.dumps(status),flush=True)
+ if not status.get('complete'):sys.exit(1)
