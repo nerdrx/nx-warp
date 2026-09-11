@@ -1,0 +1,107 @@
+{
+  "speed-large2688": {
+    "file": "nx-scratch/motion-live/speed-large2688-client.log",
+    "client": {
+      "n": 39,
+      "start": "02:04:24.090",
+      "end": "02:05:40.346",
+      "means": {
+        "fresh_per_s": 53.38461538461539,
+        "iterations": 155.6153846153846,
+        "iterations_per_s": 77.54615384615386,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.276923076923077,
+        "source_offset_ms": 77.39999999999999,
+        "submit_lead_ms": 36.57179487179487,
+        "wait_attempts": 60.0,
+        "wait_successes": 11.153846153846153,
+        "wait_total_ms": 52.12882051282051
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "02:04:22.015",
+      "end": "02:05:40.451",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 14.6625,
+        "frames": 107.125,
+        "frames_per_s": 53.5625,
+        "nxvc_gpu_ms": 12.9575,
+        "pass_a_ms": 4.795,
+        "pass_b_ms": 8.16,
+        "queue_ms": 1.685
+      }
+    }
+  },
+  "speed-small2688": {
+    "file": "nx-scratch/motion-live/speed-small2688-client.log",
+    "client": {
+      "n": 39,
+      "start": "02:05:58.800",
+      "end": "02:07:14.983",
+      "means": {
+        "fresh_per_s": 81.98717948717949,
+        "iterations": 180.4102564102564,
+        "iterations_per_s": 89.9948717948718,
+        "older_available": 0.0,
+        "own_gpu_ms": 4.102564102564102,
+        "source_offset_ms": 53.37692307692307,
+        "submit_lead_ms": 28.605128205128203,
+        "wait_attempts": 51.94871794871795,
+        "wait_successes": 35.51282051282051,
+        "wait_total_ms": 36.31138461538462
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "02:05:56.755",
+      "end": "02:07:14.993",
+      "means": {
+        "copy_gpu_ms": 0.0005,
+        "fence_post_ms": 7.3575,
+        "frames": 177.525,
+        "frames_per_s": 88.7625,
+        "nxvc_gpu_ms": 5.51,
+        "pass_a_ms": 2.06,
+        "pass_b_ms": 3.4450000000000003,
+        "queue_ms": 1.825
+      }
+    }
+  },
+  "speed-small2176": {
+    "file": "nx-scratch/motion-live/speed-small2176-client.log",
+    "client": {
+      "n": 39,
+      "start": "02:07:33.621",
+      "end": "02:08:49.788",
+      "means": {
+        "fresh_per_s": 89.61538461538461,
+        "iterations": 180.3846153846154,
+        "iterations_per_s": 90.0051282051282,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.5025641025641026,
+        "source_offset_ms": 45.223076923076924,
+        "submit_lead_ms": 25.58974358974359,
+        "wait_attempts": 1.8974358974358974,
+        "wait_successes": 0.7435897435897436,
+        "wait_total_ms": 1.6274358974358973
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "02:07:31.584",
+      "end": "02:08:49.773",
+      "means": {
+        "copy_gpu_ms": 0.00025,
+        "fence_post_ms": 5.25,
+        "frames": 180.375,
+        "frames_per_s": 90.1875,
+        "nxvc_gpu_ms": 3.4924999999999997,
+        "pass_a_ms": 1.3699999999999999,
+        "pass_b_ms": 2.13,
+        "queue_ms": 1.7399999999999998
+      }
+    }
+  }
+}
