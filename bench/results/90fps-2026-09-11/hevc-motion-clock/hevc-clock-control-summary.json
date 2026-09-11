@@ -1,0 +1,35 @@
+{
+  "label": "hevc-clock-control",
+  "app_vs_compositor": {
+    "n": 1076,
+    "mean_ms": 0.6049869888475836,
+    "p50_ms": 0.0345,
+    "p95_ms": 0.787
+  },
+  "render": {
+    "n": 9,
+    "start": "13:08:51.679",
+    "end": "13:09:07.713",
+    "means": {
+      "fresh_per_s": 59.611111111111114,
+      "iterations": 180.33333333333334,
+      "iterations_per_s": 90.0,
+      "older_available": 178.11111111111111,
+      "own_gpu_ms": 5.733333333333333,
+      "source_offset_ms": -17.355555555555554,
+      "submit_lead_ms": 33.58888888888889,
+      "wait_attempts": 0.0,
+      "wait_successes": 0.0,
+      "wait_total_ms": 0.0
+    }
+  },
+  "motion": {
+    "matched": 1439,
+    "active": 14,
+    "applied": 14,
+    "missing": 1,
+    "unsafe": 0,
+    "mean_active_step": 0.7973571428571429,
+    "source_clock_applied": 0
+  }
+}

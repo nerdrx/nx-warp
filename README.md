@@ -109,6 +109,10 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Latest motion check:** full-frame HEVC retained **59.5 fresh selections/s and 90 render iterations/s** in a short Pico application-clock trial; lower latency remains unproven. The real GPU fixture found and fixed tiny shifts on perfect matches, but another motion case still predicts worse than holding the image. [Pico clock measurements](bench/results/90fps-2026-09-11/hevc-motion-clock/README.md) · [GPU readbacks, successful and failed cases](bench/results/90fps-2026-09-11/motion-gpu-truth/README.md).
+
+![GPU motion prediction versus future truth](bench/results/90fps-2026-09-11/motion-gpu-truth/comparison.png)
+
 **Hardware baseline:** [two 30-second HEVC 8-bit trials](bench/results/90fps-2026-09-11/hardware-baseline/README.md) deliver **79.5 / 85.1 fresh source selections/s**, versus **44.6–45.7 for nearby NX controls**, at 2688² per eye through the same server foveation stage. Quality, encoded bitrate and stream organization differ; this is not a matched-quality or physical-latency comparison. Actual both-eye captures and raw evidence are included. The explicit 10-bit follow-up gives **85.4 / 88.9 selections/s**. HEVC remains the competitor baseline; NX continues as an independent low-latency alternative. These sequential screens do not establish a bit-depth advantage or sustained 90 fresh stereo FPS.
 
 **Latest short screens:** [native-centre transform skip](bench/results/90fps-2026-09-11/native-tskip/README.md) saves about 1.27 ms of reconstruction but adds 1.60 ms of entropy work. [Fixed 60 FPS pacing](bench/results/90fps-2026-09-11/pace60-screen/README.md) increases latency; [zero-coefficient arithmetic removal](bench/results/90fps-2026-09-11/zero-dequant/README.md) shows no useful gain. All were rejected after 30-second trials. The centre remains unchanged. Nearby controls in this session run around 45–47 fresh selections/s; the longer 53/s result below is historical, not a new measurement.
