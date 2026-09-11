@@ -1,0 +1,19 @@
+diff --git a/vk/decoder/passB/reconstruct.comp b/vk/decoder/passB/reconstruct.comp
+index 54316e6..5fb0cd6 100644
+--- a/vk/decoder/passB/reconstruct.comp
++++ b/vk/decoder/passB/reconstruct.comp
+@@ -363,9 +363,12 @@ int unitLen(int tileLenBase, int ui, int xformSize) {
+ // the only arm compiled, so the 8x8 pipeline's load address is unchanged.
+ int dqCoef(int blockBase, int scanId, int len, int planeQp, int wbase, int lb,
+            int pos) {
++    int q = coefIn(blockBase, scanId, len, pos);
++    // Sparse zero coefficients cannot contribute to the inverse transform.
++    // Avoid weight loads and dequantization while retaining the exact IDCT.
++    if (kSparse != 0 && kXformLarge == 0 && q == 0) return 0;
+     int wi = kXformLarge != 0 ? nxvw_block_weight_index(pos, lb) : pos;
+-    return dequant(coefIn(blockBase, scanId, len, pos),
+-                   dequantStep(planeQp, uWgt.m[wbase + wi]));
++    return dequant(q, dequantStep(planeQp, uWgt.m[wbase + wi]));
+ }
+ 
+ // ------------------------------------------------------------- 1D IDCT
