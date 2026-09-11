@@ -2,7 +2,7 @@
 
 ## Decision — September 11
 
-NX Warp remains a codec alternative to HEVC. HEVC is the reference competitor, not the required bitstream underneath NX. Reusing useful GPU hardware is allowed; changing to HEVC transport is not the project direction selected here.
+The independent NX codec remains one research path. A subsequently requested parallel experiment uses full-frame hardware HEVC plus NX/WiVRn headset motion warp. That hybrid depends on HEVC for compression; it does not establish an independent replacement format. Both paths must justify latency and visual quality with measurements.
 
 The objective is lower measured delivery latency at useful visual quality and sustainable bandwidth. More fresh frames are valuable, but do not by themselves establish lower latency. Preserve the working 1024px native sharp centre at 2688 pixels per eye. Keep initial experiments to short, approximately 30-second screens.
 
@@ -35,3 +35,7 @@ Keep the stable profile available. Retain a prototype only after a repeat short 
 - [Native transform-skip tradeoff](../bench/results/90fps-2026-09-11/native-tskip/README.md)
 - [Fixed-pacing latency regression](../bench/results/90fps-2026-09-11/pace60-screen/README.md)
 - [Retained large-centre stability evidence](../bench/results/90fps-2026-09-11/large-centre-soak/README.md)
+
+## Full-frame hardware experiment
+
+[HEVC with headset motion fields](../bench/results/90fps-2026-09-11/hevc-motion/README.md) now executes as an opt-in prototype. The final short screen selected 84.39 fresh source frames/s, but extrapolation was usually zero or tiny. No latency or perceptual gain is demonstrated. Resolve scene-time versus predicted-display-time semantics before increasing extrapolation. The original NX profile remains selected.

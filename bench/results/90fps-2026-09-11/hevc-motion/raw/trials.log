@@ -1,0 +1,15 @@
+Performing Streamed Install
+Success
+Started WiVRn server PID 291613
+{"fdm": 3, "wait_us": 1000, "requested_seconds": 30, "capture": "0", "peripheral_smooth": "3", "scene": "NXWARP_BENCH_FULL_FIELD", "pid": "30746", "last_scene_time_s": 28.08, "complete": true, "elapsed_seconds": 33.44369037100114, "client_alive": true}
+{"fdm": 3, "wait_us": 1000, "requested_seconds": 30, "capture": "0", "peripheral_smooth": "3", "scene": "NXWARP_BENCH_FULL_FIELD", "pid": "30747", "last_scene_time_s": 28.06, "complete": true, "elapsed_seconds": 33.62516631998005, "client_alive": true}
+{"fdm": 3, "wait_us": 1000, "requested_seconds": 30, "capture": "0", "peripheral_smooth": "3", "scene": "NXWARP_BENCH_FULL_FIELD", "pid": "32211", "last_scene_time_s": 28.05, "complete": true, "elapsed_seconds": 33.69678747400758, "client_alive": true}
+setprop: Need 2 arguments (see "setprop --help")
+Traceback (most recent call last):
+  File "/run/media/nerdrx/Lex/claude/nx-scratch/hevc-motion/run.py", line 12, in <module>
+    subprocess.run([adb,'shell','setprop','debug.wivrn.nx.motion_mode',''],check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/home/nerdrx/.local/bin/adb', 'shell', 'setprop', 'debug.wivrn.nx.motion_mode', '']' returned non-zero exit status 1.
