@@ -95,3 +95,5 @@ No regional method or 8px grid was deployed as a live default. The separately re
 ## Follow-up: image-only layers and background completion
 
 A [new animated layer experiment](../bench/results/90fps-2026-09-11/motion-layers/README.md) tests rigid colour regions, optical-flow consistency and filling the old silhouette before composition. It isolates two remaining problems: correspondence for fast motion, and visibility when objects uncover or overlap pixels. These CPU diagnostics are not integrated and do not establish a latency improvement.
+
+The subsequent [persistent-tracking study](../bench/results/90fps-2026-09-11/motion-tracking/README.md) adds five animations, a timing/error chart, identity tests and an activation check for retained background. Broader masks reduce fragmentation; optional adjacent merging improves this scene’s mean error, but silhouette damage, rotation and live cost remain unresolved.
