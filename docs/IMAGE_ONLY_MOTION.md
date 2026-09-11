@@ -101,3 +101,5 @@ The subsequent [persistent-tracking study](../bench/results/90fps-2026-09-11/mot
 A [conservative silhouette refinement](../bench/results/90fps-2026-09-11/motion-silhouettes/README.md) subsequently produced negligible error improvement and substantial extra CPU work. Its animations and tests are preserved, but the pass is rejected for live use.
 
 The [prediction-horizon comparison](../bench/results/90fps-2026-09-11/motion-horizon/README.md) renders independent +11.11ms targets for eight matched samples. Shorter horizons greatly lower held-image error too; the evidence favors reducing source age rather than claiming a stronger predictor. Display cadence alone does not establish actual image age.
+
+The subsequent [actual GPU cap test](../bench/results/90fps-2026-09-11/motion-gpu-cap/README.md) covers all 32 predictions. A one-third shift worsens mean RGB error but reduces nonpositive sampling-map Jacobians from 8.60% to 0.95%, supporting a distortion-versus-motion tradeoff rather than a universal quality or latency win.
