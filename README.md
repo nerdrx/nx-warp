@@ -109,6 +109,8 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Finer motion grids:** [64/32/16/8px side-by-side animation](bench/results/90fps-2026-09-11/motion-grid/README.md). Denser fields lower average error slightly but retain bending and introduce finer tears; 8px has 64× the baseline cell count. No live default changed.
+
 **Moving 3D scene:** [slow-motion videos compare held frames, actual GPU predictions and separately rendered future frames](bench/results/90fps-2026-09-11/motion-scene/README.md). Independent object motion exposes bending and rotation errors; the current warp loses to holding on mean image error in this stress fixture.
 
 **Judge the motion warp on a photograph:** [native-size before/after images and a prediction-versus-truth blink comparison](bench/results/90fps-2026-09-11/motion-photo/README.md). These are actual GPU outputs from controlled translations, not a live VR recording.
