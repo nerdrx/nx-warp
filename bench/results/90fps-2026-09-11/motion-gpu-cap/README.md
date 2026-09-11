@@ -8,7 +8,7 @@
 
 Run the actual Vulkan downsample, motion-estimation and warp shaders with a 512×512 image and 8px motion grid. Compare a full one-field-interval shift with one third of that shift. Previous/current images are 33.33ms apart; both predictions are judged against the **same target 33.33ms after current**. The reduced shift therefore represents 11.11ms of estimated motion without pretending the image is newer.
 
-All 32 available predictions in the earlier stress scene are evaluated. Estimator inputs and resulting float fields match exactly between paired runs. Both eyes use the same inputs intentionally. The GPU's held and target readbacks also match byte-for-byte between paired runs. Vulkan validation reported no errors. The [binary identity](binary.json), raw logs and float fields are retained.
+All 32 available predictions in the earlier stress scene are evaluated. Estimator inputs and resulting float fields match exactly between paired runs. Both eyes use the same inputs intentionally. The GPU's held and target readbacks also match byte-for-byte between paired runs. Vulkan validation reported no errors. The [binary identity](binary.json), logs (trailing whitespace normalized) and raw float fields are retained.
 
 ## Results
 
