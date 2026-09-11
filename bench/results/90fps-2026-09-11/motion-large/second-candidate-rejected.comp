@@ -1,0 +1,218 @@
+/*
+ * WiVRn VR streaming
+ * Copyright (C) 2026  Patrick Nicolas <patricknicolas@laposte.net>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// Motion smoothing, second half: hierarchical block matching between the luma
+// pyramids of the current and the previous application frame.
+//
+// One work group per cell, one cell per motion vector. The search is exhaustive at
+// the coarsest level and refines the result at every finer level, then a parabolic
+// fit on the sum of absolute differences recovers a sub-texel position. Quality
+// matters far less here than robustness: a cell that matches the wrong thing is a
+// local smear for one application frame, never a failure.
+//
+// The result is a displacement d such that current(p) is prev(p - d), expressed in
+// normalized image coordinates. Everything downstream (the packet, the headset)
+// uses that convention.
+//
+// The scalar logic below is mirrored, constant for constant, by the offline test in
+// tests: keep the two in step.
+
+#version 460
+#extension GL_GOOGLE_include_directive: require
+
+#include "motion_constants.glsl.inc"
+
+layout(local_size_x = MOTION_THREADS, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2DArray current;
+layout(set = 0, binding = 1) uniform sampler2DArray previous;
+layout(set = 0, binding = 2, std430) buffer restrict writeonly Result
+{
+	// One vec2 per cell, left eye then right eye
+	vec2 vectors[];
+}
+result;
+
+layout(push_constant) uniform Params
+{
+	// Cells per eye
+	ivec2 grid;
+	// Level 0 dimensions, in texels
+	ivec2 l0_size;
+}
+params;
+
+shared uint s_key[MOTION_THREADS];
+shared uint s_cost[5];
+
+ivec2 level_size(int level)
+{
+	return max(params.l0_size >> level, ivec2(1));
+}
+
+// Sum of absolute differences between the window of `current` centred on c and the
+// window of `previous` centred on c - d, both at the given level, in the units the
+// samples are stored in (0 to 255). Coordinates are clamped, so a window that
+// hangs over an edge compares the edge against itself rather than against garbage.
+uint sad(int level, ivec2 c, ivec2 d, int view)
+{
+	ivec2 last = level_size(level) - 1;
+	uint cost = 0;
+	for (int y = 0; y < MOTION_WINDOW; ++y)
+	{
+		for (int x = 0; x < MOTION_WINDOW; ++x)
+		{
+			ivec2 o = ivec2(x, y) - MOTION_WINDOW / 2;
+			ivec2 pa = clamp(c + o, ivec2(0), last);
+			ivec2 pb = clamp(c + o - d, ivec2(0), last);
+			float a = texelFetch(current, ivec3(pa, view), level).r;
+			float b = texelFetch(previous, ivec3(pb, view), level).r;
+			cost += uint(round(abs(a - b) * 255.0));
+		}
+	}
+	return cost;
+}
+
+// Exhaustive search of a (2 * radius + 1)^2 neighbourhood of `base`, cooperatively
+// over the work group. Candidates are ranked by a single packed key so that the
+// reduction order cannot change the outcome: lowest cost first, then the shortest
+// vector, then the lowest candidate index.
+//
+//   cost  : at most MOTION_WINDOW^2 * 255 = 16320, 14 bits
+//   length: at most 2 * MOTION_RADIUS_COARSE = 12, 4 bits
+//   index : at most (2 * MOTION_RADIUS_COARSE + 1)^2 - 1 = 168, 8 bits
+ivec2 search(int level, ivec2 c, ivec2 base, int radius, int view, ivec2 excluded)
+{
+	int n = 2 * radius + 1;
+	uint count = uint(n * n);
+
+	uint best = 0xFFFFFFFFu;
+	for (uint i = gl_LocalInvocationIndex; i < count; i += MOTION_THREADS)
+	{
+		int dy = int(i) / n - radius;
+		int dx = int(i) % n - radius;
+		if (all(equal(base + ivec2(dx, dy), excluded))) continue;
+		uint cost = sad(level, c, base + ivec2(dx, dy), view);
+		uint length = uint(abs(dx) + abs(dy));
+		best = min(best, (cost << 12) | (length << 8) | i);
+	}
+
+	s_key[gl_LocalInvocationIndex] = best;
+	barrier();
+	for (uint s = MOTION_THREADS / 2; s > 0; s >>= 1)
+	{
+		if (gl_LocalInvocationIndex < s)
+			s_key[gl_LocalInvocationIndex] = min(s_key[gl_LocalInvocationIndex], s_key[gl_LocalInvocationIndex + s]);
+		barrier();
+	}
+
+	int i = int(s_key[0] & 0xFFu);
+	// s_key is reused by the next level
+	barrier();
+
+	return base + ivec2(i % n - radius, i / n - radius);
+}
+
+// Position of the minimum of the parabola through (-1, a), (0, b), (1, c), which is
+// where the true match sits if the cost surface is locally quadratic. Zero when the
+// three samples do not describe a minimum at all.
+float subtexel(uint a, uint b, uint c)
+{
+	// A perfect integer match cannot improve; fitting it adds spurious motion.
+	if (b == 0)
+		return 0.0;
+	float d = float(a) + float(c) - 2.0 * float(b);
+	if (d <= 0.0)
+		return 0.0;
+	return clamp(0.5 * (float(a) - float(c)) / d, -0.5, 0.5);
+}
+
+void main()
+{
+	int view = int(gl_WorkGroupID.z);
+	ivec2 cell = ivec2(gl_WorkGroupID.xy);
+
+	// Cell centre in level 0 texels. The grid covers the image exactly, so the cell
+	// centres the headset samples between are the ones matched here.
+	vec2 centre = (vec2(cell) + 0.5) / vec2(params.grid) * vec2(params.l0_size);
+
+	// Displacement, in level 0 texels, refined from the coarsest level down
+	ivec2 v = ivec2(0);
+	ivec2 coarse = ivec2(0);
+	for (int level = MOTION_LEVELS - 1; level >= 0; --level)
+	{
+		int radius = level == MOTION_LEVELS - 1 ? MOTION_RADIUS_COARSE : MOTION_RADIUS_FINE;
+		ivec2 c = ivec2(floor(centre)) >> level;
+		// Round the vector propagated from the level above into this level's texels
+		ivec2 base = ivec2(floor(vec2(v) / float(1 << level) + 0.5));
+		v = search(level, c, base, radius, view, ivec2(9999)) * (1 << level);
+		if (level == MOTION_LEVELS - 1) coarse = v / (1 << level);
+	}
+
+	// Sub-texel refinement, on the level 0 cost surface around the winner
+	ivec2 c0 = ivec2(floor(centre));
+	ivec2 second = ivec2(0);
+	for (int level = MOTION_LEVELS - 1; level >= 0; --level)
+	{
+	 int radius = level == MOTION_LEVELS - 1 ? MOTION_RADIUS_COARSE : MOTION_RADIUS_FINE;
+	 ivec2 c = ivec2(floor(centre)) >> level;
+	 ivec2 base = ivec2(floor(vec2(second) / float(1 << level) + 0.5));
+	 second = search(level, c, base, radius, view,
+	                 level == MOTION_LEVELS - 1 ? coarse : ivec2(9999)) * (1 << level);
+	}
+	if (gl_LocalInvocationIndex == 0) s_cost[0] = sad(0, c0, v, view);
+	if (gl_LocalInvocationIndex == 1) s_cost[1] = sad(0, c0, second, view);
+	barrier();
+	if (s_cost[1] < s_cost[0]) v = second;
+	barrier();
+	// Coarse matching can lock onto a distant lookalike. Independently check
+	// small motion at full pyramid resolution before accepting that pull.
+	ivec2 local = search(0, c0, ivec2(0), MOTION_RADIUS_FINE, view, ivec2(9999));
+	if (gl_LocalInvocationIndex == 0) s_cost[0] = sad(0, c0, v, view);
+	if (gl_LocalInvocationIndex == 1) s_cost[1] = sad(0, c0, local, view);
+	barrier();
+	if (s_cost[1] < s_cost[0] ||
+	    (s_cost[1] == s_cost[0] && abs(local.x) + abs(local.y) < abs(v.x) + abs(v.y)))
+		v = local;
+	barrier();
+	if (gl_LocalInvocationIndex < 5)
+	{
+		const ivec2 offsets[5] = ivec2[5](
+			ivec2(0, 0),
+			ivec2(-1, 0),
+			ivec2(1, 0),
+			ivec2(0, -1),
+			ivec2(0, 1));
+		s_cost[gl_LocalInvocationIndex] = sad(0, c0, v + offsets[gl_LocalInvocationIndex], view);
+	}
+	barrier();
+
+	if (gl_LocalInvocationIndex == 0)
+	{
+		vec2 sub = vec2(
+			subtexel(s_cost[1], s_cost[0], s_cost[2]),
+			subtexel(s_cost[3], s_cost[0], s_cost[4]));
+
+		// Level 0 texels to a fraction of the eye image
+		vec2 d = (vec2(v) + sub) / vec2(params.l0_size);
+		d = clamp(d, vec2(-MOTION_MAX_DISPLACEMENT), vec2(MOTION_MAX_DISPLACEMENT));
+
+		uint index = (uint(view) * uint(params.grid.y) + gl_WorkGroupID.y) * uint(params.grid.x) + gl_WorkGroupID.x;
+		result.vectors[index] = d;
+	}
+}

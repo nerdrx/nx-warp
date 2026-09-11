@@ -109,6 +109,8 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Large-motion screen:** tested 24–64px translations. Wider search gave no gain; a second coarse candidate had mixed results and was rejected. Some aligned shifts succeed, but large-motion block pulls remain unresolved. [GPU images and all trial results](bench/results/90fps-2026-09-11/motion-large/README.md).
+
 **Motion-block update:** a nearby-match check removes the wrong pulls in the previously failing 8px/4px GPU fixture (**RMSE 17.65 → 0**), while the short Pico screen holds about **59.6 fresh selections/s**. Fractional motion still fails; this is not a general quality or latency win. [Before/after images, controls and live logs](bench/results/90fps-2026-09-11/motion-nearby-match/README.md).
 
 ![Motion pulls before and after nearby matching](bench/results/90fps-2026-09-11/motion-nearby-match/comparison.png)
