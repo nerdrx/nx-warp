@@ -35,6 +35,14 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 
 *Current large-centre profile: 15 minutes of changing full-field content on Pico. [Both-eye screenshots, raw logs and limitations](bench/results/90fps-2026-09-11/large-centre-soak/README.md). The 90 Hz display setting does not imply 90 fresh frames.*
 
+## Image-only motion: animations and research report
+
+![Eight motion experiments compared](bench/results/90fps-2026-09-11/motion-surfaces/overview.gif)
+
+**Cleaner shapes, with unresolved object motion.** We tested moved region masks, rigid transforms, temporal matching, dense optical flow and a single-transform fallback. The fallback preserves straight lines mathematically, but cannot advance independently moving objects correctly. These are offline quality experiments, not a demonstrated latency improvement.
+
+[Read the research report](docs/IMAGE_ONLY_MOTION.md) · [Watch every experiment and inspect raw evidence](bench/results/90fps-2026-09-11/motion-surfaces/README.md)
+
 ## At a glance
 
 | | Current scope |
