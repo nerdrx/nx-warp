@@ -30,3 +30,7 @@ The user prefers the 8px grid for small-object detail despite its modest aggrega
 | 8px | 37.726588 | 37.545263 |
 
 Means cover the same 32 future targets. The blur softens jagged edges slightly; it does not resolve the distorted bar. These small score differences do not prove perceived quality or justify extra runtime cost. Keep this an optional visual candidate, not a deployed default. GPU validation reported no errors. Host shader sources and the live profile remain unchanged.
+
+## Follow-up: requested client default
+
+[c550d2f8](https://github.com/nerdrx/wivrn-nx/commit/c550d2f8) enables the tiny filter by default for active ordinary opaque client motion prediction. Atlas, compact and alpha paths are excluded; later upscaling/postprocessing can alter the effect. Set Android property `debug.wivrn.nx.motion_blur=0` and reconnect to disable, or host environment `WIVRN_NX_MOTION_BLUR=0`. This client approximation works in sampled colour space and decoded-image texels, so it is not pixel-identical to the host linear-colour fixture. Android release build passed and the updated APK was prepared. No client GPU-cost or visual equivalence claim is made. The 8px grid remains a separate unintegrated experiment.

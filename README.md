@@ -109,6 +109,8 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Image-only region transforms:** [new animation compares the 8px grid, shared affine regions and true future](bench/results/90fps-2026-09-11/motion-regions/README.md). Some edges straighten, but grouping mistakes remain and aggregate error worsens. No renderer IDs or depth were used.
+
 **Tiny motion blur:** [8px-grid before/after animation and enlarged crop](bench/results/90fps-2026-09-11/motion-tiny-blur/README.md). A 1.5px-capped filter slightly softens edges; incorrect shapes remain. The user prefers the 8px detail candidate; neither finer grids nor blur is deployed by default.
 
 **Finer motion grids:** [64/32/16/8px side-by-side animation](bench/results/90fps-2026-09-11/motion-grid/README.md). Denser fields lower average error slightly but retain bending and introduce finer tears; 8px has 64× the baseline cell count. No live default changed.
