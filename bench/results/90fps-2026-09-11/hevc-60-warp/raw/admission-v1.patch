@@ -1,0 +1,77 @@
+diff --git a/server/compositor/compositor.cpp b/server/compositor/compositor.cpp
+index 84897349..deb7064b 100644
+--- a/server/compositor/compositor.cpp
++++ b/server/compositor/compositor.cpp
+@@ -37,6 +37,7 @@
+ #include "driver/pose_sanitize.h"
+ #include "driver/wivrn_session.h"
+ #include "encoder/video_encoder.h"
++#include "encoder/pace_rate.h"
+ #include "inplace_vector.hpp"
+ #include "utils/method.h"
+ #include "utils/wivrn_trace.h"
+@@ -733,6 +734,36 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		return XRT_SUCCESS;
+ 	}
+ 
++	// Experimental source cap: preserve the app's 90-Hz OpenXR commit/display
++	// timeline, but admit a fractional 60-Hz cadence to all streams together.
++	// This must happen before acquire_image so rejected source frames consume no
++	// image, GPU work, or encoder slot. The admitted frame keeps its real
++	// predicted display timestamp below; no synthetic or repeated timestamp is made.
++	if (nx_source_cap_60)
++	{
++		const auto now = std::chrono::steady_clock::now();
++		if (nx_source_phase > now)
++			nx_source_phase = now;
++		const bool admit = pace_accumulated_admit(now, 1.0 / 60.0, nx_source_phase);
++		admit ? ++nx_source_admitted : ++nx_source_skipped;
++		if (nx_source_report == std::chrono::steady_clock::time_point{})
++			nx_source_report = now;
++		const double elapsed = std::chrono::duration<double>(now - nx_source_report).count();
++		if (elapsed >= 2.0)
++		{
++			U_LOG_I("source cap: admitted %llu skipped %llu in %.3f s (%.2f admitted/s; before image acquisition)",
++			        (unsigned long long)nx_source_admitted, (unsigned long long)nx_source_skipped,
++			        elapsed, double(nx_source_admitted) / elapsed);
++			nx_source_report = now;
++			nx_source_admitted = nx_source_skipped = 0;
++		}
++		if (not admit)
++		{
++			comp_frame_clear_locked(&frame.rendering);
++			return XRT_SUCCESS;
++		}
++	}
++
+ 	int i = acquire_image();
+ 	if (i < 0)
+ 	{
+@@ -1655,6 +1686,11 @@ compositor::compositor(wivrn_session & session) :
+         squasher(vk, render_extent(session.get_info())),
+         foveation(vk, images[0].image.info().extent)
+ {
++	const char * source_fps = std::getenv("WIVRN_NX_SOURCE_FPS");
++	nx_source_cap_60 = source_fps and source_fps[0] == '6' and source_fps[1] == '0' and source_fps[2] == '\0';
++	if (nx_source_cap_60)
++		U_LOG_I("compositor: WIVRN_NX_SOURCE_FPS=60 enabled (60/s source admission cap; app/display cadence unchanged)");
++
+ 	comp_base * c_base = this;
+ 	// Ensure we can safely cast pointers
+ 	assert(intptr_t(&base) == intptr_t(this));
+diff --git a/server/compositor/compositor.h b/server/compositor/compositor.h
+index 53b39624..7ccfd497 100644
+--- a/server/compositor/compositor.h
++++ b/server/compositor/compositor.h
+@@ -107,6 +107,11 @@ private:
+ 	std::atomic<float> requested_refresh_rate;
+ 	std::atomic<float> frame_rate;
+ 	wivrn::pacer pacer;
++	// Opt-in source admission cap for experiments: the app still commits at the
++	// headset's display cadence, while only 60 of its 90 source frames are encoded.
++	bool nx_source_cap_60 = false;
++	std::chrono::steady_clock::time_point nx_source_phase{}, nx_source_report{};
++	uint64_t nx_source_admitted = 0, nx_source_skipped = 0;
+ 
+ 	layer_squasher squasher;
+ 	wivrn::foveation foveation;

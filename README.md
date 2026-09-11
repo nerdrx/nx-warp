@@ -103,6 +103,8 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 A parallel [hardware-decoded image with headset motion warp](bench/results/90fps-2026-09-11/hevc-motion/README.md) prototype is implemented in WiVRn NX. The final 30-second screen at 2688² per eye selected **84.39 fresh source frames/s**. Matching motion fields reached presentation, but their extrapolation steps were mostly zero or tiny: **no latency or perceptual improvement is proven**. Both-eye captures, raw measurements and the next timestamp-validation gate are published. The original NX large-centre profile remains selected.
 
+The follow-up [60-source / 90-Hz pacing screen](bench/results/90fps-2026-09-11/hevc-60-warp/README.md) reached **59.6 fresh selections/s and a 90 Hz render loop** with warp enabled or disabled. Only 22/1,512 matched views received a nonzero shift: improved motion responsiveness remains unproven. Scene-time alignment and camera-motion compensation are the next gates.
+
 ## Measured results
 
 **Hardware baseline:** [two 30-second HEVC 8-bit trials](bench/results/90fps-2026-09-11/hardware-baseline/README.md) deliver **79.5 / 85.1 fresh source selections/s**, versus **44.6–45.7 for nearby NX controls**, at 2688² per eye through the same server foveation stage. Quality, encoded bitrate and stream organization differ; this is not a matched-quality or physical-latency comparison. Actual both-eye captures and raw evidence are included. The explicit 10-bit follow-up gives **85.4 / 88.9 selections/s**. HEVC remains the competitor baseline; NX continues as an independent low-latency alternative. These sequential screens do not establish a bit-depth advantage or sustained 90 fresh stereo FPS.
