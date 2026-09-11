@@ -109,6 +109,8 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Moving 3D scene:** [slow-motion videos compare held frames, actual GPU predictions and separately rendered future frames](bench/results/90fps-2026-09-11/motion-scene/README.md). Independent object motion exposes bending and rotation errors; the current warp loses to holding on mean image error in this stress fixture.
+
 **Judge the motion warp on a photograph:** [native-size before/after images and a prediction-versus-truth blink comparison](bench/results/90fps-2026-09-11/motion-photo/README.md). These are actual GPU outputs from controlled translations, not a live VR recording.
 
 **Large-motion screen:** tested 24–64px translations. Wider search gave no gain; a second coarse candidate had mixed results and was rejected. Some aligned shifts succeed, but large-motion block pulls remain unresolved. [GPU images and all trial results](bench/results/90fps-2026-09-11/motion-large/README.md).
