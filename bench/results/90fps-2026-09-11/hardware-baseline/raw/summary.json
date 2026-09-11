@@ -1,0 +1,150 @@
+[
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hw-nx-base-a-client.log",
+    "client": {
+      "n": 9,
+      "start": "10:27:44.288",
+      "end": "10:28:00.338",
+      "means": {
+        "fresh_per_s": 45.666666666666664,
+        "iterations": 158.88888888888889,
+        "iterations_per_s": 79.17777777777778,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.2444444444444445,
+        "source_offset_ms": 81.6,
+        "submit_lead_ms": 37.63333333333333,
+        "wait_attempts": 105.66666666666667,
+        "wait_successes": 38.111111111111114,
+        "wait_total_ms": 72.64055555555555
+      }
+    },
+    "decoder": {
+      "n": 9,
+      "start": "10:27:44.241",
+      "end": "10:28:00.346",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 17.444444444444443,
+        "frames": 91.77777777777777,
+        "frames_per_s": 45.888888888888886,
+        "nxvc_gpu_ms": 14.58888888888889,
+        "pass_a_ms": 5.066666666666666,
+        "pass_b_ms": 9.533333333333333,
+        "queue_ms": 2.8111111111111113
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hw-hevc-a-client.log",
+    "client": {
+      "n": 9,
+      "start": "10:28:17.598",
+      "end": "10:28:33.632",
+      "means": {
+        "fresh_per_s": 81.61111111111111,
+        "iterations": 180.44444444444446,
+        "iterations_per_s": 90.0,
+        "older_available": 178.22222222222223,
+        "own_gpu_ms": 7.822222222222223,
+        "source_offset_ms": -3.5,
+        "submit_lead_ms": 33.72222222222222,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "decoder": {
+      "n": 0,
+      "start": null,
+      "end": null,
+      "means": {}
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hw-nx-base-b-client.log",
+    "client": {
+      "n": 9,
+      "start": "10:28:54.161",
+      "end": "10:29:10.224",
+      "means": {
+        "fresh_per_s": 44.55555555555556,
+        "iterations": 171.44444444444446,
+        "iterations_per_s": 85.36666666666666,
+        "older_available": 0.0,
+        "own_gpu_ms": 2.822222222222222,
+        "source_offset_ms": 79.74444444444445,
+        "submit_lead_ms": 35.900000000000006,
+        "wait_attempts": 120.33333333333333,
+        "wait_successes": 38.0,
+        "wait_total_ms": 88.234
+      }
+    },
+    "decoder": {
+      "n": 10,
+      "start": "10:28:52.079",
+      "end": "10:29:10.166",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 17.94,
+        "frames": 89.4,
+        "frames_per_s": 44.7,
+        "nxvc_gpu_ms": 15.2,
+        "pass_a_ms": 5.58,
+        "pass_b_ms": 9.620000000000001,
+        "queue_ms": 2.7199999999999998
+      }
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hw-hevc8-a-client.log",
+    "client": {
+      "n": 10,
+      "start": "10:29:27.800",
+      "end": "10:29:45.841",
+      "means": {
+        "fresh_per_s": 79.5,
+        "iterations": 180.4,
+        "iterations_per_s": 89.97,
+        "older_available": 178.9,
+        "own_gpu_ms": 7.3,
+        "source_offset_ms": -4.04,
+        "submit_lead_ms": 33.65,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "decoder": {
+      "n": 0,
+      "start": null,
+      "end": null,
+      "means": {}
+    }
+  },
+  {
+    "file": "/run/media/nerdrx/Lex/claude/nx-scratch/motion-live/hw-hevc8-b-client.log",
+    "client": {
+      "n": 10,
+      "start": "10:30:01.876",
+      "end": "10:30:19.917",
+      "means": {
+        "fresh_per_s": 85.1,
+        "iterations": 180.3,
+        "iterations_per_s": 89.97999999999999,
+        "older_available": 178.7,
+        "own_gpu_ms": 8.0,
+        "source_offset_ms": -6.27,
+        "submit_lead_ms": 33.04,
+        "wait_attempts": 0.0,
+        "wait_successes": 0.0,
+        "wait_total_ms": 0.0
+      }
+    },
+    "decoder": {
+      "n": 0,
+      "start": null,
+      "end": null,
+      "means": {}
+    }
+  }
+]
