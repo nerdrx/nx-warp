@@ -121,3 +121,5 @@ A [zero-motion photometric preference](../bench/results/90fps-2026-09-11/motion-
 [Local coherent-vector cleanup](../bench/results/90fps-2026-09-11/motion-coherent/README.md) preserves position advancement but barely changes error or sampling-map fold fraction. This additional pass is rejected; local smoothing has not resolved surface tearing.
 
 A [Pico retention repeat with actual headset recordings](../bench/results/90fps-2026-09-11/pico-retained-repeat/README.md) reproduces fewer estimated-timeline stalls with four retained sources, at increased warp GPU cost and older source timestamps. Screen recordings are separate from timing runs; visual/physical-latency proof remains limited.
+
+The [retained-slot indexing fix](../bench/results/90fps-2026-09-11/retained-slot-fix/README.md) preserves four distinct source IDs even when decoding skips frames. Host regressions and Android compilation pass; it is not yet installed or validated live.
