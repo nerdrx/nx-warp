@@ -1,0 +1,142 @@
+[
+  {
+    "file": "nx-scratch/motion-live/large-priority-on-a-client.log",
+    "client": {
+      "n": 39,
+      "start": "05:03:11.506",
+      "end": "05:04:27.751",
+      "means": {
+        "fresh_per_s": 52.97435897435897,
+        "iterations": 163.51282051282053,
+        "iterations_per_s": 81.48717948717949,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.079487179487179,
+        "source_offset_ms": 77.15128205128205,
+        "submit_lead_ms": 36.52564102564103,
+        "wait_attempts": 75.76923076923077,
+        "wait_successes": 18.205128205128204,
+        "wait_total_ms": 61.56907692307692
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "05:03:09.437",
+      "end": "05:04:27.824",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 14.85,
+        "frames": 106.175,
+        "frames_per_s": 53.0875,
+        "nxvc_gpu_ms": 12.944999999999999,
+        "pass_a_ms": 4.6674999999999995,
+        "pass_b_ms": 8.2675,
+        "queue_ms": 1.8875
+      }
+    }
+  },
+  {
+    "file": "nx-scratch/motion-live/large-priority-off-a-client.log",
+    "client": {
+      "n": 39,
+      "start": "05:04:45.355",
+      "end": "05:06:01.586",
+      "means": {
+        "fresh_per_s": 52.73076923076923,
+        "iterations": 164.92307692307693,
+        "iterations_per_s": 82.22307692307692,
+        "older_available": 0.0,
+        "own_gpu_ms": 2.9333333333333336,
+        "source_offset_ms": 77.32307692307693,
+        "submit_lead_ms": 36.65384615384615,
+        "wait_attempts": 78.7948717948718,
+        "wait_successes": 19.333333333333332,
+        "wait_total_ms": 63.6181282051282
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "05:04:43.286",
+      "end": "05:06:01.721",
+      "means": {
+        "copy_gpu_ms": 0.00025,
+        "fence_post_ms": 14.897499999999999,
+        "frames": 105.8,
+        "frames_per_s": 52.9,
+        "nxvc_gpu_ms": 13.13,
+        "pass_a_ms": 4.995,
+        "pass_b_ms": 8.14,
+        "queue_ms": 1.7399999999999998
+      }
+    }
+  },
+  {
+    "file": "nx-scratch/motion-live/large-priority-off-b-client.log",
+    "client": {
+      "n": 39,
+      "start": "05:06:19.145",
+      "end": "05:07:35.408",
+      "means": {
+        "fresh_per_s": 53.26923076923077,
+        "iterations": 153.12820512820514,
+        "iterations_per_s": 76.31025641025641,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.282051282051282,
+        "source_offset_ms": 78.02307692307693,
+        "submit_lead_ms": 36.88974358974359,
+        "wait_attempts": 54.717948717948715,
+        "wait_successes": 8.128205128205128,
+        "wait_total_ms": 49.60653846153846
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "05:06:17.093",
+      "end": "05:07:35.495",
+      "means": {
+        "copy_gpu_ms": 0.00025,
+        "fence_post_ms": 14.6975,
+        "frames": 106.85,
+        "frames_per_s": 53.425,
+        "nxvc_gpu_ms": 13.0275,
+        "pass_a_ms": 4.93,
+        "pass_b_ms": 8.1075,
+        "queue_ms": 1.6375
+      }
+    }
+  },
+  {
+    "file": "nx-scratch/motion-live/large-priority-on-b-client.log",
+    "client": {
+      "n": 39,
+      "start": "05:07:53.135",
+      "end": "05:09:09.392",
+      "means": {
+        "fresh_per_s": 53.205128205128204,
+        "iterations": 154.66666666666666,
+        "iterations_per_s": 77.08717948717948,
+        "older_available": 0.0,
+        "own_gpu_ms": 3.1974358974358976,
+        "source_offset_ms": 77.64102564102564,
+        "submit_lead_ms": 36.843589743589746,
+        "wait_attempts": 57.94871794871795,
+        "wait_successes": 9.692307692307692,
+        "wait_total_ms": 51.422333333333334
+      }
+    },
+    "decoder": {
+      "n": 40,
+      "start": "05:07:51.099",
+      "end": "05:09:09.465",
+      "means": {
+        "copy_gpu_ms": 0.0,
+        "fence_post_ms": 14.74,
+        "frames": 106.625,
+        "frames_per_s": 53.3125,
+        "nxvc_gpu_ms": 13.092500000000001,
+        "pass_a_ms": 5.0475,
+        "pass_b_ms": 8.0525,
+        "queue_ms": 1.6125
+      }
+    }
+  }
+]
