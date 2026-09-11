@@ -17,6 +17,10 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+## NXVC Hybrid
+
+**NXVC Hybrid — HEVC compression with NX motion prediction and reprojection.** This names the current HEVC-backed mode of NX Warp. **Native NXVC** identifies the custom compression path; the two remain distinct in benchmarks. Hybrid prediction quality and physical latency benefits are still under evaluation. [Naming and architecture](docs/NAMING.md).
+
 ## Abstract
 
 **NX Warp is an experimental video codec for rendered VR, developed with the custom WiVRn NX streaming stack.** It explores a simple premise: head pose, reusable tiles and renderer information should let a headset reconstruct useful pixels with less work than a conventional whole-frame pipeline.
