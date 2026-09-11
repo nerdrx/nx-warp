@@ -1,0 +1,815 @@
+[gamescope] [[0;34mInfo[0m]  [0;37mconsole:[0m gamescope version 3.16.25 (gcc 16.2.1)
+No CAP_SYS_NICE, falling back to regular-priority compute and threads.
+Performance will be affected.
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Loading scripts from: '/usr/share/gamescope/scripts'
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Loading scripts from: '/usr/share/gamescope/scripts/00-gamescope'
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Loading scripts from: '/usr/share/gamescope/scripts/00-gamescope/common'
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/common/inspect.lua' (id: 0)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/common/modegen.lua' (id: 1)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/common/util.lua' (id: 2)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Loading scripts from: '/usr/share/gamescope/scripts/00-gamescope/displays'
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/asus.rogally.lcd.lua' (id: 3)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/deckhd.steamdeck.deckhd-lcd.lua' (id: 4)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/gpd.win4.lcd.lua' (id: 5)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/lenovo.legiongo.lcd.lua' (id: 6)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/lenovo.legiongos.lcd.lua' (id: 7)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/onexplayer.f1.oled.lua' (id: 8)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/valve.steamdeck.lcd.lua' (id: 9)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/valve.steamdeck.oled.lua' (id: 10)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Running script file '/usr/share/gamescope/scripts/00-gamescope/displays/zotac.zone.oled.lua' (id: 11)
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Loading scripts from: '/etc/gamescope/scripts'
+[gamescope] [[0;33mWarn[0m]  [0;37mscriptmgr:[0m Directory '/etc/gamescope/scripts' does not exist
+[gamescope] [[0;34mInfo[0m]  [0;37mscriptmgr:[0m Loading scripts from: '/home/nerdrx/.config/gamescope/scripts'
+[gamescope] [[0;33mWarn[0m]  [0;37mscriptmgr:[0m Directory '/home/nerdrx/.config/gamescope/scripts' does not exist
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m selecting physical device 'AMD Radeon RX 7900 XTX (RADV NAVI31)': queue family 1 (general queue family 0)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m physical device supports DRM format modifiers
+[gamescope] [[0;34mInfo[0m]  [0;37mwlserver:[0m [backend/headless/backend.c:60] Creating headless backend
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m supported DRM formats for sampling usage:
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   AR24 (0x34325241)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   XR24 (0x34325258)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   AB24 (0x34324241)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   XB24 (0x34324258)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   RG16 (0x36314752)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   NV12 (0x3231564E)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   AB4H (0x48344241)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   XB4H (0x48344258)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   AB48 (0x38344241)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   XB48 (0x38344258)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   AB30 (0x30334241)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   XB30 (0x30334258)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   AR30 (0x30335241)
+[gamescope] [[0;34mInfo[0m]  [0;37mvulkan:[0m   XR30 (0x30335258)
+[gamescope] [[0;34mInfo[0m]  [0;37mwlserver:[0m Using explicit sync when available
+[gamescope] [[0;34mInfo[0m]  [0;37mwlserver:[0m Running compositor on wayland display 'gamescope-0'
+[gamescope] [[0;34mInfo[0m]  [0;37mwlserver:[0m [backend/headless/backend.c:17] Starting headless backend
+[gamescope] [[0;34mInfo[0m]  [0;37mwlserver:[0m Successfully initialized libei for input emulation!
+[gamescope] [[0;34mInfo[0m]  [0;37mwlserver:[0m [xwayland/server.c:107] Starting Xwayland on :1
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Multiple symbols for level 1/group 1 on key <FK23>
+>                   Using F23, ignoring XF86TouchpadOff
+> Warning:          Symbol map for key <FK23> redefined
+>                   Using last definition for conflicting fields
+> Warning:          Symbol map for key <FK24> redefined
+>                   Using last definition for conflicting fields
+> Warning:          Could not resolve keysym XF86ElectronicPrivacyScreenOn
+> Warning:          Could not resolve keysym XF86ElectronicPrivacyScreenOff
+> Warning:          Could not resolve keysym XF86ActionOnSelection
+> Warning:          Could not resolve keysym XF86ContextualInsert
+> Warning:          Could not resolve keysym XF86ContextualQuery
+Errors from xkbcomp are not fatal to the X server
+[gamescope] [[0;34mInfo[0m]  [0;37mpipewire:[0m stream state changed: connecting
+[gamescope] [[0;34mInfo[0m]  [0;37mpipewire:[0m stream state changed: paused
+[gamescope] [[0;34mInfo[0m]  [0;37mpipewire:[0m stream available on node ID: 288
+[gamescope] [[0;34mInfo[0m]  [0;37mvblank:[0m Using timerfd.
+[04:46:52.333][Info   ] Press any key to shutdown...
+[04:46:52.333][Info   ] Available Layers: (3)
+[04:46:52.334][Info   ] Depth submission supported (XR_KHR_composition_layer_depth)
+LOG in xrCreateInstance: Instance created
+	createInfo->applicationInfo.applicationName: HelloXR
+	createInfo->applicationInfo.applicationVersion: 0
+	createInfo->applicationInfo.engineName: 
+	createInfo->applicationInfo.engineVersion: 0
+	createInfo->applicationInfo.apiVersion: 1.0.63
+	appinfo.detected.engine.name: (null)
+	appinfo.detected.engine.version: 0.0.0
+	quirks.disable_vulkan_format_depth: false
+	quirks.disable_vulkan_format_depth_stencil: false
+	quirks.disable_quad_views: false
+	quirks.no_validation_error_in_create_ref_space: true
+	quirks.skip_end_session: false
+	quirks.parallel_views: false
+	quirks.no_texture_source_alpha: false
+	quirks.ignore_invalid_swapchain_usage_bits: false
+
+[04:46:52.335][Info   ] Instance RuntimeName=WiVRn 'nx-atlas-live-920ac878-dirty' RuntimeVersion=0.0.0
+LOG in xrGetSystem: Selected devices
+	Head: 'WiVRn HMD'
+	Eyes: '<none>'
+	Left: 'WiVRn left hand interaction'
+	Right: 'WiVRn right hand interaction'
+	Gamepad: 'WiVRn Gamepad'
+	Hand-Tracking Left (unobstructed): 'WiVRn left controller'
+	Hand-Tracking Right (unobstructed): 'WiVRn right controller'
+	Hand-Tracking Left (conforming): '<none>'
+	Hand-Tracking Right (conforming): '<none>'
+[04:46:52.335][Info   ] Available View Configuration Types: (1)
+[04:46:52.335][Info   ]   Available Environment Blend Mode count : (2)
+[04:46:52.335][Info   ]     Environment Blend Mode (XR_ENVIRONMENT_BLEND_MODE_OPAQUE) : (Selected)
+[04:46:52.335][Info   ]     Environment Blend Mode (XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND) : 
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) vkCreateInstance: applicationName: "hello_xr", applicationVersion: 1, engineName: "hello_xr", engineVersion: 1, apiVersion: 1.0.0
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) vkCreateInstance: Requested 1 instance layer(s):
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_LAYER_KHRONOS_validation
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) vkCreateInstance: Requested 5 instance extension(s):
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_KHR_external_fence_capabilities
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_KHR_external_memory_capabilities
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_KHR_external_semaphore_capabilities
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_KHR_get_physical_device_properties2
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_EXT_debug_utils
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) No valid vk_loader_settings.json file found, no loader settings will be active
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Searching for implicit layer manifest files
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    In following locations:
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.config/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.config/kdedefaults/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /etc/xdg/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /etc/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/local/share/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/implicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    Found the following files:
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/implicit_layer.d/MangoHud.x86.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/implicit_layer.d/MangoHud.x86_64.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_anti_lag.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_i386.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamoverlay_x86_64.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_i386.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /home/nerdrx/.local/share/vulkan/implicit_layer.d/steamfossilize_x86_64.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /usr/share/vulkan/implicit_layer.d/MangoHud.x86.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /usr/share/vulkan/implicit_layer.d/MangoHud.x86_64.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_anti_lag.json (file version 1.2.1)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json (file version 1.0.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Searching for explicit layer manifest files
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    In following locations:
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.config/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.config/kdedefaults/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /etc/xdg/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /etc/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/local/share/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/explicit_layer.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    Found the following files:
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found manifest file /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json (file version 1.2.0)
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Searching for driver manifest files
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    In following locations:
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.config/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.config/kdedefaults/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /etc/xdg/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /etc/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /home/nerdrx/.local/share/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/local/share/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/icd.d
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    Found the following files:
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570)       /usr/share/vulkan/icd.d/radeon_icd.json
+[04:46:52.340][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Found ICD manifest file /usr/share/vulkan/icd.d/radeon_icd.json, version 1.0.1
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Insert instance layer "VK_LAYER_KHRONOS_validation" (/usr/lib/libVkLayer_khronos_validation.so)
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Insert instance layer "VK_LAYER_MESA_device_select" (/usr/lib/libVkLayer_MESA_device_select.so)
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Insert instance layer "VK_LAYER_FROG_gamescope_wsi_x86_64" (/usr/lib/libVkLayer_FROG_gamescope_wsi_x86_64.so)
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570) vkCreateInstance layer callstack setup to:
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    <Application>
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    <Loader>
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_LAYER_FROG_gamescope_wsi_x86_64
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Type: Implicit
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Enabled By: Implicit Layer
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)                Disable Env Var:  DISABLE_GAMESCOPE_WSI
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)                This layer was enabled because Env Var ENABLE_GAMESCOPE_WSI was set to Value 1
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Library:  /usr/lib/libVkLayer_FROG_gamescope_wsi_x86_64.so
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_LAYER_MESA_device_select
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Type: Implicit
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Enabled By: Implicit Layer
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)                Disable Env Var:  NODEVICE_SELECT
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Library:  /usr/lib/libVkLayer_MESA_device_select.so
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_LAYER_KHRONOS_validation
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Type: Explicit
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Enabled By: By the Application
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Manifest: /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Library:  /usr/lib/libVkLayer_khronos_validation.so
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.341][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    <Drivers>
+[04:46:52.343][Error  ] ERROR: ( 0x0) vkCreateInstance(): pCreateInfo->ppEnabledExtensionNames[5] Missing extension required to enable instance extension VK_KHR_wayland_surface:
+ - VK_KHR_surface
+The Vulkan spec states: All required extensions for each extension in the VkInstanceCreateInfo::ppEnabledExtensionNames list must also be present in that list (https://docs.vulkan.org/spec/latest/chapters/initialization.html#VUID-vkCreateInstance-ppEnabledExtensionNames-01388)
+[04:46:52.343][Error  ] ERROR: ( 0x0) vkCreateInstance(): pCreateInfo->ppEnabledExtensionNames[6] Missing extension required to enable instance extension VK_KHR_xcb_surface:
+ - VK_KHR_surface
+The Vulkan spec states: All required extensions for each extension in the VkInstanceCreateInfo::ppEnabledExtensionNames list must also be present in that list (https://docs.vulkan.org/spec/latest/chapters/initialization.html#VUID-vkCreateInstance-ppEnabledExtensionNames-01388)
+[04:46:52.344][Info   ] INFO: (INSTANCE 0x560bc3bcf570) vkCreateInstance(): Current Validaiton Enabled:
+  - Core Checks
+  - Stateless Parameter
+  - Object lifetime
+  - Thread Safety
+  - Handle Wrapping
+
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[Gamescope WSI] Application info:
+  pApplicationName: hello_xr
+  applicationVersion: 1
+  pEngineName: hello_xr
+  engineVersion: 1
+  apiVersion: 4194304
+[Gamescope WSI] Executable name: hello_xr
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.346][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+LOG in xrCreateVulkanInstanceKHR: Creation of VkInstance:
+	result: VK_SUCCESS
+	vulkanInstance: 0x560bc3bcf570
+	extensions:
+		VK_KHR_external_fence_capabilities
+		VK_KHR_external_memory_capabilities
+		VK_KHR_external_semaphore_capabilities
+		VK_KHR_get_physical_device_properties2
+		VK_EXT_debug_utils
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) linux_read_sorted_physical_devices:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Original order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Radeon RX 7900 XTX (RADV NAVI31)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      Sorted order:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [0] AMD Radeon RX 7900 XTX (RADV NAVI31)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            [1] AMD Ryzen 9 9950X3D 16-Core Processor (RADV RAPHAEL_MENDOCINO)  
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Inserted device layer "VK_LAYER_KHRONOS_validation" (/usr/lib/libVkLayer_khronos_validation.so)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Failed to find vkGetDeviceProcAddr in layer "/usr/lib/libVkLayer_MESA_device_select.so"
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) Inserted device layer "VK_LAYER_FROG_gamescope_wsi_x86_64" (/usr/lib/libVkLayer_FROG_gamescope_wsi_x86_64.so)
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570) vkCreateDevice layer callstack setup to:
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    <Application>
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    <Loader>
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_LAYER_FROG_gamescope_wsi_x86_64
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Type: Implicit
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Enabled By: Implicit Layer
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)                Disable Env Var:  DISABLE_GAMESCOPE_WSI
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_FROG_gamescope_wsi.x86_64.json
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Library:  /usr/lib/libVkLayer_FROG_gamescope_wsi_x86_64.so
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    VK_LAYER_KHRONOS_validation
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Type: Explicit
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Enabled By: By the Application
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Manifest: /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)            Library:  /usr/lib/libVkLayer_khronos_validation.so
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)      ||
+[04:46:52.347][Info   ] INFO: (INSTANCE 0x560bc3bcf570)    <Device>
+[Gamescope WSI] Forcing on VK_EXT_swapchain_maintenance1.
+[04:46:52.348][Error  ] ERROR: (INSTANCE 0x560bc3bcf570) vkCreateDevice(): pCreateInfo->ppEnabledExtensionNames[10] Missing extensions required to enable device extension VK_EXT_swapchain_maintenance1:
+ - VK_KHR_swapchain
+ - VK_EXT_surface_maintenance1 (instance extension, which needs to be added to VkInstanceCreateInfo::ppEnabledExtensionNames)
+The Vulkan spec states: All required device extensions for each extension in the VkDeviceCreateInfo::ppEnabledExtensionNames list must also be present in that list (https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#VUID-vkCreateDevice-ppEnabledExtensionNames-01387)
+[04:46:52.348][Info   ] INFO: (INSTANCE 0x560bc3bcf570)        Using "AMD Radeon RX 7900 XTX (RADV NAVI31)" with driver: "/usr/lib/libvulkan_radeon.so"
+LOG in xrGetVulkanGraphicsDeviceKHR: Creation of VkDevice:
+	result: VK_SUCCESS
+	vulkanDevice: 0x560bc3c9a170
+	vulkanInstance: 0x560bc3bcf570
+	external_fence_fd: true
+	external_semaphore_fd: true
+	timelineSemaphore: true
+	extensions:
+		VK_KHR_dedicated_allocation
+		VK_KHR_external_fence
+		VK_KHR_external_memory
+		VK_KHR_external_semaphore
+		VK_KHR_get_memory_requirements2
+		VK_KHR_external_memory_fd
+		VK_KHR_external_semaphore_fd
+		VK_KHR_external_fence_fd
+		VK_KHR_image_format_list
+		VK_KHR_timeline_semaphore
+[04:46:52.350][Info   ] Available reference spaces: 3
+[04:46:52.350][Info   ] System Properties: Name=PICO 4 HMD on WiVRn VendorId=0
+[04:46:52.350][Info   ] System Graphics Properties: MaxWidth=16384 MaxHeight=16384 MaxLayers=128
+[04:46:52.350][Info   ] System Tracking Properties: OrientationTracking=True PositionTracking=True
+[04:46:52.350][Info   ] Creating color and depth swapchain for view 0 with dimensions Width=2688 Height=2688 SampleCount=1
+[04:46:52.351][Info   ] Creating color and depth swapchain for view 1 with dimensions Width=2688 Height=2688 SampleCount=1
+[04:46:52.352][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_UNKNOWN->XR_SESSION_STATE_IDLE session=94608528882672 time=2822269327656
+[04:46:52.352][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_IDLE->XR_SESSION_STATE_READY session=94608528882672 time=2822269327656
+[04:46:52.354][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_READY->XR_SESSION_STATE_SYNCHRONIZED session=94608528882672 time=2822274101055
+[04:46:52.354][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_SYNCHRONIZED->XR_SESSION_STATE_VISIBLE session=94608528882672 time=2822274116405
+[04:46:52.354][Info   ] XrEventDataSessionStateChanged: state XR_SESSION_STATE_VISIBLE->XR_SESSION_STATE_FOCUSED session=94608528882672 time=2822274116405
+[04:46:52.369][Info   ] NXWARP_BENCH_FULL_FIELD enabled: 195 animated cubes, synthetic predicted-time motion
+[04:46:52.371][Info   ] Grab action is bound to 'Left Khronos Simple Controller Select' and 'Right Khronos Simple Controller Select'
+[04:46:52.371][Info   ] Quit action is bound to nothing
+[04:46:52.371][Info   ] Pose action is bound to 'Left Khronos Simple Controller Grip' and 'Right Khronos Simple Controller Grip'
+[04:46:52.371][Info   ] Vibrate action is bound to nothing
+[04:46:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 180 t=1.99 s
+[04:46:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 360 t=3.99 s
+[04:46:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 540 t=5.99 s
+[04:47:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 720 t=7.99 s
+[04:47:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 900 t=9.99 s
+[04:47:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 1080 t=11.99 s
+[04:47:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 1260 t=13.99 s
+[04:47:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 1440 t=15.99 s
+[04:47:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 1620 t=17.99 s
+[04:47:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 1800 t=19.99 s
+[04:47:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 1980 t=21.99 s
+[04:47:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 2160 t=23.99 s
+[04:47:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 2340 t=25.99 s
+[04:47:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 2520 t=27.99 s
+[04:47:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 2700 t=29.99 s
+[04:47:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 2880 t=31.99 s
+[04:47:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 3060 t=33.99 s
+[04:47:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 3240 t=35.99 s
+[04:47:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 3420 t=37.99 s
+[04:47:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 3600 t=39.99 s
+[04:47:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 3780 t=41.99 s
+[04:47:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 3960 t=43.99 s
+[04:47:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 4140 t=45.99 s
+[04:47:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 4320 t=47.99 s
+[04:47:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 4500 t=49.99 s
+[04:47:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 4680 t=51.99 s
+[04:47:46.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 4860 t=53.99 s
+[04:47:48.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 5040 t=55.99 s
+[04:47:50.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 5220 t=57.99 s
+[04:47:52.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 5400 t=59.99 s
+[04:47:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 5580 t=61.99 s
+[04:47:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 5760 t=63.99 s
+[04:47:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 5940 t=65.99 s
+[04:48:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 6120 t=67.99 s
+[04:48:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 6300 t=69.99 s
+[04:48:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 6480 t=71.99 s
+[04:48:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 6660 t=73.99 s
+[04:48:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 6840 t=75.99 s
+[04:48:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 7020 t=77.99 s
+[04:48:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 7200 t=79.99 s
+[04:48:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 7380 t=81.99 s
+[04:48:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 7560 t=83.99 s
+[04:48:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 7740 t=85.99 s
+[04:48:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 7920 t=87.99 s
+[04:48:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 8100 t=89.99 s
+[04:48:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 8280 t=91.99 s
+[04:48:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 8460 t=93.99 s
+[04:48:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 8640 t=95.99 s
+[04:48:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 8820 t=97.99 s
+[04:48:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 9000 t=99.99 s
+[04:48:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 9180 t=101.99 s
+[04:48:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 9360 t=103.99 s
+[04:48:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 9540 t=105.99 s
+[04:48:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 9720 t=107.99 s
+[04:48:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 9900 t=109.99 s
+[04:48:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 10080 t=111.99 s
+[04:48:46.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 10260 t=113.99 s
+[04:48:48.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 10440 t=115.99 s
+[04:48:50.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 10620 t=117.99 s
+[04:48:52.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 10800 t=119.99 s
+[04:48:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 10980 t=121.99 s
+[04:48:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 11160 t=123.99 s
+[04:48:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 11340 t=125.99 s
+[04:49:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 11520 t=127.99 s
+[04:49:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 11700 t=129.99 s
+[04:49:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 11880 t=131.99 s
+[04:49:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 12060 t=133.99 s
+[04:49:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 12240 t=135.99 s
+[04:49:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 12420 t=137.99 s
+[04:49:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 12600 t=139.99 s
+[04:49:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 12780 t=141.99 s
+[04:49:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 12960 t=143.99 s
+[04:49:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 13140 t=145.99 s
+[04:49:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 13320 t=147.99 s
+[04:49:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 13500 t=149.99 s
+[04:49:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 13680 t=151.99 s
+[04:49:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 13860 t=153.99 s
+[04:49:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 14040 t=155.99 s
+[04:49:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 14220 t=157.99 s
+[04:49:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 14400 t=159.99 s
+[04:49:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 14580 t=161.99 s
+[04:49:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 14760 t=163.99 s
+[04:49:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 14940 t=165.99 s
+[04:49:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 15120 t=167.99 s
+[04:49:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 15300 t=169.99 s
+[04:49:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 15480 t=171.99 s
+[04:49:46.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 15660 t=173.99 s
+[04:49:48.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 15840 t=175.99 s
+[04:49:50.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 16020 t=177.99 s
+[04:49:52.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 16200 t=179.99 s
+[04:49:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 16380 t=181.99 s
+[04:49:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 16560 t=183.99 s
+[04:49:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 16740 t=185.99 s
+[04:50:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 16920 t=187.99 s
+[04:50:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 17100 t=189.99 s
+[04:50:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 17280 t=191.99 s
+[04:50:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 17460 t=193.99 s
+[04:50:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 17640 t=195.99 s
+[04:50:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 17820 t=197.99 s
+[04:50:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 18000 t=199.99 s
+[04:50:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 18180 t=201.99 s
+[04:50:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 18360 t=203.99 s
+[04:50:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 18540 t=205.99 s
+[04:50:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 18720 t=207.99 s
+[04:50:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 18900 t=209.99 s
+[04:50:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 19080 t=211.99 s
+[04:50:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 19260 t=213.99 s
+[04:50:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 19440 t=215.99 s
+[04:50:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 19620 t=217.99 s
+[04:50:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 19800 t=219.99 s
+[04:50:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 19980 t=221.99 s
+[04:50:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 20160 t=223.99 s
+[04:50:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 20340 t=225.99 s
+[04:50:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 20520 t=227.99 s
+[04:50:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 20700 t=229.99 s
+[04:50:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 20880 t=231.99 s
+[04:50:46.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 21060 t=233.99 s
+[04:50:48.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 21240 t=235.99 s
+[04:50:50.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 21420 t=237.99 s
+[04:50:52.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 21600 t=239.99 s
+[04:50:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 21780 t=241.99 s
+[04:50:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 21960 t=243.99 s
+[04:50:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 22140 t=245.99 s
+[04:51:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 22320 t=247.99 s
+[04:51:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 22500 t=249.99 s
+[04:51:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 22680 t=251.99 s
+[04:51:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 22860 t=253.99 s
+[04:51:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 23040 t=255.99 s
+[04:51:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 23220 t=257.99 s
+[04:51:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 23400 t=259.99 s
+[04:51:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 23580 t=261.99 s
+[04:51:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 23760 t=263.99 s
+[04:51:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 23940 t=265.99 s
+[04:51:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 24120 t=267.99 s
+[04:51:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 24300 t=269.99 s
+[04:51:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 24480 t=271.99 s
+[04:51:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 24660 t=273.99 s
+[04:51:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 24840 t=275.99 s
+[04:51:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 25020 t=277.99 s
+[04:51:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 25200 t=279.99 s
+[04:51:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 25380 t=281.99 s
+[04:51:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 25560 t=283.99 s
+[04:51:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 25740 t=285.99 s
+[04:51:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 25920 t=287.99 s
+[04:51:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 26100 t=289.99 s
+[04:51:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 26280 t=291.99 s
+[04:51:46.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 26460 t=293.99 s
+[04:51:48.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 26640 t=295.99 s
+[04:51:50.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 26820 t=297.99 s
+[04:51:52.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 27000 t=299.99 s
+[04:51:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 27180 t=301.99 s
+[04:51:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 27360 t=303.99 s
+[04:51:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 27540 t=305.99 s
+[04:52:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 27720 t=307.99 s
+[04:52:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 27900 t=309.99 s
+[04:52:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 28080 t=311.99 s
+[04:52:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 28260 t=313.99 s
+[04:52:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 28440 t=315.99 s
+[04:52:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 28620 t=317.99 s
+[04:52:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 28800 t=319.99 s
+[04:52:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 28980 t=321.99 s
+[04:52:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 29160 t=323.99 s
+[04:52:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 29340 t=325.99 s
+[04:52:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 29520 t=327.99 s
+[04:52:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 29700 t=329.99 s
+[04:52:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 29880 t=331.99 s
+[04:52:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 30060 t=333.99 s
+[04:52:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 30240 t=335.99 s
+[04:52:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 30420 t=337.99 s
+[04:52:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 30600 t=339.99 s
+[04:52:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 30780 t=341.99 s
+[04:52:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 30960 t=343.99 s
+[04:52:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 31140 t=345.99 s
+[04:52:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 31320 t=347.99 s
+[04:52:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 31500 t=349.99 s
+[04:52:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 31680 t=351.99 s
+[04:52:46.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 31860 t=353.99 s
+[04:52:48.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 32040 t=355.99 s
+[04:52:50.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 32220 t=357.99 s
+[04:52:52.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 32400 t=359.99 s
+[04:52:54.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 32580 t=361.99 s
+[04:52:56.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 32760 t=363.99 s
+[04:52:58.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 32940 t=365.99 s
+[04:53:00.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 33120 t=367.99 s
+[04:53:02.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 33300 t=369.99 s
+[04:53:04.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 33480 t=371.99 s
+[04:53:06.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 33660 t=373.99 s
+[04:53:08.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 33840 t=375.99 s
+[04:53:10.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 34020 t=377.99 s
+[04:53:12.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 34200 t=379.99 s
+[04:53:14.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 34380 t=381.99 s
+[04:53:16.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 34560 t=383.99 s
+[04:53:18.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 34740 t=385.99 s
+[04:53:20.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 34920 t=387.99 s
+[04:53:22.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 35100 t=389.99 s
+[04:53:24.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 35280 t=391.99 s
+[04:53:26.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 35460 t=393.99 s
+[04:53:28.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 35640 t=395.99 s
+[04:53:30.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 35820 t=397.99 s
+[04:53:32.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 36000 t=399.99 s
+[04:53:34.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 36180 t=401.99 s
+[04:53:36.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 36360 t=403.99 s
+[04:53:38.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 36540 t=405.99 s
+[04:53:40.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 36720 t=407.99 s
+[04:53:42.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 36900 t=409.99 s
+[04:53:44.357][Info   ] NXWARP_BENCH_FULL_FIELD frame 37080 t=411.99 s
+[04:53:47.890][Info   ] NXWARP_BENCH_FULL_FIELD frame 37260 t=415.52 s
+[04:53:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 37440 t=418.96 s
+[04:53:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 37620 t=420.96 s
+[04:53:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 37800 t=422.96 s
+[04:53:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 37980 t=424.96 s
+[04:53:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 38160 t=426.96 s
+[04:54:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 38340 t=428.96 s
+[04:54:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 38520 t=430.96 s
+[04:54:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 38700 t=432.96 s
+[04:54:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 38880 t=434.96 s
+[04:54:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 39060 t=436.96 s
+[04:54:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 39240 t=438.96 s
+[04:54:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 39420 t=440.96 s
+[04:54:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 39600 t=442.96 s
+[04:54:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 39780 t=444.96 s
+[04:54:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 39960 t=446.96 s
+[04:54:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 40140 t=448.96 s
+[04:54:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 40320 t=450.96 s
+[04:54:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 40500 t=452.96 s
+[04:54:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 40680 t=454.96 s
+[04:54:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 40860 t=456.96 s
+[04:54:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 41040 t=458.96 s
+[04:54:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 41220 t=460.96 s
+[04:54:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 41400 t=462.96 s
+[04:54:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 41580 t=464.96 s
+[04:54:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 41760 t=466.96 s
+[04:54:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 41940 t=468.96 s
+[04:54:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 42120 t=470.96 s
+[04:54:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 42300 t=472.96 s
+[04:54:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 42480 t=474.96 s
+[04:54:49.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 42660 t=476.96 s
+[04:54:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 42840 t=478.96 s
+[04:54:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 43020 t=480.96 s
+[04:54:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 43200 t=482.96 s
+[04:54:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 43380 t=484.96 s
+[04:54:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 43560 t=486.96 s
+[04:55:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 43740 t=488.96 s
+[04:55:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 43920 t=490.96 s
+[04:55:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 44100 t=492.96 s
+[04:55:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 44280 t=494.96 s
+[04:55:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 44460 t=496.96 s
+[04:55:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 44640 t=498.96 s
+[04:55:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 44820 t=500.96 s
+[04:55:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 45000 t=502.96 s
+[04:55:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 45180 t=504.96 s
+[04:55:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 45360 t=506.96 s
+[04:55:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 45540 t=508.96 s
+[04:55:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 45720 t=510.96 s
+[04:55:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 45900 t=512.96 s
+[04:55:27.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 46080 t=514.96 s
+[04:55:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 46260 t=516.96 s
+[04:55:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 46440 t=518.96 s
+[04:55:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 46620 t=520.96 s
+[04:55:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 46800 t=522.96 s
+[04:55:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 46980 t=524.96 s
+[04:55:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 47160 t=526.96 s
+[04:55:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 47340 t=528.96 s
+[04:55:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 47520 t=530.96 s
+[04:55:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 47700 t=532.96 s
+[04:55:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 47880 t=534.96 s
+[04:55:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 48060 t=536.96 s
+[04:55:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 48240 t=538.96 s
+[04:55:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 48420 t=540.96 s
+[04:55:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 48600 t=542.96 s
+[04:55:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 48780 t=544.96 s
+[04:55:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 48960 t=546.96 s
+[04:56:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 49140 t=548.96 s
+[04:56:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 49320 t=550.96 s
+[04:56:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 49500 t=552.96 s
+[04:56:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 49680 t=554.96 s
+[04:56:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 49860 t=556.96 s
+[04:56:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 50040 t=558.96 s
+[04:56:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 50220 t=560.96 s
+[04:56:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 50400 t=562.96 s
+[04:56:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 50580 t=564.96 s
+[04:56:19.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 50760 t=566.96 s
+[04:56:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 50940 t=568.96 s
+[04:56:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 51120 t=570.96 s
+[04:56:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 51300 t=572.96 s
+[04:56:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 51480 t=574.96 s
+[04:56:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 51660 t=576.96 s
+[04:56:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 51840 t=578.96 s
+[04:56:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 52020 t=580.96 s
+[04:56:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 52200 t=582.96 s
+[04:56:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 52380 t=584.96 s
+[04:56:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 52560 t=586.96 s
+[04:56:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 52740 t=588.96 s
+[04:56:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 52920 t=590.96 s
+[04:56:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 53100 t=592.96 s
+[04:56:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 53280 t=594.96 s
+[04:56:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 53460 t=596.96 s
+[04:56:51.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 53640 t=598.96 s
+[04:56:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 53820 t=600.96 s
+[04:56:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 54000 t=602.96 s
+[04:56:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 54180 t=604.96 s
+[04:56:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 54360 t=606.96 s
+[04:57:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 54540 t=608.96 s
+[04:57:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 54720 t=610.96 s
+[04:57:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 54900 t=612.96 s
+[04:57:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 55080 t=614.96 s
+[04:57:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 55260 t=616.96 s
+[04:57:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 55440 t=618.96 s
+[04:57:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 55620 t=620.96 s
+[04:57:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 55800 t=622.96 s
+[04:57:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 55980 t=624.96 s
+[04:57:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 56160 t=626.96 s
+[04:57:21.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 56340 t=628.96 s
+[04:57:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 56520 t=630.96 s
+[04:57:25.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 56700 t=632.96 s
+[04:57:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 56880 t=634.96 s
+[04:57:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 57060 t=636.96 s
+[04:57:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 57240 t=638.96 s
+[04:57:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 57420 t=640.96 s
+[04:57:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 57600 t=642.96 s
+[04:57:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 57780 t=644.96 s
+[04:57:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 57960 t=646.96 s
+[04:57:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 58140 t=648.96 s
+[04:57:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 58320 t=650.96 s
+[04:57:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 58500 t=652.96 s
+[04:57:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 58680 t=654.96 s
+[04:57:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 58860 t=656.96 s
+[04:57:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 59040 t=658.96 s
+[04:57:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 59220 t=660.96 s
+[04:57:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 59400 t=662.96 s
+[04:57:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 59580 t=664.96 s
+[04:57:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 59760 t=666.96 s
+[04:58:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 59940 t=668.96 s
+[04:58:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 60120 t=670.96 s
+[04:58:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 60300 t=672.96 s
+[04:58:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 60480 t=674.96 s
+[04:58:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 60660 t=676.96 s
+[04:58:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 60840 t=678.96 s
+[04:58:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 61020 t=680.96 s
+[04:58:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 61200 t=682.96 s
+[04:58:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 61380 t=684.96 s
+[04:58:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 61560 t=686.96 s
+[04:58:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 61740 t=688.96 s
+[04:58:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 61920 t=690.96 s
+[04:58:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 62100 t=692.96 s
+[04:58:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 62280 t=694.96 s
+[04:58:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 62460 t=696.96 s
+[04:58:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 62640 t=698.96 s
+[04:58:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 62820 t=700.96 s
+[04:58:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 63000 t=702.96 s
+[04:58:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 63180 t=704.96 s
+[04:58:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 63360 t=706.96 s
+[04:58:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 63540 t=708.96 s
+[04:58:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 63720 t=710.96 s
+[04:58:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 63900 t=712.96 s
+[04:58:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 64080 t=714.96 s
+[04:58:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 64260 t=716.96 s
+[04:58:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 64440 t=718.96 s
+[04:58:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 64620 t=720.96 s
+[04:58:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 64800 t=722.96 s
+[04:58:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 64980 t=724.96 s
+[04:58:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 65160 t=726.96 s
+[04:59:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 65340 t=728.96 s
+[04:59:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 65520 t=730.96 s
+[04:59:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 65700 t=732.96 s
+[04:59:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 65880 t=734.96 s
+[04:59:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 66060 t=736.96 s
+[04:59:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 66240 t=738.96 s
+[04:59:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 66420 t=740.96 s
+[04:59:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 66600 t=742.96 s
+[04:59:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 66780 t=744.96 s
+[04:59:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 66960 t=746.96 s
+[04:59:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 67140 t=748.96 s
+[04:59:23.323][Info   ] NXWARP_BENCH_FULL_FIELD frame 67320 t=750.96 s
+[04:59:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 67500 t=752.96 s
+[04:59:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 67680 t=754.96 s
+[04:59:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 67860 t=756.96 s
+[04:59:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 68040 t=758.96 s
+[04:59:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 68220 t=760.96 s
+[04:59:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 68400 t=762.96 s
+[04:59:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 68580 t=764.96 s
+[04:59:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 68760 t=766.96 s
+[04:59:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 68940 t=768.96 s
+[04:59:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 69120 t=770.96 s
+[04:59:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 69300 t=772.96 s
+[04:59:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 69480 t=774.96 s
+[04:59:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 69660 t=776.96 s
+[04:59:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 69840 t=778.96 s
+[04:59:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 70020 t=780.96 s
+[04:59:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 70200 t=782.96 s
+[04:59:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 70380 t=784.96 s
+[04:59:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 70560 t=786.96 s
+[05:00:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 70740 t=788.96 s
+[05:00:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 70920 t=790.96 s
+[05:00:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 71100 t=792.96 s
+[05:00:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 71280 t=794.96 s
+[05:00:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 71460 t=796.96 s
+[05:00:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 71640 t=798.96 s
+[05:00:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 71820 t=800.96 s
+[05:00:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 72000 t=802.96 s
+[05:00:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 72180 t=804.96 s
+[05:00:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 72360 t=806.96 s
+[05:00:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 72540 t=808.96 s
+[05:00:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 72720 t=810.96 s
+[05:00:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 72900 t=812.96 s
+[05:00:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 73080 t=814.96 s
+[05:00:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 73260 t=816.96 s
+[05:00:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 73440 t=818.96 s
+[05:00:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 73620 t=820.96 s
+[05:00:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 73800 t=822.96 s
+[05:00:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 73980 t=824.96 s
+[05:00:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 74160 t=826.96 s
+[05:00:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 74340 t=828.96 s
+[05:00:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 74520 t=830.96 s
+[05:00:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 74700 t=832.96 s
+[05:00:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 74880 t=834.96 s
+[05:00:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 75060 t=836.96 s
+[05:00:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 75240 t=838.96 s
+[05:00:53.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 75420 t=840.96 s
+[05:00:55.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 75600 t=842.96 s
+[05:00:57.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 75780 t=844.96 s
+[05:00:59.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 75960 t=846.96 s
+[05:01:01.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 76140 t=848.96 s
+[05:01:03.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 76320 t=850.96 s
+[05:01:05.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 76500 t=852.96 s
+[05:01:07.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 76680 t=854.96 s
+[05:01:09.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 76860 t=856.96 s
+[05:01:11.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 77040 t=858.96 s
+[05:01:13.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 77220 t=860.96 s
+[05:01:15.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 77400 t=862.96 s
+[05:01:17.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 77580 t=864.96 s
+[05:01:19.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 77760 t=866.96 s
+[05:01:21.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 77940 t=868.96 s
+[05:01:23.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 78120 t=870.96 s
+[05:01:25.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 78300 t=872.96 s
+[05:01:27.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 78480 t=874.96 s
+[05:01:29.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 78660 t=876.96 s
+[05:01:31.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 78840 t=878.96 s
+[05:01:33.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 79020 t=880.96 s
+[05:01:35.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 79200 t=882.96 s
+[05:01:37.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 79380 t=884.96 s
+[05:01:39.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 79560 t=886.96 s
+[05:01:41.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 79740 t=888.96 s
+[05:01:43.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 79920 t=890.96 s
+[05:01:45.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 80100 t=892.96 s
+[05:01:47.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 80280 t=894.96 s
+[05:01:49.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 80460 t=896.96 s
+[05:01:51.324][Info   ] NXWARP_BENCH_FULL_FIELD frame 80640 t=898.96 s
+[gamescopereaper] [[0;34mInfo[0m]  [0;37mreaper:[0m Parent of gamescopereaper was killed. Killing children.
+[gamescope] [[0;34mInfo[0m]  [0;37mlaunch:[0m Primary child shut down!

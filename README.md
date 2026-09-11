@@ -31,6 +31,10 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 
 *Figure 1. Actual Pico capture from the native atlas renderer, configured for 2160 × 2160 output per eye. Tile seams and cube trails remain visible. A screenshot establishes the captured appearance, not moving-head quality or display FPS. [Capture settings, control image and binary identity](bench/results/240fps-2026-09-08/atlas-vertex-warp/v3-final/README.md).*
 
+![Current large-centre fresh update history](bench/results/90fps-2026-09-11/large-centre-soak/fresh-rate.png)
+
+*Current large-centre profile: 15 minutes of changing full-field content on Pico. [Both-eye screenshots, raw logs and limitations](bench/results/90fps-2026-09-11/large-centre-soak/README.md). The 90 Hz display setting does not imply 90 fresh frames.*
+
 ## At a glance
 
 | | Current scope |
@@ -97,7 +101,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
-**Current selected profile (September 11):** 2688 × 2688 output per eye, with the required **1024px native sharp centre retained**. Two-colour peripheral tiles, ungrouped cells and lightweight smoothing prioritize speed. Recent full-field animation trials deliver **about 53 fresh selections/s**, with roughly **13 ms decode GPU time**. **90 fresh FPS is not yet achieved with this centre.** Older near-90 results below use different profiles and must not be read as current large-centre performance.
+**Current selected profile (September 11):** 2688 × 2688 output per eye, with the required **1024px native sharp centre retained**. Two-colour peripheral tiles, ungrouped cells and lightweight smoothing prioritize speed. A [15-minute full-field animation soak](bench/results/90fps-2026-09-11/large-centre-soak/README.md) delivers **52.9 fresh selections per covered wall-second**, **13.0 ms decode GPU time**, and no logged session stops. **90 fresh FPS is not yet achieved with this centre.** Older near-90 results below use different profiles and must not be read as current large-centre performance.
 
 [Native encoder work removal](bench/results/90fps-2026-09-11/native-fit-live/README.md) preserves encoded output but has no robust live throughput win in four short repeats. [Splitting native reconstruction by colour plane](bench/results/90fps-2026-09-11/plane-split/README.md) failed to help; its reduced-shared-memory variant fell to about 42 fresh selections/s and was removed. [Centre-cost diagnostics](bench/results/90fps-2026-09-11/centre-cost/README.md) explain why shrinking the centre helps, but smaller centres are **not selected**.
 

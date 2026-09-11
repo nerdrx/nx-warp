@@ -1,0 +1,38 @@
+{
+  "purpose": "Required1024 nativecentre at2688eye, R2 ungrouped/smoothing3, speedpriority. Latest90sfullfield53.38freshFPS;90notyetachievedwithrequiredcentre.",
+  "time_utc": "2026-09-10T03:44:24.748879+00:00",
+  "properties": {
+    "decode_priority": "1",
+    "ready_wait_us": "1000",
+    "trace_handoff": "0",
+    "fdm": "3",
+    "compact_centre": "1",
+    "planar_centre": "1",
+    "borrowed_output": "1",
+    "capture": "0",
+    "peripheral_smooth": "3",
+    "kuwahara_fast": "0",
+    "static_post": "2",
+    "jit_max_sleep_us": "5000",
+    "test_eye_size": "2688",
+    "compact_flat64": "1",
+    "transport_sha2": "0",
+    "compact_large_centre": "1"
+  },
+  "server_config": "config.planar-gpu-graduated-copybaseline90.json",
+  "server_env": {
+    "NXVC_PLANAR_WIDE_RING": "1",
+    "NXWARP_PACE_ACCUMULATE": "1",
+    "NXVC_PLANAR_ROUND": "1",
+    "NXVC_PLANAR_COLOUR": "1",
+    "NXVC_PLANAR_LARGE_CENTRE": "1",
+    "NXVC_PLANAR_NO_GROUPS": "1",
+    "NXVC_PLANAR_R4": "0"
+  },
+  "headset_test_properties": {
+    "pvr.factorytest.never.sleep": "1"
+  },
+  "decoder_revision": "2f58ed8",
+  "decoder_note": "Static sparse Pass A layout retained after four120s live runs: decode GPU -8.3%, fresh covered-wall rate +11.7%; source offset essentially unchanged. compact-flat64 retained.",
+  "client_revision": "87f2e9bb"
+}
