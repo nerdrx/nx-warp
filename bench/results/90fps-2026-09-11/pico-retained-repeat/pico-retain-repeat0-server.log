@@ -1,0 +1,35 @@
+ WARN [on_control_send_error] Primary control socket failed: Socket shutdown
+ WARN [run_net] Exception in network thread: Socket shutdown, Session paused.
+ INFO [reconnect] Waiting for new connection
+No longer listening for secondary paths
+Listening for secondary paths on port 9757
+ INFO [apply_qos] Wi-Fi QoS marks enabled (video AF41 / AC_VI, control EF / AC_VO)
+ INFO [run_net] Headset connected, Session resumed.
+ INFO [operator()] Session state changed: XR_SESSION_STATE_FOCUSED
+ WARN [update_paths] Send errors on the primary stream socket: 2 new, 12 total
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 56.0 -> 22.4 Mbit/s (p90 utilisation 1.00, 8 lost, 16 late over 31 frames)
+ INFO [client_connected] Client 13 connected
+ INFO [ipc_handle_instance_describe_client] Client info:
+	id: 13
+	application_name: 'HelloXR'
+	pid: 732497
+	extensions:
+		ext_hand_tracking_enabled: false
+		ext_hand_tracking_data_source_enabled: false
+		ext_eye_gaze_interaction_enabled: false
+		ext_future_enabled: false
+		ext_hand_interaction_enabled: false
+		htc_facial_tracking_enabled: false
+		fb_body_tracking_enabled: false
+		meta_body_tracking_full_body_enabled: false
+		meta_body_tracking_calibration_enabled: false
+		meta_body_tracking_fidelity_enabled: false
+		fb_face_tracking2_enabled: false
+		android_face_tracking_enabled: false
+ INFO [evaluate_aimd] Automatic bitrate: congestion, 22.4 -> 15.7 Mbit/s (p90 utilisation 1.00, 2 lost, 3 late over 106 frames)
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 15.7 -> 10.0 Mbit/s (p90 utilisation 1.00, 4 lost, 2 late over 106 frames)
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 10.0 -> 20.0 Mbit/s (p90 utilisation 0.39, 0 lost, 0 late over 120 frames)
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 20.0 -> 10.0 Mbit/s (p90 utilisation 1.00, 3 lost, 2 late over 30 frames)
+ INFO [evaluate_aimd] Automatic bitrate: link healthy again, rebounding, 10.0 -> 13.3 Mbit/s (p90 utilisation 0.39, 0 lost, 0 late over 120 frames)
+ INFO [evaluate_aimd] Automatic bitrate: acute congestion, 13.3 -> 10.0 Mbit/s (p90 utilisation 1.00, 4 lost, 1 late over 30 frames)
+ INFO [client_disconnected] Client 13 disconnected
