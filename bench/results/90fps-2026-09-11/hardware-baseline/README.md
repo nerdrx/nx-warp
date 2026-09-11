@@ -38,3 +38,9 @@ Separate 25-second run, excluded from timing. Both eyes retain fine contours acr
 
 ![Pico HEVC eye 0](eye0.png)
 ![Pico HEVC eye 1](eye1.png)
+
+## Explicit 10-bit follow-up
+
+Two further 30-second HEVC trials explicitly requested 10-bit and completed: **85.44 / 88.89 fresh selections per reported second**; presentation GPU means **8.24 / 8.56 ms**. The 8-bit and 10-bit runs were sequential, with adaptive network control, so this does not isolate a bit-depth speed advantage. The same first-eye-counter and signed-proxy limitations apply. NX was restored afterward.
+
+Project direction: HEVC is a benchmark, not the foundation of the NX codec. See [the low-latency research direction](../../../../docs/LOW_LATENCY_DIRECTION.md).

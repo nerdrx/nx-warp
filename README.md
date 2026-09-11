@@ -101,7 +101,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Measured results
 
-**Hardware baseline:** [two 30-second HEVC 8-bit trials](bench/results/90fps-2026-09-11/hardware-baseline/README.md) deliver **79.5 / 85.1 fresh source selections/s**, versus **44.6–45.7 for nearby NX controls**, at 2688² per eye through the same server foveation stage. Quality, encoded bitrate and stream organization differ; this is not a matched-quality or physical-latency comparison. Actual both-eye captures and raw evidence are included. Hardware-backed streaming is now a concrete architectural baseline; 90 fresh stereo FPS remains unproven.
+**Hardware baseline:** [two 30-second HEVC 8-bit trials](bench/results/90fps-2026-09-11/hardware-baseline/README.md) deliver **79.5 / 85.1 fresh source selections/s**, versus **44.6–45.7 for nearby NX controls**, at 2688² per eye through the same server foveation stage. Quality, encoded bitrate and stream organization differ; this is not a matched-quality or physical-latency comparison. Actual both-eye captures and raw evidence are included. The explicit 10-bit follow-up gives **85.4 / 88.9 selections/s**. HEVC remains the competitor baseline; NX continues as an independent low-latency alternative. These sequential screens do not establish a bit-depth advantage or sustained 90 fresh stereo FPS.
 
 **Latest short screens:** [native-centre transform skip](bench/results/90fps-2026-09-11/native-tskip/README.md) saves about 1.27 ms of reconstruction but adds 1.60 ms of entropy work. [Fixed 60 FPS pacing](bench/results/90fps-2026-09-11/pace60-screen/README.md) increases latency; [zero-coefficient arithmetic removal](bench/results/90fps-2026-09-11/zero-dequant/README.md) shows no useful gain. All were rejected after 30-second trials. The centre remains unchanged. Nearby controls in this session run around 45–47 fresh selections/s; the longer 53/s result below is historical, not a new measurement.
 
@@ -652,6 +652,8 @@ Use `cmake --list-presets` to inspect other configurations. Vulkan is off in the
 | Work on live VR streaming | [Custom WiVRn NX branch](https://github.com/nerdrx/wivrn-nx/tree/atlas-live) and its build instructions |
 
 ## Roadmap
+
+**Current direction:** [an independent low-latency alternative to HEVC](docs/LOW_LATENCY_DIRECTION.md). Preserve the large native centre; redesign tile data to reduce entropy work, reconstruction and transferred bytes together. Use short motion screens and reject gains that merely move cost into another stage.
 
 Progress is measured against **90 → 120 → 144 → 180 → 240 Hz**, with full-resolution output and low latency carried through every checkpoint.
 
