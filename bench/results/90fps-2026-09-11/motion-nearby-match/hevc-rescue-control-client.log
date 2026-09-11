@@ -1,0 +1,1130 @@
+--------- beginning of main
+--------- beginning of system
+09-11 13:22:15.319 13211 27531 I WiVRn   : [2026-09-11 13:22:15.319] [WiVRn] [info] Starting WiVRn version nx-1.4.1-274-g9a5cfa0f (9a5cfa0f53a835c07eca9739880e174aaf1b24df)
+09-11 13:22:15.319 13211 27531 I WiVRn   : [2026-09-11 13:22:15.319] [WiVRn] [info] Started with intent wivrn://192.168.1.2
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] Guessing HMD model from:
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info]     ro.product.device = "PICOA8110":
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info]     ro.product.manufacturer = "Pico":
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info]     ro.product.model = "A8110":
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info]     pxr.vendorhw.product.model = "PICO 4":
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] HMD traits initialized
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	controller_profile: pico-4
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	controller_ray_model: assets://ray.glb
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	max_openxr_api_version: 1.1.58
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	panel_width_override: 2160
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	needs_srgb_conversion: true
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	nxwarp_atlas_speed: true
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	view_locate: false
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	vk_debug_ext_allowed: true
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	bind_simple_controller: true
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	hand_interaction_grip_surface: true
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	pico_face_tracker: false
+09-11 13:22:15.320 13211 27531 I WiVRn   : [2026-09-11 13:22:15.320] [WiVRn] [info] 	discard_frame: false
+09-11 13:22:15.333 13211 27531 I WiVRn   : [2026-09-11 13:22:15.333] [WiVRn] [info] Available OpenXR layers:
+09-11 13:22:15.333 13211 27531 I WiVRn   : [2026-09-11 13:22:15.333] [WiVRn] [info] Available OpenXR extensions:
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_BD_body_tracking (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_BD_controller_interaction (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EPIC_view_configuration_fov (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXTX_overlay (version 5)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_active_action_set_priority (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_composition_layer_inverted_alpha (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_debug_utils (version 5)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_eye_gaze_interaction (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_frame_synthesis (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_hand_interaction (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_hand_tracking (version 4)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_local_floor (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_palm_pose (version 3)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_performance_settings (version 4)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_user_presence (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_uuid (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_EXT_view_configuration_depth_range (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_composition_layer_alpha_blend (version 3)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_composition_layer_image_layout (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_composition_layer_secure_content (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_composition_layer_settings (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_display_refresh_rate (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_foveation (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_foveation_configuration (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_foveation_vulkan (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_passthrough (version 4)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_space_warp (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_swapchain_update_state (version 3)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_swapchain_update_state_android_surface (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_swapchain_update_state_opengl_es (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_swapchain_update_state_vulkan (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_FB_triangle_mesh (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_android_create_instance (version 3)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_android_surface_swapchain (version 4)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_android_thread_settings (version 6)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_composition_layer_color_scale_bias (version 5)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_composition_layer_cube (version 8)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_composition_layer_cylinder (version 4)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_composition_layer_depth (version 6)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_composition_layer_equirect (version 3)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_composition_layer_equirect2 (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_convert_timespec_time (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_loader_init (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_loader_init_android (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_locate_spaces (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_maintenance1 (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_opengl_es_enable (version 8)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_vulkan_enable (version 8)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_vulkan_enable2 (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_KHR_vulkan_swapchain_format_list (version 5)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_META_foveation_eye_tracked (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_META_vulkan_swapchain_create_info (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_MND_headless (version 2)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info]     XR_MSFT_composition_layer_reprojection (version 1)
+09-11 13:22:15.335 13211 27531 I WiVRn   : [2026-09-11 13:22:15.335] [WiVRn] [info] Performance APIs: XR_EXT_performance_settings = available, vendor power/performance extensions = none
+09-11 13:22:15.421 13211 13211 I WiVRn   : [2026-09-11 13:22:15.421] [WiVRn] [info] [pointer_capture] requestPointerCapture() invoked successfully
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info] Using OpenXR extensions:
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_KHR_convert_timespec_time
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_BD_body_tracking
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_BD_controller_interaction
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_EXT_eye_gaze_interaction
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_EXT_hand_interaction
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_EXT_hand_tracking
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_EXT_performance_settings
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_EXT_user_presence
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_FB_composition_layer_settings
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_FB_display_refresh_rate
+09-11 13:22:15.494 13211 27531 I WiVRn   : [2026-09-11 13:22:15.494] [WiVRn] [info]     XR_FB_passthrough
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_FB_swapchain_update_state
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_composition_layer_color_scale_bias
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_composition_layer_depth
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_vulkan_swapchain_format_list
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_EXT_palm_pose
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_locate_spaces
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_vulkan_enable2
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_android_create_instance
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_ML_ml2_controller_interaction
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_HTC_vive_cosmos_controller_interaction
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_EXT_uuid
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_EXT_local_floor
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_locate_spaces
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_EXT_samsung_odyssey_controller
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_EXT_palm_pose
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_HTC_vive_focus3_controller_interaction
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_EXT_hp_mixed_reality_controller
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_KHR_maintenance1
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_VARJO_quad_views
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info]     XR_BD_controller_interaction
+09-11 13:22:15.495 13211 27531 I WiVRn   : [2026-09-11 13:22:15.495] [WiVRn] [info] Created OpenXR instance, runtime Pico(XRT) by Pico et al '99d719953', version 3.0.1, API version 1.1.58
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info] Created OpenXR system for form factor XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info] OpenXR system properties:
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Vendor ID: 0x2a
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     System name: PICO 4 HMD
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Graphics properties:
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Maximum swapchain image size: 16384x16384
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Maximum layer count: 16
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Tracking properties:
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Orientation tracking: true
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Position tracking: true
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Hand tracking support: true
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Eye gaze support: false
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     OpenXR post-processing extension support: true
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Passthrough: color
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Face tracker: none
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Body tracker: pico
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info] View configuration XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     fovMutable: false
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     View 1:
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Recommended: 1504x1504, 1 sample(s)
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Maximum:     2560x2560, 1 sample(s)
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     View 2:
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Recommended: 1504x1504, 1 sample(s)
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]         Maximum:     2560x2560, 1 sample(s)
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Blend mode: XR_ENVIRONMENT_BLEND_MODE_OPAQUE
+09-11 13:22:15.507 13211 27531 I WiVRn   : [2026-09-11 13:22:15.507] [WiVRn] [info]     Blend mode: XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND
+09-11 13:22:15.508 13211 27531 I WiVRn   : [2026-09-11 13:22:15.508] [WiVRn] [info] OpenXR runtime wants Vulkan 1.0.0
+09-11 13:22:15.508 13211 27531 I WiVRn   : [2026-09-11 13:22:15.508] [WiVRn] [info] Requesting Vulkan 1.1.0
+09-11 13:22:15.508 13211 27531 I WiVRn   : [2026-09-11 13:22:15.508] [WiVRn] [info] Available Vulkan layers:
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info] Available Vulkan instance extensions:
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_EXT_debug_report (version 9)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_EXT_debug_utils (version 2)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_EXT_swapchain_colorspace (version 3)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_android_surface (version 6)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_device_group_creation (version 1)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_external_fence_capabilities (version 1)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_external_memory_capabilities (version 1)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_external_semaphore_capabilities (version 1)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_get_physical_device_properties2 (version 1)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_get_surface_capabilities2 (version 1)
+09-11 13:22:15.510 13211 27531 I WiVRn   : [2026-09-11 13:22:15.510] [WiVRn] [info]     VK_KHR_surface (version 25)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info] Available Vulkan device extensions:
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_ANDROID_external_memory_android_hardware_buffer (version 3)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_astc_decode_mode (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_blend_operation_advanced (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_custom_border_color (version 12)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_depth_clip_enable (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_descriptor_indexing (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_device_fault (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_device_memory_report (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_extended_dynamic_state (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_filter_cubic (version 3)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_fragment_density_map (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_fragment_density_map2 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_global_priority (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_global_priority_query (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_hdr_metadata (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_host_query_reset (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_image_robustness (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_index_type_uint8 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_line_rasterization (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_pipeline_creation_cache_control (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_pipeline_creation_feedback (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_primitive_topology_list_restart (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_private_data (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_provoking_vertex (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_queue_family_foreign (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_robustness2 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_sample_locations (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_sampler_filter_minmax (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_scalar_block_layout (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_separate_stencil_usage (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_shader_demote_to_helper_invocation (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_subgroup_size_control (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_texture_compression_astc_hdr (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_transform_feedback (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_vertex_attribute_divisor (version 3)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_EXT_vertex_input_dynamic_state (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_GOOGLE_display_timing (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_IMG_filter_cubic (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_16bit_storage (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_bind_memory2 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_buffer_device_address (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_create_renderpass2 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_dedicated_allocation (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_depth_stencil_resolve (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_descriptor_update_template (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_device_group (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_draw_indirect_count (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_driver_properties (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_external_fence (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_external_fence_fd (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_external_memory (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_external_memory_fd (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_external_semaphore (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_external_semaphore_fd (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_get_memory_requirements2 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_image_format_list (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_imageless_framebuffer (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_incremental_present (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_maintenance1 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_maintenance2 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_maintenance3 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_multiview (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_pipeline_executable_properties (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_push_descriptor (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_relaxed_block_layout (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_sampler_mirror_clamp_to_edge (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_sampler_ycbcr_conversion (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_separate_depth_stencil_layouts (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_shader_draw_parameters (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_shader_float16_int8 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_shader_float_controls (version 4)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_shader_non_semantic_info (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_shared_presentable_image (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_spirv_1_4 (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_storage_buffer_storage_class (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_swapchain (version 70)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_timeline_semaphore (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_variable_pointers (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_KHR_vulkan_memory_model (version 3)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_QCOM_fragment_density_map_offset (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_QCOM_render_pass_shader_resolve (version 4)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_QCOM_render_pass_store_ops (version 2)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_QCOM_render_pass_transform (version 3)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     VK_QCOM_tile_properties (version 1)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info] Initializing Vulkan with device Adreno (TM) 650
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     Vendor ID: 0x5143
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     Device ID: 0x6050002
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     Driver version: 512.682.0
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info]     maxPushConstantsSize: 128 bytes
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info] NX queue priorities: render 0 decode 1 / 1 (3 queues)
+09-11 13:22:15.519 13211 27531 I WiVRn   : [2026-09-11 13:22:15.519] [WiVRn] [info] Vulkan fragment density map enabled
+09-11 13:22:15.520 13211 27531 I WiVRn   : [2026-09-11 13:22:15.520] [WiVRn] [info]     queue family 0 has 3 queues; decoding on queue 1 and queue 2 (one per eye)
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] 4 reference spaces
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info]     XR_REFERENCE_SPACE_TYPE_VIEW
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info]     XR_REFERENCE_SPACE_TYPE_LOCAL
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info]     XR_REFERENCE_SPACE_TYPE_STAGE
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info]     XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/khr/simple_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/khr/simple_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/khr/simple_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/oculus/touch_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/oculus/touch_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/oculus/touch_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/meta/touch_pro_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/meta/touch_pro_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/meta/touch_pro_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/meta/touch_plus_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/meta/touch_plus_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/meta/touch_plus_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/bytedance/pico_neo3_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/bytedance/pico_neo3_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/bytedance/pico_neo3_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/bytedance/pico4_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/bytedance/pico4_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/bytedance/pico4_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/bytedance/pico4s_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/bytedance/pico4s_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/bytedance/pico4s_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/yvr/touch_controller_yvr
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/yvr/touch_controller_yvr
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/yvr/touch_controller_yvr
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/htc/vive_focus3_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding pinch_ext/pose for interaction profile /interaction_profiles/htc/vive_focus3_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding poke_ext/pose for interaction profile /interaction_profiles/htc/vive_focus3_controller
+09-11 13:22:15.552 13211 27531 I WiVRn   : [2026-09-11 13:22:15.552] [WiVRn] [info] Adding grip_surface/pose for interaction profile /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:15.556 13211 27531 I WiVRn   : [2026-09-11 13:22:15.556] [WiVRn] [info] Current locale: language en, country GB, encoding UTF-8
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info] Supported swapchain formats:
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R8G8B8A8Srgb
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R8Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R8G8Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R8G8B8A8Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R5G6B5UnormPack16
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     A2B10G10R10UnormPack32
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16B16A16Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16Uint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16Uint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16B16A16Uint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16Sint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16Sint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16B16A16Sint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16Sfloat
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16Sfloat
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     R16G16B16A16Sfloat
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     A1R5G5B5UnormPack16
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Etc2R8G8B8UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Etc2R8G8B8A1UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Etc2R8G8B8A8UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Etc2R8G8B8SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Etc2R8G8B8A1SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Etc2R8G8B8A8SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     EacR11UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     EacR11G11UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     EacR11SnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     EacR11G11SnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc4x4UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc5x4UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc5x5UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc6x5UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc6x6UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc8x5UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc8x6UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc8x8UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x5UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x6UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x8UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x10UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc12x10UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc12x12UnormBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc4x4SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc5x4SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc5x5SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc6x5SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc6x6SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc8x5SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc8x6SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc8x8SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x5SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x6SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x8SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc10x10SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc12x10SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     Astc12x12SrgbBlock
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     D16Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     X8D24UnormPack32
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     D32Sfloat
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     D24UnormS8Uint
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     B8G8R8A8Unorm
+09-11 13:22:15.557 13211 27531 I WiVRn   : [2026-09-11 13:22:15.557] [WiVRn] [info]     B8G8R8A8Srgb
+09-11 13:22:15.575 13211 27531 I WiVRn   : [2026-09-11 13:22:15.575] [WiVRn] [info] Using formats R8G8B8A8Srgb and D32Sfloat
+09-11 13:22:15.575 13211 27531 I WiVRn   : [2026-09-11 13:22:15.575] [WiVRn] [info] Composition layer depth test NOT supported
+09-11 13:22:15.575 13211 27531 I WiVRn   : [2026-09-11 13:22:15.575] [WiVRn] [info] Composition layer color scale/bias supported
+09-11 13:22:15.575 13211 27531 I WiVRn   : [2026-09-11 13:22:15.575] [WiVRn] [info] 0 known server(s):
+09-11 13:22:15.577 13211 27558 I WiVRn   : [2026-09-11 13:22:15.577] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_UNKNOWN => XR_SESSION_STATE_IDLE
+09-11 13:22:15.577 13211 27558 I WiVRn   : [2026-09-11 13:22:15.577] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_IDLE => XR_SESSION_STATE_READY
+09-11 13:22:15.597 13211 27558 I WiVRn   : [2026-09-11 13:22:15.597] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_USER_PRESENCE_CHANGED_EXT
+09-11 13:22:15.597 13211 27558 I WiVRn   : [2026-09-11 13:22:15.597] [WiVRn] [info] Using panel size: 2160x2160
+09-11 13:22:15.780 13211 27558 I WiVRn   : [2026-09-11 13:22:15.780] [WiVRn] [info] Loaded input profile pico-4
+09-11 13:22:15.780 13211 27558 I WiVRn   : [2026-09-11 13:22:15.780] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-11 13:22:15.780 13211 27558 I WiVRn   : [2026-09-11 13:22:15.780] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-11 13:22:15.780 13211 27558 I WiVRn   : [2026-09-11 13:22:15.780] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-11 13:22:15.780 13211 27558 I WiVRn   : [2026-09-11 13:22:15.780] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-11 13:22:15.789 13211 27558 I WiVRn   : [2026-09-11 13:22:15.789] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-11 13:22:15.790 13211 27558 I WiVRn   : [2026-09-11 13:22:15.790] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:15.794 13211 27558 I WiVRn   : [2026-09-11 13:22:15.794] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-11 13:22:15.794 13211 27558 I WiVRn   : [2026-09-11 13:22:15.794] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-11 13:22:15.794 13211 27558 I WiVRn   : [2026-09-11 13:22:15.794] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-11 13:22:15.802 13211 27558 I WiVRn   : [2026-09-11 13:22:15.802] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-11 13:22:15.802 13211 27558 I WiVRn   : [2026-09-11 13:22:15.802] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:15.898 13211 27558 I WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [info] MulticastLock acquired
+09-11 13:22:15.898 13211 27558 I WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:b3c8:aefc:7af2:8a5a
+09-11 13:22:15.898 13211 27558 I WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [info] Local IPv6 address: 2003:c2:3701:81fc:616a:1ec4:5f3c:1dd5
+09-11 13:22:15.898 13211 27558 I WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:c7ff:60cd:b757:e773
+09-11 13:22:15.898 13211 27558 I WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [info] Local IPv6 address: fd3c:3d87:86b7:0:616a:1ec4:5f3c:1dd5
+09-11 13:22:15.898 13211 27558 I WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [info] Local IPv4 address: 192.168.1.248
+09-11 13:22:15.898 13211 27558 W WiVRn   : [2026-09-11 13:22:15.898] [WiVRn] [warning] unknown family 17
+09-11 13:22:15.899 13211 27569 I WiVRn   : [2026-09-11 13:22:15.899] [WiVRn] [info] Sending query for _wivrn._tcp.local., type PTR
+09-11 13:22:15.899 13211 27558 I WiVRn   : [2026-09-11 13:22:15.899] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-11 13:22:15.899 13211 27558 I WiVRn   : [2026-09-11 13:22:15.899] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-11 13:22:15.906 13211 27558 I WiVRn   : [2026-09-11 13:22:15.906] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-11 13:22:15.906 13211 27558 I WiVRn   : [2026-09-11 13:22:15.906] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-11 13:22:15.906 13211 27558 I WiVRn   : [2026-09-11 13:22:15.906] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_READY => XR_SESSION_STATE_SYNCHRONIZED
+09-11 13:22:15.906 13211 27558 I WiVRn   : [2026-09-11 13:22:15.906] [WiVRn] [info] Refresh rate changed from 72 to 90
+09-11 13:22:15.906 13211 27558 I WiVRn   : [2026-09-11 13:22:15.906] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_SYNCHRONIZED => XR_SESSION_STATE_VISIBLE
+09-11 13:22:15.906 13211 27558 I WiVRn   : [2026-09-11 13:22:15.906] [WiVRn] [info] Session state changed at timestamp 0: XR_SESSION_STATE_VISIBLE => XR_SESSION_STATE_FOCUSED
+09-11 13:22:15.911 13211 27570 I WiVRn   : [2026-09-11 13:22:15.911] [WiVRn] [info] Using pin "000000"
+09-11 13:22:15.917 13211 27570 I WiVRn   : [2026-09-11 13:22:15.917] [WiVRn] [info] Wi-Fi QoS marks enabled (uplink EF / AC_VO)
+09-11 13:22:15.922 13211 27558 I WiVRn   : [2026-09-11 13:22:15.922] [WiVRn] [info] Creating new swapchain: eR8G8B8A8Srgb, 1504x1504, 1 sample(s), 2 level(s)
+09-11 13:22:15.924 13211 27558 I WiVRn   : [2026-09-11 13:22:15.924] [WiVRn] [info] Created swapchain
+09-11 13:22:15.924 13211 27558 I WiVRn   : [2026-09-11 13:22:15.924] [WiVRn] [info] Creating new swapchain: eR8G8B8A8Srgb, 1504x1504, 1 sample(s), 2 level(s)
+09-11 13:22:15.926 13211 27558 I WiVRn   : [2026-09-11 13:22:15.926] [WiVRn] [info] Created swapchain
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info] Supported swapchain formats:
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R8G8B8A8Srgb
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R8Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R8G8Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R8G8B8A8Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R5G6B5UnormPack16
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     A2B10G10R10UnormPack32
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16B16A16Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16Uint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16Uint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16B16A16Uint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16Sint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16Sint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16B16A16Sint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16Sfloat
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16Sfloat
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     R16G16B16A16Sfloat
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     A1R5G5B5UnormPack16
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Etc2R8G8B8UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Etc2R8G8B8A1UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Etc2R8G8B8A8UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Etc2R8G8B8SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Etc2R8G8B8A1SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Etc2R8G8B8A8SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     EacR11UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     EacR11G11UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     EacR11SnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     EacR11G11SnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc4x4UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc5x4UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc5x5UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc6x5UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc6x6UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc8x5UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc8x6UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc8x8UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x5UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x6UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x8UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x10UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc12x10UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc12x12UnormBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc4x4SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc5x4SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc5x5SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc6x5SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc6x6SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc8x5SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc8x6SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc8x8SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x5SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x6SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x8SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc10x10SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc12x10SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     Astc12x12SrgbBlock
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     D16Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     X8D24UnormPack32
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     D32Sfloat
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     D24UnormS8Uint
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     B8G8R8A8Unorm
+09-11 13:22:15.929 13211 27558 I WiVRn   : [2026-09-11 13:22:15.929] [WiVRn] [info]     B8G8R8A8Srgb
+09-11 13:22:15.929 13211 27552 I PxrMetric: FPS=0/90,MTP=18.30ms,AppSW=off,FrmEarly=0,FrmLate=1,FrmCpu=3.01ms,FrmGpu=0.06ms,FrmTime=3.08ms,ATWGPU=0.00ms,VsyncDelay=0,GPU=0%/0Mhz,GPUTemp=0.0C,LayerCnt=0,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2
+09-11 13:22:15.930 13211 27558 I WiVRn   : [2026-09-11 13:22:15.930] [WiVRn] [info] Using panel size: 2160x2160
+09-11 13:22:16.040 13211 27558 I WiVRn   : [2026-09-11 13:22:16.040] [WiVRn] [info] video codec av1: NOT supported
+09-11 13:22:16.053 13211 27558 I WiVRn   : [2026-09-11 13:22:16.053] [WiVRn] [info] video codec h265: supported
+09-11 13:22:16.066 13211 27558 I WiVRn   : [2026-09-11 13:22:16.066] [WiVRn] [info] video codec h264: supported
+09-11 13:22:16.072 13211 27558 I WiVRn   : [2026-09-11 13:22:16.072] [WiVRn] [info] Using format R8G8B8A8Srgb
+09-11 13:22:16.074 13211 27558 I WiVRn   : [2026-09-11 13:22:16.074] [WiVRn] [info] WifiLock low latency acquired
+09-11 13:22:16.077 13211 27558 I WiVRn   : [2026-09-11 13:22:16.077] [WiVRn] [info] Received event type Unknown
+09-11 13:22:16.911 13211 27610 I WiVRn   : [2026-09-11 13:22:16.911] [WiVRn] [info] setup, refresh rate 90
+09-11 13:22:16.911 13211 27610 I WiVRn   : [2026-09-11 13:22:16.911] [WiVRn] [info] set refresh rate to 90Hz
+09-11 13:22:16.912 13211 27610 I WiVRn   : [2026-09-11 13:22:16.912] [WiVRn] [info] Creating decoders, size 2688x2688
+09-11 13:22:16.912 13211 27610 I WiVRn   : [2026-09-11 13:22:16.912] [WiVRn] [info] edge bleed: server overscan 5.0%, client ring 0.0% (fade)
+09-11 13:22:16.912 13211 27610 I WiVRn   : [2026-09-11 13:22:16.912] [WiVRn] [info]   stream 0: role 0, 2688x2688
+09-11 13:22:16.912 13211 27610 I WiVRn   : [2026-09-11 13:22:16.912] [WiVRn] [info] nxwarp: decoupled display on
+09-11 13:22:16.912 13211 27610 I WiVRn   : [2026-09-11 13:22:16.912] [WiVRn] [info] hbm_mutex.native_handle() = 0x6f84818338
+09-11 13:22:16.924 13211 27610 I WiVRn   : [2026-09-11 13:22:16.924] [WiVRn] [info] Created MediaCodec decoder "OMX.qcom.video.decoder.hevc"
+09-11 13:22:16.924 13211 27610 I WiVRn   : [2026-09-11 13:22:16.924] [WiVRn] [info] MediaCodec: Qualcomm low latency mode enabled on "OMX.qcom.video.decoder.hevc"
+09-11 13:22:16.933 13211 27552 I PxrMetric: FPS=0/90,MTP=30.60ms,AppSW=off,FrmEarly=13,FrmLate=1,FrmCpu=1.08ms,FrmGpu=1.61ms,FrmTime=2.72ms,ATWGPU=4.04ms,VsyncDelay=1,GPU=47%/587Mhz,GPUTemp=82.6C,LayerCnt=4,Pkg=org.meumeu.wivrn.nx.warp,FrmId=78
+09-11 13:22:16.956 13211 27610 I WiVRn   : [2026-09-11 13:22:16.956] [WiVRn] [info]   stream 1: role 0, 2688x2688
+09-11 13:22:16.956 13211 27610 I WiVRn   : [2026-09-11 13:22:16.956] [WiVRn] [info] nxwarp: decoupled display on
+09-11 13:22:16.956 13211 27610 I WiVRn   : [2026-09-11 13:22:16.956] [WiVRn] [info] hbm_mutex.native_handle() = 0x6f848186b8
+09-11 13:22:16.963 13211 27610 I WiVRn   : [2026-09-11 13:22:16.963] [WiVRn] [info] Created MediaCodec decoder "OMX.qcom.video.decoder.hevc"
+09-11 13:22:16.963 13211 27610 I WiVRn   : [2026-09-11 13:22:16.963] [WiVRn] [info] MediaCodec: Qualcomm low latency mode enabled on "OMX.qcom.video.decoder.hevc"
+09-11 13:22:16.983 13211 27610 I WiVRn   : [2026-09-11 13:22:16.983] [WiVRn] [info]   stream 2: role 1, 2688x1344
+09-11 13:22:16.983 13211 27610 I WiVRn   : [2026-09-11 13:22:16.983] [WiVRn] [info] nxwarp: decoupled display on
+09-11 13:22:16.983 13211 27610 I WiVRn   : [2026-09-11 13:22:16.983] [WiVRn] [info] hbm_mutex.native_handle() = 0x6f84818a38
+09-11 13:22:16.991 13211 27610 I WiVRn   : [2026-09-11 13:22:16.991] [WiVRn] [info] Created MediaCodec decoder "OMX.qcom.video.decoder.hevc"
+09-11 13:22:16.991 13211 27610 I WiVRn   : [2026-09-11 13:22:16.991] [WiVRn] [info] MediaCodec: Qualcomm low latency mode enabled on "OMX.qcom.video.decoder.hevc"
+09-11 13:22:17.012 13211 27639 I WiVRn   : [2026-09-11 13:22:17.012] [WiVRn] [info] Adding hand_interaction poses to device list
+09-11 13:22:17.013 13211 27639 I WiVRn   : [2026-09-11 13:22:17.013] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:17.013 13211 27639 I WiVRn   : [2026-09-11 13:22:17.013] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:17.013 13211 27639 I WiVRn   : [2026-09-11 13:22:17.013] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-11 13:22:17.013 13211 27639 W WiVRn   : [2026-09-11 13:22:17.013] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-11 13:22:17.015 13211 27639 I WiVRn   : [2026-09-11 13:22:17.015] [WiVRn] [info] Tracking pattern (5000µs):
+09-11 13:22:17.015 13211 27639 I WiVRn   : [2026-09-11 13:22:17.015] [WiVRn] [info] 	t+5000µs HEAD (0µs)
+09-11 13:22:17.096 13211 27610 I WiVRn   : [2026-09-11 13:22:17.096] [WiVRn] [info] Speaker stream started
+09-11 13:22:17.096 13211 27610 I WiVRn   : [2026-09-11 13:22:17.096] [WiVRn] [info] setup, refresh rate 90
+09-11 13:22:17.096 13211 27610 I WiVRn   : [2026-09-11 13:22:17.096] [WiVRn] [info] set refresh rate to 90Hz
+09-11 13:22:17.933 13211 27552 I PxrMetric: FPS=77/90,MTP=30.56ms,AppSW=off,FrmEarly=0,FrmLate=0,FrmCpu=1.11ms,FrmGpu=1.62ms,FrmTime=2.75ms,ATWGPU=4.16ms,VsyncDelay=1,GPU=48%/587Mhz,GPUTemp=83.3C,LayerCnt=4,Pkg=org.meumeu.wivrn.nx.warp,FrmId=168
+09-11 13:22:18.450 13211 27639 I WiVRn   : [2026-09-11 13:22:18.450] [WiVRn] [info] Tracking pattern (5000µs):
+09-11 13:22:18.450 13211 27639 I WiVRn   : [2026-09-11 13:22:18.450] [WiVRn] [info] 	t+3583µs LEFT_GRIP (1416µs)
+09-11 13:22:18.450 13211 27639 I WiVRn   : [2026-09-11 13:22:18.450] [WiVRn] [info] 	t+9513µs HEAD (-24513µs)
+09-11 13:22:18.484 13211 27617 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info] Mediacodec format changed
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info] decoded image size: 2688x2688
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info] AndroidHardwareBufferProperties
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   Vulkan format: Undefined
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   External format: 0x28e
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   Format features: { SampledImage | StorageImage | SampledImageFilterLinear | TransferSrc | TransferDst | MidpointChromaSamples | SampledImageYcbcrConversionLinearFilter | SampledImageYcbcrConversionSeparateReconstructionFilter | CositedChromaSamples | SampledImageFilterMinmax | SampledImageFilterCubicEXT }
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   samplerYcbcrConversionComponents: (Identity, Identity, Identity, Identity)
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   Suggested YCbCr model: Ycbcr709
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   Suggested YCbCr range: ItuNarrow
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   Suggested X chroma offset: Midpoint
+09-11 13:22:18.484 13211 27616 I WiVRn   : [2026-09-11 13:22:18.484] [WiVRn] [info]   Suggested Y chroma offset: Midpoint
+09-11 13:22:18.492 13211 27610 I WiVRn   : [2026-09-11 13:22:18.492] [WiVRn] [info] frame 1 was not sent because no shard was received
+09-11 13:22:18.498 13211 27625 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info] Mediacodec format changed
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info] decoded image size: 2688x2688
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info] AndroidHardwareBufferProperties
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   Vulkan format: Undefined
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   External format: 0x28e
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   Format features: { SampledImage | StorageImage | SampledImageFilterLinear | TransferSrc | TransferDst | MidpointChromaSamples | SampledImageYcbcrConversionLinearFilter | SampledImageYcbcrConversionSeparateReconstructionFilter | CositedChromaSamples | SampledImageFilterMinmax | SampledImageFilterCubicEXT }
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   samplerYcbcrConversionComponents: (Identity, Identity, Identity, Identity)
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   Suggested YCbCr model: Ycbcr709
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   Suggested YCbCr range: ItuNarrow
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   Suggested X chroma offset: Midpoint
+09-11 13:22:18.498 13211 27624 I WiVRn   : [2026-09-11 13:22:18.498] [WiVRn] [info]   Suggested Y chroma offset: Midpoint
+09-11 13:22:18.499 13211 27624 I WiVRn   : [2026-09-11 13:22:18.499] [WiVRn] [info] Stream scene ready at t=395566739615143
+09-11 13:22:18.504 13211 27610 I WiVRn   : [2026-09-11 13:22:18.504] [WiVRn] [info] frame 2 was not sent because no shard was received
+09-11 13:22:18.511 13211 27558 I WiVRn   : [2026-09-11 13:22:18.511] [WiVRn] [info] MulticastLock released
+09-11 13:22:18.513 13211 27558 I WiVRn   : [2026-09-11 13:22:18.513] [WiVRn] [info] Loaded input profile pico-4
+09-11 13:22:18.513 13211 27558 I WiVRn   : [2026-09-11 13:22:18.513] [WiVRn] [info] Initializing offset of space aim_left to (-5, 0, 20) mm, (0, -0, 0)°
+09-11 13:22:18.513 13211 27558 I WiVRn   : [2026-09-11 13:22:18.513] [WiVRn] [info] Initializing offset of space aim_right to (5, 0, 20) mm, (0, -0, 0)°
+09-11 13:22:18.513 13211 27558 I WiVRn   : [2026-09-11 13:22:18.513] [WiVRn] [info] Initializing offset of space grip_left to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-11 13:22:18.513 13211 27558 I WiVRn   : [2026-09-11 13:22:18.513] [WiVRn] [info] Initializing offset of space grip_right to (0, -20, -50) mm, (-30.000002, -0, 0)°
+09-11 13:22:18.515 13211 27610 I WiVRn   : [2026-09-11 13:22:18.515] [WiVRn] [info] frame 2 was not sent because no shard was received
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for de /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for es /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for fr /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for fr /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for it /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ja /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ja /system/fonts/PICOSansVFJP.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ka /system/fonts/NotoSansGeorgian-Regular.otf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ka /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pl /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pl /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pl /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for pt_BR /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ru /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for ru /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for sk /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for sk /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for sk /system/fonts/PICOSans.ttf
+09-11 13:22:18.526 13211 27558 I WiVRn   : [2026-09-11 13:22:18.526] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for tr /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for tr /system/fonts/PICOSans.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSans.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for zh_CN /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSans.ttf
+09-11 13:22:18.527 13211 27558 I WiVRn   : [2026-09-11 13:22:18.527] [WiVRn] [info] Font for zh_TW /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:18.531 13211 27558 I WiVRn   : [2026-09-11 13:22:18.531] [WiVRn] [info] Using font /system/fonts/PICOSans.ttf
+09-11 13:22:18.531 13211 27558 I WiVRn   : [2026-09-11 13:22:18.531] [WiVRn] [info] Using font /system/fonts/Roboto-Regular.ttf
+09-11 13:22:18.532 13211 27558 I WiVRn   : [2026-09-11 13:22:18.532] [WiVRn] [info] Using font /system/fonts/PICOSansVFJP.ttf
+09-11 13:22:18.553 13211 27558 I WiVRn   : [2026-09-11 13:22:18.553] [WiVRn] [info] Using font /system/fonts/NotoSansGeorgian-Regular.otf
+09-11 13:22:18.553 13211 27558 I WiVRn   : [2026-09-11 13:22:18.553] [WiVRn] [info] Using font /system/fonts/PICOSansSC-Regular.ttf
+09-11 13:22:18.567 13211 27558 I WiVRn   : [2026-09-11 13:22:18.567] [WiVRn] [info] Performance level: CPU domain asked for sustained_high
+09-11 13:22:18.567 13211 27558 I WiVRn   : [2026-09-11 13:22:18.567] [WiVRn] [info] nxwarp: GPU performance level setting 2
+09-11 13:22:18.567 13211 27558 I WiVRn   : [2026-09-11 13:22:18.567] [WiVRn] [info] Performance level: GPU domain asked for boost
+09-11 13:22:18.568 13211 27558 W WiVRn   : [2026-09-11 13:22:18.568] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:18.568 13211 27558 W WiVRn   : [2026-09-11 13:22:18.568] [WiVRn] [warning]  6 7 8
+09-11 13:22:18.568 13211 27558 W WiVRn   : [2026-09-11 13:22:18.568] [WiVRn] [warning]  3 1 -
+09-11 13:22:18.568 13211 27558 W WiVRn   : [2026-09-11 13:22:18.568] [WiVRn] [warning]  - - -
+09-11 13:22:18.568 13211 27558 I WiVRn   : [2026-09-11 13:22:18.568] [WiVRn] [info] swapchain setup, refresh rate 90
+09-11 13:22:18.568 13211 27558 I WiVRn   : [2026-09-11 13:22:18.568] [WiVRn] [info] set refresh rate to 90Hz
+09-11 13:22:18.603 13211 27558 W WiVRn   : [2026-09-11 13:22:18.603] [WiVRn] [warning] XR mutable swapchain request rejected (-2); retrying without format list
+09-11 13:22:18.652 13211 27558 I WiVRn   : [2026-09-11 13:22:18.652] [WiVRn] [info] Created stream swapchain: 2688x2688
+09-11 13:22:18.652 13211 27558 W WiVRn   : [2026-09-11 13:22:18.652] [WiVRn] [warning] Swapchain size larger than maximum 2560x2560
+09-11 13:22:18.652 13211 27558 W WiVRn   : [2026-09-11 13:22:18.652] [WiVRn] [warning] Swapchain size larger than maximum 2560x2560
+09-11 13:22:18.652 13211 27558 I WiVRn   : [2026-09-11 13:22:18.652] [WiVRn] [info] Initializing reprojector
+09-11 13:22:18.653 13211 27558 I WiVRn   : [2026-09-11 13:22:18.653] [WiVRn] [info] Static FDM enabled: 168x168 map, texel 16x16
+09-11 13:22:18.653 13211 27558 I WiVRn   : [2026-09-11 13:22:18.653] [WiVRn] [info] nxwarp atlas vertex warp enabled
+09-11 13:22:18.654 13211 27558 I WiVRn   : [2026-09-11 13:22:18.654] [WiVRn] [info] Atlas UNORM attachment views ready
+09-11 13:22:18.654 13211 27558 I WiVRn   : [2026-09-11 13:22:18.654] [WiVRn] [info] Atlas mutable swapchain enabled
+09-11 13:22:18.654 13211 27558 I WiVRn   : [2026-09-11 13:22:18.654] [WiVRn] [info] NX static post active
+09-11 13:22:18.654 13211 27558 I WiVRn   : [2026-09-11 13:22:18.654] [WiVRn] [info] NX static bleed compiled out
+09-11 13:22:18.654 13211 27558 I WiVRn   : [2026-09-11 13:22:18.654] [WiVRn] [info] NX peripheral smoothing mode 3
+09-11 13:22:18.654 13211 27558 I WiVRn   : [2026-09-11 13:22:18.654] [WiVRn] [info] Atlas UNORM attachment path active
+09-11 13:22:18.873 13211 27558 I WiVRn   : [2026-09-11 13:22:18.873] [WiVRn] [info] geometry[eye 0]: view_info fov L-53.34 R53.34 U53.34 D-53.34 | layer fov L-53.34 R53.34 U53.34 D-53.34 deg | layer rect 2688x2688 | defoveated 2688x2688 | scale 1.00
+09-11 13:22:18.873 13211 27558 I WiVRn   : [2026-09-11 13:22:18.873] [WiVRn] [info] geometry[eye 1]: view_info fov L-53.34 R53.34 U53.34 D-53.34 | layer fov L-53.34 R53.34 U53.34 D-53.34 deg | layer rect 2688x2688 | defoveated 2688x2688 | scale 1.00
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: 1 iterations in 3.3 s (0.3/s), 1 submitted a layer, 1 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: selected source transitions forward 0 backward 0 repeat 0, greatest forward gap 0
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: this app's own GPU pass 0.0 ms per iteration
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.1 | whole render() 317.8 ms
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: selection-to-defoveate CPU 86.061 ms mean (max 86.061) over 1 actual defoveate calls; not GPU/photon latency
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: jit on | wake slack 27.4 ms | slept 0.0 ms mean (max 0.0, 0 of 1 iterations) | budget 1.0 = pass 0.0 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: source display-time offset 60.0 ms mean (worst 60.0) over 1 frames | submit lead 0.0 ms mean (worst 0.0) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] render: source->first 3.0 ms | wire 0.3 | queue 0.0 | decode 28.2 | decode->selection 1.3 | selection->predicted 27.2 | sum 60.0 over 1 selected frames (0 invalid)
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-11 13:22:18.885 13211 27558 W WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-11 13:22:18.885 13211 27558 W WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] Received event type XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/hand/left: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/hand/right: /interaction_profiles/ext/hand_interaction_ext
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] interaction profile for /user/gamepad: XR_NULL_PATH
+09-11 13:22:18.885 13211 27558 W WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [warning] unknown interaction profile XR_NULL_PATH
+09-11 13:22:18.885 13211 27558 I WiVRn   : [2026-09-11 13:22:18.885] [WiVRn] [info] Received event type Unknown
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+2110µs HEAD (9000µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+3750µs LEFT_GRIP (7359µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+3779µs RIGHT_GRIP (7331µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+5110µs HEAD (6000µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+6750µs LEFT_GRIP (4359µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+6779µs RIGHT_GRIP (4331µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+8110µs HEAD (3000µs)
+09-11 13:22:18.917 13211 27639 I WiVRn   : [2026-09-11 13:22:18.917] [WiVRn] [info] 	t+11110µs HEAD (0µs)
+09-11 13:22:18.934 13211 27552 I PxrMetric: FPS=90/90,MTP=29.28ms,AppSW=off,FrmEarly=0,FrmLate=3,FrmCpu=1.64ms,FrmGpu=4.73ms,FrmTime=6.71ms,ATWGPU=4.30ms,VsyncDelay=1,GPU=39%/587Mhz,GPUTemp=90.3C,LayerCnt=4,Pkg=org.meumeu.wivrn.nx.warp,FrmId=225
+09-11 13:22:19.228 13211 27610 I WiVRn   : [2026-09-11 13:22:19.228] [WiVRn] [info] frame 45 was not sent because no shard was received
+09-11 13:22:19.228 13211 27610 I WiVRn   : [2026-09-11 13:22:19.228] [WiVRn] [info] frame 45 was not sent because no shard was received
+09-11 13:22:19.245 13211 27610 I WiVRn   : [2026-09-11 13:22:19.245] [WiVRn] [info] frame 46 was not sent because no shard was received
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] Tracking pattern (11111µs):
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+85µs HEAD (22137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+142µs LEFT_GRIP (22079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+150µs RIGHT_GRIP (22071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+974µs HEAD (10137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+1031µs LEFT_GRIP (10079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+1039µs RIGHT_GRIP (10071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+1308µs HEAD (43137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+1365µs LEFT_GRIP (43079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+1373µs RIGHT_GRIP (43071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+2196µs HEAD (31137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+2253µs LEFT_GRIP (31079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+2262µs RIGHT_GRIP (31071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+3085µs HEAD (19137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+3142µs LEFT_GRIP (19079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+3150µs RIGHT_GRIP (19071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+3974µs HEAD (7137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+4031µs LEFT_GRIP (7079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+4039µs RIGHT_GRIP (7071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+4308µs HEAD (40137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+4365µs LEFT_GRIP (40079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+4373µs RIGHT_GRIP (40071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+5196µs HEAD (28137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+5253µs LEFT_GRIP (28079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+5262µs RIGHT_GRIP (28071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+6085µs HEAD (16137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+6142µs LEFT_GRIP (16079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+6150µs RIGHT_GRIP (16071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+6974µs HEAD (4137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+7031µs LEFT_GRIP (4079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+7039µs RIGHT_GRIP (4071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+7308µs HEAD (37137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+7365µs LEFT_GRIP (37079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+7373µs RIGHT_GRIP (37071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+8196µs HEAD (25137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+8253µs LEFT_GRIP (25079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+8262µs RIGHT_GRIP (25071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+9085µs HEAD (13137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+9142µs LEFT_GRIP (13079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+9150µs RIGHT_GRIP (13071µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+10308µs HEAD (34137µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+10365µs LEFT_GRIP (34079µs)
+09-11 13:22:19.918 13211 27639 I WiVRn   : [2026-09-11 13:22:19.918] [WiVRn] [info] 	t+10373µs RIGHT_GRIP (34071µs)
+09-11 13:22:19.939 13211 27552 I PxrMetric: FPS=57/90,MTP=32.73ms,AppSW=off,FrmEarly=10,FrmLate=15,FrmCpu=1.00ms,FrmGpu=9.74ms,FrmTime=13.64ms,ATWGPU=4.12ms,VsyncDelay=2,GPU=93%/587Mhz,GPUTemp=87.6C,LayerCnt=2,Pkg=org.meumeu.wivrn.nx.warp,FrmId=314
+09-11 13:22:20.525 13211 27610 I WiVRn   : [2026-09-11 13:22:20.525] [WiVRn] [info] frame 124 was not sent because no shard was received
+09-11 13:22:20.529 13211 27610 I WiVRn   : [2026-09-11 13:22:20.529] [WiVRn] [info] frame 124 was not sent because no shard was received
+09-11 13:22:20.548 13211 27558 W WiVRn   : [2026-09-11 13:22:20.548] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:20.548 13211 27558 W WiVRn   : [2026-09-11 13:22:20.548] [WiVRn] [warning]  126 127 125
+09-11 13:22:20.548 13211 27558 W WiVRn   : [2026-09-11 13:22:20.548] [WiVRn] [warning]  123 121 122
+09-11 13:22:20.548 13211 27558 W WiVRn   : [2026-09-11 13:22:20.548] [WiVRn] [warning]  - - -
+09-11 13:22:20.548 13211 27610 I WiVRn   : [2026-09-11 13:22:20.548] [WiVRn] [info] frame 125 was not sent because no shard was received
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: 151 iterations in 2.0 s (75.4/s), 151 submitted a layer, 96 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 13.3 ms
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 35
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: selected source transitions forward 96 backward 1 repeat 54, greatest forward gap 7
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: this app's own GPU pass 7.5 ms per iteration
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 24 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: per iteration fence 1.2 (worst 12.9) | queries 0.0 | submit 0.0 | whole render() 2.5 ms
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: motion fields matched 126 active 95 pose-applied 95 pose-missing 1 pose-unsafe 0 mean active step 2.090
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: selection-to-defoveate CPU 0.083 ms mean (max 0.202) over 127 actual defoveate calls; not GPU/photon latency
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: jit on | wake slack 40.4 ms | slept 2.0 ms mean (max 5.0, 61 of 151 iterations) | budget 25.7 = pass 24.7 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: source display-time offset 40.0 ms mean (worst 265.6) over 151 frames | submit lead 33.7 ms mean (worst -290.4) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:20.571 13211 27558 I WiVRn   : [2026-09-11 13:22:20.571] [WiVRn] [info] render: source->first -37.8 ms | wire 2.8 | queue 0.0 | decode 13.9 | decode->selection 24.0 | selection->predicted 37.0 | sum 40.0 over 151 selected frames (0 invalid)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+767µs HEAD (54786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+835µs LEFT_GRIP (54719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+855µs RIGHT_GRIP (54699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+1656µs HEAD (42786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+1724µs LEFT_GRIP (42719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+1744µs RIGHT_GRIP (42699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+1989µs HEAD (75786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+2057µs LEFT_GRIP (75719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+2076µs RIGHT_GRIP (75699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+2878µs HEAD (63786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+2946µs LEFT_GRIP (63719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+2966µs RIGHT_GRIP (63699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+3767µs HEAD (51786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+3835µs LEFT_GRIP (51719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+3855µs RIGHT_GRIP (51699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+4656µs HEAD (39786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+4724µs LEFT_GRIP (39719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+4744µs RIGHT_GRIP (39699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+4989µs HEAD (72786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+5057µs LEFT_GRIP (72719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+5076µs RIGHT_GRIP (72699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+5878µs HEAD (60786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+5946µs LEFT_GRIP (60719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+5966µs RIGHT_GRIP (60699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+6767µs HEAD (48786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+6835µs LEFT_GRIP (48719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+6855µs RIGHT_GRIP (48699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7100µs HEAD (81786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7167µs LEFT_GRIP (81719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7187µs RIGHT_GRIP (81699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7656µs HEAD (36786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7724µs LEFT_GRIP (36719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7744µs RIGHT_GRIP (36699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+7989µs HEAD (69786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+8057µs LEFT_GRIP (69719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+8076µs RIGHT_GRIP (69699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+8878µs HEAD (57786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+8946µs LEFT_GRIP (57719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+8966µs RIGHT_GRIP (57699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+9767µs HEAD (45786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+9835µs LEFT_GRIP (45719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+9855µs RIGHT_GRIP (45699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+10100µs HEAD (78786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+10167µs LEFT_GRIP (78719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+10187µs RIGHT_GRIP (78699µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+10989µs HEAD (66786µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+11057µs LEFT_GRIP (66719µs)
+09-11 13:22:20.917 13211 27639 I WiVRn   : [2026-09-11 13:22:20.917] [WiVRn] [info] 	t+11076µs RIGHT_GRIP (66699µs)
+09-11 13:22:20.944 13211 27552 I PxrMetric: FPS=89/90,MTP=34.62ms,AppSW=off,FrmEarly=22,FrmLate=2,FrmCpu=0.84ms,FrmGpu=6.39ms,FrmTime=12.29ms,ATWGPU=4.80ms,VsyncDelay=2,GPU=56%/587Mhz,GPUTemp=83.3C,LayerCnt=2,Pkg=org.meumeu.wivrn.nx.warp,FrmId=405
+09-11 13:22:21.241 13211 27610 I WiVRn   : [2026-09-11 13:22:21.241] [WiVRn] [info] frame 167 was not sent because no shard was received
+09-11 13:22:21.246 13211 27610 I WiVRn   : [2026-09-11 13:22:21.246] [WiVRn] [info] frame 167 was not sent because no shard was received
+09-11 13:22:21.265 13211 27610 I WiVRn   : [2026-09-11 13:22:21.265] [WiVRn] [info] frame 168 was not sent because no shard was received
+09-11 13:22:21.917 13211 27639 I WiVRn   : [2026-09-11 13:22:21.917] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:21.917 13211 27639 I WiVRn   : [2026-09-11 13:22:21.917] [WiVRn] [info] 	t+8878µs HEAD (80000µs)
+09-11 13:22:21.917 13211 27639 I WiVRn   : [2026-09-11 13:22:21.917] [WiVRn] [info] 	t+8878µs LEFT_GRIP (80000µs)
+09-11 13:22:21.917 13211 27639 I WiVRn   : [2026-09-11 13:22:21.917] [WiVRn] [info] 	t+8878µs RIGHT_GRIP (80000µs)
+09-11 13:22:21.959 13211 27552 I PxrMetric: FPS=91/90,MTP=34.72ms,AppSW=off,FrmEarly=32,FrmLate=0,FrmCpu=0.57ms,FrmGpu=7.09ms,FrmTime=12.72ms,ATWGPU=4.12ms,VsyncDelay=2,GPU=57%/587Mhz,GPUTemp=82.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=496
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 117 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 174
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: selected source transitions forward 117 backward 1 repeat 62, greatest forward gap 5
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: this app's own GPU pass 4.9 ms per iteration
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 61 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.0) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: motion fields matched 146 active 2 pose-applied 2 pose-missing 0 pose-unsafe 0 mean active step 1.659
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: selection-to-defoveate CPU 0.062 ms mean (max 0.108) over 119 actual defoveate calls; not GPU/photon latency
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: jit on | wake slack 40.4 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 21.6 = pass 20.6 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: source display-time offset -17.1 ms mean (worst 60.8) over 180 frames | submit lead 34.6 ms mean (worst 33.0) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:22.571 13211 27558 I WiVRn   : [2026-09-11 13:22:22.571] [WiVRn] [info] render: source->first -104.6 ms | wire 1.4 | queue 0.0 | decode 8.0 | decode->selection 42.7 | selection->predicted 35.3 | sum -17.1 over 180 selected frames (0 invalid)
+09-11 13:22:22.917 13211 27639 I WiVRn   : [2026-09-11 13:22:22.917] [WiVRn] [info] Tracking pattern (11112µs):
+09-11 13:22:22.917 13211 27639 I WiVRn   : [2026-09-11 13:22:22.917] [WiVRn] [info] 	t+8902µs HEAD (80000µs)
+09-11 13:22:22.917 13211 27639 I WiVRn   : [2026-09-11 13:22:22.917] [WiVRn] [info] 	t+8902µs LEFT_GRIP (80000µs)
+09-11 13:22:22.917 13211 27639 I WiVRn   : [2026-09-11 13:22:22.917] [WiVRn] [info] 	t+8902µs RIGHT_GRIP (80000µs)
+09-11 13:22:22.967 13211 27552 I PxrMetric: FPS=90/90,MTP=34.49ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.54ms,FrmGpu=6.67ms,FrmTime=12.26ms,ATWGPU=3.89ms,VsyncDelay=2,GPU=84%/587Mhz,GPUTemp=81.0C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=587
+09-11 13:22:23.917 13211 27639 I WiVRn   : [2026-09-11 13:22:23.917] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:23.917 13211 27639 I WiVRn   : [2026-09-11 13:22:23.917] [WiVRn] [info] 	t+8884µs HEAD (80000µs)
+09-11 13:22:23.917 13211 27639 I WiVRn   : [2026-09-11 13:22:23.917] [WiVRn] [info] 	t+8884µs LEFT_GRIP (80000µs)
+09-11 13:22:23.917 13211 27639 I WiVRn   : [2026-09-11 13:22:23.917] [WiVRn] [info] 	t+8884µs RIGHT_GRIP (80000µs)
+09-11 13:22:23.978 13211 27552 I PxrMetric: FPS=90/90,MTP=34.70ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.58ms,FrmGpu=7.32ms,FrmTime=12.96ms,ATWGPU=4.07ms,VsyncDelay=2,GPU=75%/587Mhz,GPUTemp=80.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=678
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: 181 iterations in 2.0 s (90.0/s), 181 submitted a layer, 122 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 181
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: selected source transitions forward 122 backward 0 repeat 59, greatest forward gap 1
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: this app's own GPU pass 5.1 ms per iteration
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 59 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: motion fields matched 159 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: selection-to-defoveate CPU 0.061 ms mean (max 0.120) over 122 actual defoveate calls; not GPU/photon latency
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: jit on | wake slack 39.9 ms | slept 5.0 ms mean (max 5.0, 181 of 181 iterations) | budget 19.8 = pass 18.8 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: source display-time offset -18.9 ms mean (worst 0.0) over 181 frames | submit lead 34.2 ms mean (worst 33.3) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:24.583 13211 27558 I WiVRn   : [2026-09-11 13:22:24.583] [WiVRn] [info] render: source->first -103.7 ms | wire 1.2 | queue 0.0 | decode 7.2 | decode->selection 41.5 | selection->predicted 34.8 | sum -18.9 over 181 selected frames (0 invalid)
+09-11 13:22:24.917 13211 27639 I WiVRn   : [2026-09-11 13:22:24.917] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:24.917 13211 27639 I WiVRn   : [2026-09-11 13:22:24.917] [WiVRn] [info] 	t+8886µs HEAD (80000µs)
+09-11 13:22:24.917 13211 27639 I WiVRn   : [2026-09-11 13:22:24.917] [WiVRn] [info] 	t+8886µs LEFT_GRIP (80000µs)
+09-11 13:22:24.917 13211 27639 I WiVRn   : [2026-09-11 13:22:24.917] [WiVRn] [info] 	t+8886µs RIGHT_GRIP (80000µs)
+09-11 13:22:24.981 13211 27552 I PxrMetric: FPS=90/90,MTP=34.32ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.58ms,FrmGpu=7.64ms,FrmTime=13.27ms,ATWGPU=4.27ms,VsyncDelay=2,GPU=75%/587Mhz,GPUTemp=80.6C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=768
+09-11 13:22:25.917 13211 27639 I WiVRn   : [2026-09-11 13:22:25.917] [WiVRn] [info] Tracking pattern (11104µs):
+09-11 13:22:25.917 13211 27639 I WiVRn   : [2026-09-11 13:22:25.917] [WiVRn] [info] 	t+8839µs HEAD (80000µs)
+09-11 13:22:25.917 13211 27639 I WiVRn   : [2026-09-11 13:22:25.917] [WiVRn] [info] 	t+8839µs LEFT_GRIP (80000µs)
+09-11 13:22:25.917 13211 27639 I WiVRn   : [2026-09-11 13:22:25.917] [WiVRn] [info] 	t+8839µs RIGHT_GRIP (80000µs)
+09-11 13:22:25.982 13211 27552 I PxrMetric: FPS=90/90,MTP=33.53ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.56ms,FrmGpu=7.22ms,FrmTime=12.83ms,ATWGPU=4.97ms,VsyncDelay=2,GPU=40%/587Mhz,GPUTemp=79.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=858
+09-11 13:22:26.577 13211 27610 I WiVRn   : [2026-09-11 13:22:26.577] [WiVRn] [info] frame 487 was not sent because no shard was received
+09-11 13:22:26.586 13211 27610 I WiVRn   : [2026-09-11 13:22:26.586] [WiVRn] [info] frame 487 was not sent because no shard was received
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: 181 iterations in 2.0 s (90.0/s), 181 submitted a layer, 117 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 176
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: selected source transitions forward 117 backward 1 repeat 63, greatest forward gap 1
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: this app's own GPU pass 5.3 ms per iteration
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 59 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: motion fields matched 158 active 5 pose-applied 5 pose-missing 0 pose-unsafe 0 mean active step 0.618
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: selection-to-defoveate CPU 0.062 ms mean (max 0.099) over 122 actual defoveate calls; not GPU/photon latency
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: jit on | wake slack 39.8 ms | slept 5.0 ms mean (max 5.0, 181 of 181 iterations) | budget 18.0 = pass 17.0 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: source display-time offset -15.3 ms mean (worst 69.3) over 181 frames | submit lead 34.1 ms mean (worst 32.7) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:26.594 13211 27558 I WiVRn   : [2026-09-11 13:22:26.594] [WiVRn] [info] render: source->first -101.7 ms | wire 1.2 | queue 0.0 | decode 7.2 | decode->selection 43.3 | selection->predicted 34.8 | sum -15.3 over 181 selected frames (0 invalid)
+09-11 13:22:26.597 13211 27610 I WiVRn   : [2026-09-11 13:22:26.597] [WiVRn] [info] frame 488 was not sent because no shard was received
+09-11 13:22:26.604 13211 27558 W WiVRn   : [2026-09-11 13:22:26.604] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:26.604 13211 27558 W WiVRn   : [2026-09-11 13:22:26.604] [WiVRn] [warning]  489 490 491
+09-11 13:22:26.604 13211 27558 W WiVRn   : [2026-09-11 13:22:26.604] [WiVRn] [warning]  486 484 485
+09-11 13:22:26.604 13211 27558 W WiVRn   : [2026-09-11 13:22:26.604] [WiVRn] [warning]  - - -
+09-11 13:22:26.615 13211 27558 W WiVRn   : [2026-09-11 13:22:26.615] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:26.615 13211 27558 W WiVRn   : [2026-09-11 13:22:26.615] [WiVRn] [warning]  492 490 491
+09-11 13:22:26.615 13211 27558 W WiVRn   : [2026-09-11 13:22:26.615] [WiVRn] [warning]  489 484 485
+09-11 13:22:26.615 13211 27558 W WiVRn   : [2026-09-11 13:22:26.615] [WiVRn] [warning]  - - -
+09-11 13:22:26.917 13211 27639 I WiVRn   : [2026-09-11 13:22:26.917] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:26.917 13211 27639 I WiVRn   : [2026-09-11 13:22:26.917] [WiVRn] [info] 	t+8887µs HEAD (80000µs)
+09-11 13:22:26.917 13211 27639 I WiVRn   : [2026-09-11 13:22:26.917] [WiVRn] [info] 	t+8887µs LEFT_GRIP (80000µs)
+09-11 13:22:26.917 13211 27639 I WiVRn   : [2026-09-11 13:22:26.917] [WiVRn] [info] 	t+8887µs RIGHT_GRIP (80000µs)
+09-11 13:22:26.992 13211 27552 I PxrMetric: FPS=90/90,MTP=33.73ms,AppSW=off,FrmEarly=27,FrmLate=0,FrmCpu=0.60ms,FrmGpu=7.42ms,FrmTime=13.08ms,ATWGPU=4.85ms,VsyncDelay=2,GPU=40%/587Mhz,GPUTemp=79.1C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=949
+09-11 13:22:27.341 13211 27610 I WiVRn   : [2026-09-11 13:22:27.341] [WiVRn] [info] frame 533 was not sent because no shard was received
+09-11 13:22:27.346 13211 27610 I WiVRn   : [2026-09-11 13:22:27.346] [WiVRn] [info] frame 533 was not sent because no shard was received
+09-11 13:22:27.365 13211 27610 I WiVRn   : [2026-09-11 13:22:27.365] [WiVRn] [info] frame 534 was not sent because no shard was received
+09-11 13:22:27.371 13211 27558 W WiVRn   : [2026-09-11 13:22:27.371] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:27.371 13211 27558 W WiVRn   : [2026-09-11 13:22:27.371] [WiVRn] [warning]  537 535 536
+09-11 13:22:27.371 13211 27558 W WiVRn   : [2026-09-11 13:22:27.371] [WiVRn] [warning]  531 532 530
+09-11 13:22:27.371 13211 27558 W WiVRn   : [2026-09-11 13:22:27.371] [WiVRn] [warning]  - - -
+09-11 13:22:27.917 13211 27639 I WiVRn   : [2026-09-11 13:22:27.917] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:27.917 13211 27639 I WiVRn   : [2026-09-11 13:22:27.917] [WiVRn] [info] 	t+8874µs HEAD (80000µs)
+09-11 13:22:27.917 13211 27639 I WiVRn   : [2026-09-11 13:22:27.917] [WiVRn] [info] 	t+8874µs LEFT_GRIP (80000µs)
+09-11 13:22:27.917 13211 27639 I WiVRn   : [2026-09-11 13:22:27.917] [WiVRn] [info] 	t+8874µs RIGHT_GRIP (80000µs)
+09-11 13:22:27.997 13211 27552 I PxrMetric: FPS=90/90,MTP=34.44ms,AppSW=off,FrmEarly=29,FrmLate=0,FrmCpu=0.60ms,FrmGpu=7.23ms,FrmTime=12.89ms,ATWGPU=5.14ms,VsyncDelay=2,GPU=41%/587Mhz,GPUTemp=79.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1040
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 116 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 172
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: selected source transitions forward 116 backward 1 repeat 63, greatest forward gap 5
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: this app's own GPU pass 5.5 ms per iteration
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 57 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.4) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: motion fields matched 159 active 7 pose-applied 7 pose-missing 0 pose-unsafe 0 mean active step 0.454
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: selection-to-defoveate CPU 0.062 ms mean (max 0.124) over 123 actual defoveate calls; not GPU/photon latency
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: jit on | wake slack 39.9 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 16.2 = pass 15.2 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: source display-time offset -13.6 ms mean (worst 68.8) over 180 frames | submit lead 34.2 ms mean (worst 32.9) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:28.594 13211 27558 I WiVRn   : [2026-09-11 13:22:28.594] [WiVRn] [info] render: source->first -100.7 ms | wire 2.4 | queue 0.0 | decode 8.3 | decode->selection 41.5 | selection->predicted 34.8 | sum -13.6 over 180 selected frames (0 invalid)
+09-11 13:22:28.917 13211 27639 I WiVRn   : [2026-09-11 13:22:28.917] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:28.918 13211 27639 I WiVRn   : [2026-09-11 13:22:28.918] [WiVRn] [info] 	t+8878µs HEAD (80000µs)
+09-11 13:22:28.918 13211 27639 I WiVRn   : [2026-09-11 13:22:28.918] [WiVRn] [info] 	t+8878µs LEFT_GRIP (80000µs)
+09-11 13:22:28.918 13211 27639 I WiVRn   : [2026-09-11 13:22:28.918] [WiVRn] [info] 	t+8878µs RIGHT_GRIP (80000µs)
+09-11 13:22:29.011 13211 27552 I PxrMetric: FPS=91/90,MTP=34.38ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.66ms,FrmGpu=7.21ms,FrmTime=12.93ms,ATWGPU=4.39ms,VsyncDelay=2,GPU=74%/587Mhz,GPUTemp=78.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1131
+09-11 13:22:29.917 13211 27639 I WiVRn   : [2026-09-11 13:22:29.917] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:29.918 13211 27639 I WiVRn   : [2026-09-11 13:22:29.918] [WiVRn] [info] 	t+8872µs HEAD (80000µs)
+09-11 13:22:29.918 13211 27639 I WiVRn   : [2026-09-11 13:22:29.918] [WiVRn] [info] 	t+8872µs LEFT_GRIP (80000µs)
+09-11 13:22:29.918 13211 27639 I WiVRn   : [2026-09-11 13:22:29.918] [WiVRn] [info] 	t+8872µs RIGHT_GRIP (80000µs)
+09-11 13:22:30.012 13211 27552 I PxrMetric: FPS=89/90,MTP=34.34ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.67ms,FrmGpu=7.41ms,FrmTime=13.15ms,ATWGPU=4.40ms,VsyncDelay=2,GPU=39%/587Mhz,GPUTemp=78.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1221
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 120 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 180
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: selected source transitions forward 120 backward 0 repeat 60, greatest forward gap 2
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: this app's own GPU pass 5.4 ms per iteration
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 60 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.3) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: motion fields matched 178 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: selection-to-defoveate CPU 0.067 ms mean (max 0.126) over 120 actual defoveate calls; not GPU/photon latency
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: jit on | wake slack 39.7 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 14.4 = pass 13.4 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: source display-time offset -14.5 ms mean (worst 0.0) over 180 frames | submit lead 33.9 ms mean (worst 32.6) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:30.595 13211 27558 I WiVRn   : [2026-09-11 13:22:30.595] [WiVRn] [info] render: source->first -99.4 ms | wire 1.7 | queue 0.0 | decode 7.2 | decode->selection 41.3 | selection->predicted 34.6 | sum -14.5 over 180 selected frames (0 invalid)
+09-11 13:22:30.917 13211 27639 I WiVRn   : [2026-09-11 13:22:30.917] [WiVRn] [info] Tracking pattern (11100µs):
+09-11 13:22:30.918 13211 27639 I WiVRn   : [2026-09-11 13:22:30.918] [WiVRn] [info] 	t+8801µs HEAD (80000µs)
+09-11 13:22:30.918 13211 27639 I WiVRn   : [2026-09-11 13:22:30.918] [WiVRn] [info] 	t+8801µs LEFT_GRIP (80000µs)
+09-11 13:22:30.918 13211 27639 I WiVRn   : [2026-09-11 13:22:30.918] [WiVRn] [info] 	t+8801µs RIGHT_GRIP (80000µs)
+09-11 13:22:31.025 13211 27552 I PxrMetric: FPS=90/90,MTP=33.97ms,AppSW=off,FrmEarly=31,FrmLate=0,FrmCpu=0.70ms,FrmGpu=7.86ms,FrmTime=13.62ms,ATWGPU=4.17ms,VsyncDelay=2,GPU=76%/587Mhz,GPUTemp=77.9C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1312
+09-11 13:22:31.918 13211 27639 I WiVRn   : [2026-09-11 13:22:31.917] [WiVRn] [info] Tracking pattern (11111µs):
+09-11 13:22:31.918 13211 27639 I WiVRn   : [2026-09-11 13:22:31.918] [WiVRn] [info] 	t+8892µs HEAD (80000µs)
+09-11 13:22:31.918 13211 27639 I WiVRn   : [2026-09-11 13:22:31.918] [WiVRn] [info] 	t+8892µs LEFT_GRIP (80000µs)
+09-11 13:22:31.918 13211 27639 I WiVRn   : [2026-09-11 13:22:31.918] [WiVRn] [info] 	t+8892µs RIGHT_GRIP (80000µs)
+09-11 13:22:32.026 13211 27552 I PxrMetric: FPS=90/90,MTP=33.86ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.68ms,FrmGpu=7.95ms,FrmTime=13.70ms,ATWGPU=4.62ms,VsyncDelay=2,GPU=42%/587Mhz,GPUTemp=77.9C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1402
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: 181 iterations in 2.0 s (90.0/s), 181 submitted a layer, 120 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 181
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: selected source transitions forward 120 backward 0 repeat 61, greatest forward gap 1
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: this app's own GPU pass 5.6 ms per iteration
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 61 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.1) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: motion fields matched 166 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: selection-to-defoveate CPU 0.068 ms mean (max 0.116) over 120 actual defoveate calls; not GPU/photon latency
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: jit on | wake slack 39.6 ms | slept 5.0 ms mean (max 5.0, 181 of 181 iterations) | budget 12.6 = pass 11.6 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: source display-time offset -15.0 ms mean (worst 0.0) over 181 frames | submit lead 33.8 ms mean (worst 32.9) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:32.606 13211 27558 I WiVRn   : [2026-09-11 13:22:32.606] [WiVRn] [info] render: source->first -99.9 ms | wire 1.7 | queue 0.0 | decode 7.1 | decode->selection 41.7 | selection->predicted 34.5 | sum -15.0 over 181 selected frames (0 invalid)
+09-11 13:22:32.918 13211 27639 I WiVRn   : [2026-09-11 13:22:32.918] [WiVRn] [info] Tracking pattern (11112µs):
+09-11 13:22:32.918 13211 27639 I WiVRn   : [2026-09-11 13:22:32.918] [WiVRn] [info] 	t+8897µs HEAD (80000µs)
+09-11 13:22:32.918 13211 27639 I WiVRn   : [2026-09-11 13:22:32.918] [WiVRn] [info] 	t+8897µs LEFT_GRIP (80000µs)
+09-11 13:22:32.918 13211 27639 I WiVRn   : [2026-09-11 13:22:32.918] [WiVRn] [info] 	t+8897µs RIGHT_GRIP (80000µs)
+09-11 13:22:33.026 13211 27552 I PxrMetric: FPS=90/90,MTP=33.73ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.68ms,FrmGpu=7.95ms,FrmTime=13.69ms,ATWGPU=4.34ms,VsyncDelay=2,GPU=88%/587Mhz,GPUTemp=78.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1492
+09-11 13:22:33.918 13211 27639 I WiVRn   : [2026-09-11 13:22:33.918] [WiVRn] [info] Tracking pattern (11111µs):
+09-11 13:22:33.918 13211 27639 I WiVRn   : [2026-09-11 13:22:33.918] [WiVRn] [info] 	t+8892µs HEAD (80000µs)
+09-11 13:22:33.918 13211 27639 I WiVRn   : [2026-09-11 13:22:33.918] [WiVRn] [info] 	t+8892µs LEFT_GRIP (80000µs)
+09-11 13:22:33.918 13211 27639 I WiVRn   : [2026-09-11 13:22:33.918] [WiVRn] [info] 	t+8892µs RIGHT_GRIP (80000µs)
+09-11 13:22:34.026 13211 27552 I PxrMetric: FPS=90/90,MTP=33.73ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.71ms,FrmGpu=8.17ms,FrmTime=13.94ms,ATWGPU=4.54ms,VsyncDelay=2,GPU=92%/587Mhz,GPUTemp=79.1C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1582
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 120 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 180
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: selected source transitions forward 120 backward 0 repeat 60, greatest forward gap 2
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: this app's own GPU pass 5.6 ms per iteration
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 60 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: motion fields matched 179 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: selection-to-defoveate CPU 0.067 ms mean (max 0.128) over 120 actual defoveate calls; not GPU/photon latency
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: jit on | wake slack 39.6 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 10.8 = pass 9.8 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: source display-time offset -14.0 ms mean (worst 0.0) over 180 frames | submit lead 33.8 ms mean (worst 32.9) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:34.607 13211 27558 I WiVRn   : [2026-09-11 13:22:34.607] [WiVRn] [info] render: source->first -99.3 ms | wire 1.4 | queue 0.0 | decode 7.5 | decode->selection 41.9 | selection->predicted 34.5 | sum -14.0 over 180 selected frames (0 invalid)
+09-11 13:22:34.918 13211 27639 I WiVRn   : [2026-09-11 13:22:34.918] [WiVRn] [info] Tracking pattern (11107µs):
+09-11 13:22:34.918 13211 27639 I WiVRn   : [2026-09-11 13:22:34.918] [WiVRn] [info] 	t+8863µs HEAD (80000µs)
+09-11 13:22:34.918 13211 27639 I WiVRn   : [2026-09-11 13:22:34.918] [WiVRn] [info] 	t+8863µs LEFT_GRIP (80000µs)
+09-11 13:22:34.918 13211 27639 I WiVRn   : [2026-09-11 13:22:34.918] [WiVRn] [info] 	t+8863µs RIGHT_GRIP (80000µs)
+09-11 13:22:35.038 13211 27552 I PxrMetric: FPS=90/90,MTP=33.94ms,AppSW=off,FrmEarly=32,FrmLate=0,FrmCpu=0.65ms,FrmGpu=8.39ms,FrmTime=14.09ms,ATWGPU=4.42ms,VsyncDelay=2,GPU=89%/587Mhz,GPUTemp=79.1C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1673
+09-11 13:22:35.918 13211 27639 I WiVRn   : [2026-09-11 13:22:35.918] [WiVRn] [info] Tracking pattern (11107µs):
+09-11 13:22:35.918 13211 27639 I WiVRn   : [2026-09-11 13:22:35.918] [WiVRn] [info] 	t+8858µs HEAD (80000µs)
+09-11 13:22:35.918 13211 27639 I WiVRn   : [2026-09-11 13:22:35.918] [WiVRn] [info] 	t+8858µs LEFT_GRIP (80000µs)
+09-11 13:22:35.918 13211 27639 I WiVRn   : [2026-09-11 13:22:35.918] [WiVRn] [info] 	t+8858µs RIGHT_GRIP (80000µs)
+09-11 13:22:36.042 13211 27552 I PxrMetric: FPS=90/90,MTP=34.35ms,AppSW=off,FrmEarly=25,FrmLate=0,FrmCpu=0.69ms,FrmGpu=8.07ms,FrmTime=13.82ms,ATWGPU=3.75ms,VsyncDelay=2,GPU=37%/587Mhz,GPUTemp=79.1C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1764
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: 181 iterations in 2.0 s (90.0/s), 181 submitted a layer, 119 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 181
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: selected source transitions forward 119 backward 0 repeat 62, greatest forward gap 2
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: this app's own GPU pass 5.9 ms per iteration
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 56 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: motion fields matched 159 active 6 pose-applied 6 pose-missing 0 pose-unsafe 0 mean active step 0.071
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: selection-to-defoveate CPU 0.064 ms mean (max 0.105) over 125 actual defoveate calls; not GPU/photon latency
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: jit on | wake slack 39.5 ms | slept 5.0 ms mean (max 5.0, 181 of 181 iterations) | budget 9.0 = pass 8.0 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: source display-time offset -11.2 ms mean (worst 2.4) over 181 frames | submit lead 33.8 ms mean (worst 32.7) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:36.618 13211 27558 I WiVRn   : [2026-09-11 13:22:36.618] [WiVRn] [info] render: source->first -95.4 ms | wire 1.7 | queue 0.0 | decode 7.1 | decode->selection 40.9 | selection->predicted 34.5 | sum -11.2 over 181 selected frames (0 invalid)
+09-11 13:22:36.918 13211 27639 I WiVRn   : [2026-09-11 13:22:36.918] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:36.918 13211 27639 I WiVRn   : [2026-09-11 13:22:36.918] [WiVRn] [info] 	t+8882µs HEAD (80000µs)
+09-11 13:22:36.918 13211 27639 I WiVRn   : [2026-09-11 13:22:36.918] [WiVRn] [info] 	t+8882µs LEFT_GRIP (80000µs)
+09-11 13:22:36.918 13211 27639 I WiVRn   : [2026-09-11 13:22:36.918] [WiVRn] [info] 	t+8882µs RIGHT_GRIP (80000µs)
+09-11 13:22:37.043 13211 27552 I PxrMetric: FPS=91/90,MTP=34.32ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.67ms,FrmGpu=8.34ms,FrmTime=14.08ms,ATWGPU=4.04ms,VsyncDelay=2,GPU=39%/587Mhz,GPUTemp=78.7C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1854
+09-11 13:22:37.918 13211 27639 I WiVRn   : [2026-09-11 13:22:37.918] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:37.918 13211 27639 I WiVRn   : [2026-09-11 13:22:37.918] [WiVRn] [info] 	t+8879µs HEAD (80000µs)
+09-11 13:22:37.918 13211 27639 I WiVRn   : [2026-09-11 13:22:37.918] [WiVRn] [info] 	t+8879µs LEFT_GRIP (80000µs)
+09-11 13:22:37.918 13211 27639 I WiVRn   : [2026-09-11 13:22:37.918] [WiVRn] [info] 	t+8879µs RIGHT_GRIP (80000µs)
+09-11 13:22:38.048 13211 27552 I PxrMetric: FPS=90/90,MTP=33.22ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.67ms,FrmGpu=8.36ms,FrmTime=14.09ms,ATWGPU=4.06ms,VsyncDelay=2,GPU=69%/587Mhz,GPUTemp=77.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=1944
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: 181 iterations in 2.0 s (90.0/s), 181 submitted a layer, 120 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 181
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: selected source transitions forward 120 backward 0 repeat 61, greatest forward gap 2
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: this app's own GPU pass 5.7 ms per iteration
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 61 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: motion fields matched 170 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: selection-to-defoveate CPU 0.067 ms mean (max 0.132) over 120 actual defoveate calls; not GPU/photon latency
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: jit on | wake slack 39.3 ms | slept 5.0 ms mean (max 5.0, 181 of 181 iterations) | budget 7.2 = pass 6.2 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: source display-time offset -13.6 ms mean (worst 0.0) over 181 frames | submit lead 33.6 ms mean (worst 32.7) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:38.629 13211 27558 I WiVRn   : [2026-09-11 13:22:38.629] [WiVRn] [info] render: source->first -98.0 ms | wire 1.3 | queue 0.0 | decode 7.2 | decode->selection 41.6 | selection->predicted 34.2 | sum -13.6 over 181 selected frames (0 invalid)
+09-11 13:22:38.918 13211 27639 I WiVRn   : [2026-09-11 13:22:38.918] [WiVRn] [info] Tracking pattern (11108µs):
+09-11 13:22:38.918 13211 27639 I WiVRn   : [2026-09-11 13:22:38.918] [WiVRn] [info] 	t+8867µs HEAD (80000µs)
+09-11 13:22:38.918 13211 27639 I WiVRn   : [2026-09-11 13:22:38.918] [WiVRn] [info] 	t+8867µs LEFT_GRIP (80000µs)
+09-11 13:22:38.918 13211 27639 I WiVRn   : [2026-09-11 13:22:38.918] [WiVRn] [info] 	t+8867µs RIGHT_GRIP (80000µs)
+09-11 13:22:39.048 13211 27552 I PxrMetric: FPS=89/90,MTP=33.23ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.66ms,FrmGpu=7.80ms,FrmTime=13.52ms,ATWGPU=4.20ms,VsyncDelay=2,GPU=71%/587Mhz,GPUTemp=78.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2034
+09-11 13:22:39.918 13211 27639 I WiVRn   : [2026-09-11 13:22:39.918] [WiVRn] [info] Tracking pattern (11108µs):
+09-11 13:22:39.918 13211 27639 I WiVRn   : [2026-09-11 13:22:39.918] [WiVRn] [info] 	t+8869µs HEAD (80000µs)
+09-11 13:22:39.918 13211 27639 I WiVRn   : [2026-09-11 13:22:39.918] [WiVRn] [info] 	t+8869µs LEFT_GRIP (80000µs)
+09-11 13:22:39.918 13211 27639 I WiVRn   : [2026-09-11 13:22:39.918] [WiVRn] [info] 	t+8869µs RIGHT_GRIP (80000µs)
+09-11 13:22:40.048 13211 27552 I PxrMetric: FPS=90/90,MTP=33.27ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.66ms,FrmGpu=7.82ms,FrmTime=13.55ms,ATWGPU=4.45ms,VsyncDelay=2,GPU=69%/587Mhz,GPUTemp=77.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2124
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 119 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 180
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: selected source transitions forward 119 backward 0 repeat 61, greatest forward gap 1
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: this app's own GPU pass 5.7 ms per iteration
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 60 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: motion fields matched 140 active 1 pose-applied 1 pose-missing 0 pose-unsafe 0 mean active step 0.010
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: selection-to-defoveate CPU 0.065 ms mean (max 0.115) over 120 actual defoveate calls; not GPU/photon latency
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: jit on | wake slack 39.1 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 5.4 = pass 4.4 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: source display-time offset -9.7 ms mean (worst 0.2) over 180 frames | submit lead 33.3 ms mean (worst 32.4) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:40.628 13211 27558 I WiVRn   : [2026-09-11 13:22:40.628] [WiVRn] [info] render: source->first -93.2 ms | wire 1.8 | queue 0.0 | decode 7.0 | decode->selection 40.7 | selection->predicted 34.0 | sum -9.7 over 180 selected frames (0 invalid)
+09-11 13:22:40.918 13211 27639 I WiVRn   : [2026-09-11 13:22:40.918] [WiVRn] [info] Tracking pattern (11110µs):
+09-11 13:22:40.918 13211 27639 I WiVRn   : [2026-09-11 13:22:40.918] [WiVRn] [info] 	t+8880µs HEAD (80000µs)
+09-11 13:22:40.918 13211 27639 I WiVRn   : [2026-09-11 13:22:40.918] [WiVRn] [info] 	t+8880µs LEFT_GRIP (80000µs)
+09-11 13:22:40.918 13211 27639 I WiVRn   : [2026-09-11 13:22:40.918] [WiVRn] [info] 	t+8880µs RIGHT_GRIP (80000µs)
+09-11 13:22:41.059 13211 27552 I PxrMetric: FPS=90/90,MTP=33.76ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.64ms,FrmGpu=8.22ms,FrmTime=13.92ms,ATWGPU=3.80ms,VsyncDelay=2,GPU=78%/587Mhz,GPUTemp=77.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2215
+09-11 13:22:41.918 13211 27639 I WiVRn   : [2026-09-11 13:22:41.918] [WiVRn] [info] Tracking pattern (11104µs):
+09-11 13:22:41.918 13211 27639 I WiVRn   : [2026-09-11 13:22:41.918] [WiVRn] [info] 	t+8835µs HEAD (80000µs)
+09-11 13:22:41.918 13211 27639 I WiVRn   : [2026-09-11 13:22:41.918] [WiVRn] [info] 	t+8835µs LEFT_GRIP (80000µs)
+09-11 13:22:41.918 13211 27639 I WiVRn   : [2026-09-11 13:22:41.918] [WiVRn] [info] 	t+8835µs RIGHT_GRIP (80000µs)
+09-11 13:22:42.059 13211 27552 I PxrMetric: FPS=90/90,MTP=33.42ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.65ms,FrmGpu=8.16ms,FrmTime=13.87ms,ATWGPU=3.86ms,VsyncDelay=2,GPU=73%/587Mhz,GPUTemp=77.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2305
+09-11 13:22:42.338 13211 27610 I WiVRn   : [2026-09-11 13:22:42.338] [WiVRn] [info] frame 1433 was not sent because no shard was received
+09-11 13:22:42.348 13211 27610 I WiVRn   : [2026-09-11 13:22:42.348] [WiVRn] [info] frame 1433 was not sent because no shard was received
+09-11 13:22:42.362 13211 27558 W WiVRn   : [2026-09-11 13:22:42.362] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:42.362 13211 27558 W WiVRn   : [2026-09-11 13:22:42.362] [WiVRn] [warning]  1437 1435 1436
+09-11 13:22:42.362 13211 27558 W WiVRn   : [2026-09-11 13:22:42.362] [WiVRn] [warning]  1431 1432 1430
+09-11 13:22:42.362 13211 27558 W WiVRn   : [2026-09-11 13:22:42.362] [WiVRn] [warning]  - - -
+09-11 13:22:42.365 13211 27610 I WiVRn   : [2026-09-11 13:22:42.365] [WiVRn] [info] frame 1434 was not sent because no shard was received
+09-11 13:22:42.372 13211 27558 W WiVRn   : [2026-09-11 13:22:42.372] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:42.372 13211 27558 W WiVRn   : [2026-09-11 13:22:42.372] [WiVRn] [warning]  1437 1438 1436
+09-11 13:22:42.372 13211 27558 W WiVRn   : [2026-09-11 13:22:42.372] [WiVRn] [warning]  1431 1432 1430
+09-11 13:22:42.372 13211 27558 W WiVRn   : [2026-09-11 13:22:42.372] [WiVRn] [warning]  - - -
+09-11 13:22:42.383 13211 27610 I WiVRn   : [2026-09-11 13:22:42.383] [WiVRn] [info] frame 1435 was not sent because no shard was received
+09-11 13:22:42.383 13211 27558 W WiVRn   : [2026-09-11 13:22:42.383] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:42.383 13211 27558 W WiVRn   : [2026-09-11 13:22:42.383] [WiVRn] [warning]  1437 1438 1439
+09-11 13:22:42.383 13211 27558 W WiVRn   : [2026-09-11 13:22:42.383] [WiVRn] [warning]  1431 1432 1430
+09-11 13:22:42.383 13211 27558 W WiVRn   : [2026-09-11 13:22:42.383] [WiVRn] [warning]  - - -
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: 181 iterations in 2.0 s (90.0/s), 181 submitted a layer, 119 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 171
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: selected source transitions forward 119 backward 0 repeat 62, greatest forward gap 3
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: this app's own GPU pass 6.2 ms per iteration
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 50 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.5) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: motion fields matched 130 active 13 pose-applied 13 pose-missing 0 pose-unsafe 0 mean active step 0.220
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: selection-to-defoveate CPU 0.064 ms mean (max 0.119) over 131 actual defoveate calls; not GPU/photon latency
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: jit on | wake slack 39.3 ms | slept 5.0 ms mean (max 5.0, 181 of 181 iterations) | budget 3.6 = pass 2.6 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: source display-time offset -6.9 ms mean (worst 38.4) over 181 frames | submit lead 33.5 ms mean (worst 32.4) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:42.640 13211 27558 I WiVRn   : [2026-09-11 13:22:42.640] [WiVRn] [info] render: source->first -91.1 ms | wire 1.6 | queue 0.0 | decode 7.5 | decode->selection 40.9 | selection->predicted 34.2 | sum -6.9 over 181 selected frames (0 invalid)
+09-11 13:22:42.918 13211 27639 I WiVRn   : [2026-09-11 13:22:42.918] [WiVRn] [info] Tracking pattern (11111µs):
+09-11 13:22:42.918 13211 27639 I WiVRn   : [2026-09-11 13:22:42.918] [WiVRn] [info] 	t+8888µs HEAD (80000µs)
+09-11 13:22:42.918 13211 27639 I WiVRn   : [2026-09-11 13:22:42.918] [WiVRn] [info] 	t+8888µs LEFT_GRIP (80000µs)
+09-11 13:22:42.918 13211 27639 I WiVRn   : [2026-09-11 13:22:42.918] [WiVRn] [info] 	t+8888µs RIGHT_GRIP (80000µs)
+09-11 13:22:43.059 13211 27552 I PxrMetric: FPS=90/90,MTP=34.21ms,AppSW=off,FrmEarly=8,FrmLate=0,FrmCpu=0.68ms,FrmGpu=8.82ms,FrmTime=14.56ms,ATWGPU=4.07ms,VsyncDelay=2,GPU=76%/587Mhz,GPUTemp=78.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2395
+09-11 13:22:43.104 13211 27610 I WiVRn   : [2026-09-11 13:22:43.104] [WiVRn] [info] frame 1479 was not sent because no shard was received
+09-11 13:22:43.109 13211 27610 I WiVRn   : [2026-09-11 13:22:43.109] [WiVRn] [info] frame 1479 was not sent because no shard was received
+09-11 13:22:43.127 13211 27558 W WiVRn   : [2026-09-11 13:22:43.127] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:43.127 13211 27558 W WiVRn   : [2026-09-11 13:22:43.127] [WiVRn] [warning]  1482 1480 1481
+09-11 13:22:43.127 13211 27558 W WiVRn   : [2026-09-11 13:22:43.127] [WiVRn] [warning]  1476 1477 1478
+09-11 13:22:43.127 13211 27558 W WiVRn   : [2026-09-11 13:22:43.127] [WiVRn] [warning]  - - -
+09-11 13:22:43.128 13211 27610 I WiVRn   : [2026-09-11 13:22:43.128] [WiVRn] [info] frame 1480 was not sent because no shard was received
+09-11 13:22:43.138 13211 27558 W WiVRn   : [2026-09-11 13:22:43.138] [WiVRn] [warning] Failed to find a common frame for all decoders, dumping available frames per decoder
+09-11 13:22:43.138 13211 27558 W WiVRn   : [2026-09-11 13:22:43.138] [WiVRn] [warning]  1482 1483 1484
+09-11 13:22:43.138 13211 27558 W WiVRn   : [2026-09-11 13:22:43.138] [WiVRn] [warning]  1476 1477 1481
+09-11 13:22:43.138 13211 27558 W WiVRn   : [2026-09-11 13:22:43.138] [WiVRn] [warning]  - - -
+09-11 13:22:43.918 13211 27639 I WiVRn   : [2026-09-11 13:22:43.918] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:43.918 13211 27639 I WiVRn   : [2026-09-11 13:22:43.918] [WiVRn] [info] 	t+8874µs HEAD (80000µs)
+09-11 13:22:43.918 13211 27639 I WiVRn   : [2026-09-11 13:22:43.918] [WiVRn] [info] 	t+8874µs LEFT_GRIP (80000µs)
+09-11 13:22:43.918 13211 27639 I WiVRn   : [2026-09-11 13:22:43.918] [WiVRn] [info] 	t+8874µs RIGHT_GRIP (80000µs)
+09-11 13:22:44.070 13211 27552 I PxrMetric: FPS=90/90,MTP=33.56ms,AppSW=off,FrmEarly=18,FrmLate=0,FrmCpu=0.66ms,FrmGpu=8.22ms,FrmTime=13.94ms,ATWGPU=3.87ms,VsyncDelay=2,GPU=42%/587Mhz,GPUTemp=77.9C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2486
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.640] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 119 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 171
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: selected source transitions forward 119 backward 0 repeat 61, greatest forward gap 3
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: this app's own GPU pass 7.0 ms per iteration
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 35 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: motion fields matched 172 active 27 pose-applied 27 pose-missing 0 pose-unsafe 0 mean active step 0.217
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: selection-to-defoveate CPU 0.066 ms mean (max 0.144) over 145 actual defoveate calls; not GPU/photon latency
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: jit on | wake slack 39.5 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 2.1 = pass 1.1 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: source display-time offset -10.0 ms mean (worst 38.5) over 180 frames | submit lead 33.6 ms mean (worst 32.7) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:44.641 13211 27558 I WiVRn   : [2026-09-11 13:22:44.641] [WiVRn] [info] render: source->first -94.8 ms | wire 1.5 | queue 0.0 | decode 7.7 | decode->selection 41.1 | selection->predicted 34.4 | sum -10.0 over 180 selected frames (0 invalid)
+09-11 13:22:44.918 13211 27639 I WiVRn   : [2026-09-11 13:22:44.918] [WiVRn] [info] Tracking pattern (11109µs):
+09-11 13:22:44.918 13211 27639 I WiVRn   : [2026-09-11 13:22:44.918] [WiVRn] [info] 	t+8879µs HEAD (80000µs)
+09-11 13:22:44.918 13211 27639 I WiVRn   : [2026-09-11 13:22:44.918] [WiVRn] [info] 	t+8879µs LEFT_GRIP (80000µs)
+09-11 13:22:44.918 13211 27639 I WiVRn   : [2026-09-11 13:22:44.918] [WiVRn] [info] 	t+8879µs RIGHT_GRIP (80000µs)
+09-11 13:22:45.082 13211 27552 I PxrMetric: FPS=90/90,MTP=33.19ms,AppSW=off,FrmEarly=30,FrmLate=0,FrmCpu=0.69ms,FrmGpu=8.20ms,FrmTime=13.95ms,ATWGPU=3.86ms,VsyncDelay=2,GPU=41%/587Mhz,GPUTemp=77.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2577
+09-11 13:22:45.918 13211 27639 I WiVRn   : [2026-09-11 13:22:45.918] [WiVRn] [info] Tracking pattern (11111µs):
+09-11 13:22:45.918 13211 27639 I WiVRn   : [2026-09-11 13:22:45.918] [WiVRn] [info] 	t+8888µs HEAD (80000µs)
+09-11 13:22:45.918 13211 27639 I WiVRn   : [2026-09-11 13:22:45.918] [WiVRn] [info] 	t+8888µs LEFT_GRIP (80000µs)
+09-11 13:22:45.918 13211 27639 I WiVRn   : [2026-09-11 13:22:45.918] [WiVRn] [info] 	t+8888µs RIGHT_GRIP (80000µs)
+09-11 13:22:46.092 13211 27552 I PxrMetric: FPS=90/90,MTP=33.82ms,AppSW=off,FrmEarly=17,FrmLate=0,FrmCpu=0.64ms,FrmGpu=8.29ms,FrmTime=13.98ms,ATWGPU=3.73ms,VsyncDelay=2,GPU=80%/587Mhz,GPUTemp=78.3C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2668
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: 180 iterations in 2.0 s (90.0/s), 180 submitted a layer, 119 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 180
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: selected source transitions forward 119 backward 0 repeat 61, greatest forward gap 1
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: this app's own GPU pass 6.4 ms per iteration
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: defoveate 2688x2688 per eye x2 = 14.45 Mpx/frame at scale 1.00 atlas-prototype 0; 46 re-presented from the cache (reduce_gpu_load on)
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 1.00 lowpoly 0.00 levels 0 full-kernel false
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.8 ms
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: source-clock pose shifts 0
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: motion fields matched 147 active 15 pose-applied 15 pose-missing 0 pose-unsafe 0 mean active step 0.039
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: selection-to-defoveate CPU 0.065 ms mean (max 0.117) over 134 actual defoveate calls; not GPU/photon latency
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: jit on | wake slack 39.3 ms | slept 5.0 ms mean (max 5.0, 180 of 180 iterations) | budget 2.1 = pass 1.1 + margin 1.0 | sleep cap 5.0 ms
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: source display-time offset -8.3 ms mean (worst 5.1) over 180 frames | submit lead 33.5 ms mean (worst 32.3) | misses: 0 overrun 0 late 0 skipped refresh
+09-11 13:22:46.641 13211 27558 I WiVRn   : [2026-09-11 13:22:46.641] [WiVRn] [info] render: source->first -92.8 ms | wire 1.1 | queue 0.0 | decode 7.3 | decode->selection 41.9 | selection->predicted 34.2 | sum -8.3 over 180 selected frames (0 invalid)
+09-11 13:22:46.918 13211 27639 I WiVRn   : [2026-09-11 13:22:46.918] [WiVRn] [info] Tracking pattern (11112µs):
+09-11 13:22:46.918 13211 27639 I WiVRn   : [2026-09-11 13:22:46.918] [WiVRn] [info] 	t+8903µs HEAD (80000µs)
+09-11 13:22:46.918 13211 27639 I WiVRn   : [2026-09-11 13:22:46.918] [WiVRn] [info] 	t+8903µs LEFT_GRIP (80000µs)
+09-11 13:22:46.918 13211 27639 I WiVRn   : [2026-09-11 13:22:46.918] [WiVRn] [info] 	t+8903µs RIGHT_GRIP (80000µs)
+09-11 13:22:47.093 13211 27552 I PxrMetric: FPS=90/90,MTP=33.65ms,AppSW=off,FrmEarly=23,FrmLate=0,FrmCpu=0.64ms,FrmGpu=8.04ms,FrmTime=13.74ms,ATWGPU=4.09ms,VsyncDelay=2,GPU=77%/587Mhz,GPUTemp=77.5C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2758
+09-11 13:22:47.918 13211 27639 I WiVRn   : [2026-09-11 13:22:47.918] [WiVRn] [info] Tracking pattern (11106µs):
+09-11 13:22:47.918 13211 27639 I WiVRn   : [2026-09-11 13:22:47.918] [WiVRn] [info] 	t+8850µs HEAD (80000µs)
+09-11 13:22:47.918 13211 27639 I WiVRn   : [2026-09-11 13:22:47.918] [WiVRn] [info] 	t+8850µs LEFT_GRIP (80000µs)
+09-11 13:22:47.918 13211 27639 I WiVRn   : [2026-09-11 13:22:47.918] [WiVRn] [info] 	t+8850µs RIGHT_GRIP (80000µs)
+09-11 13:22:48.104 13211 27552 I PxrMetric: FPS=90/90,MTP=33.58ms,AppSW=off,FrmEarly=29,FrmLate=0,FrmCpu=0.68ms,FrmGpu=8.30ms,FrmTime=14.05ms,ATWGPU=4.20ms,VsyncDelay=2,GPU=79%/587Mhz,GPUTemp=76.8C,LayerCnt=1,Pkg=org.meumeu.wivrn.nx.warp,FrmId=2849

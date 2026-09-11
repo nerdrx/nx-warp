@@ -109,6 +109,10 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Motion-block update:** a nearby-match check removes the wrong pulls in the previously failing 8px/4px GPU fixture (**RMSE 17.65 → 0**), while the short Pico screen holds about **59.6 fresh selections/s**. Fractional motion still fails; this is not a general quality or latency win. [Before/after images, controls and live logs](bench/results/90fps-2026-09-11/motion-nearby-match/README.md).
+
+![Motion pulls before and after nearby matching](bench/results/90fps-2026-09-11/motion-nearby-match/comparison.png)
+
 **Latest motion check:** full-frame HEVC retained **59.5 fresh selections/s and 90 render iterations/s** in a short Pico application-clock trial; lower latency remains unproven. The real GPU fixture found and fixed tiny shifts on perfect matches, but another motion case still predicts worse than holding the image. [Pico clock measurements](bench/results/90fps-2026-09-11/hevc-motion-clock/README.md) · [GPU readbacks, successful and failed cases](bench/results/90fps-2026-09-11/motion-gpu-truth/README.md).
 
 ![GPU motion prediction versus future truth](bench/results/90fps-2026-09-11/motion-gpu-truth/comparison.png)
