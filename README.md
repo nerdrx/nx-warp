@@ -109,6 +109,8 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+**Straight-edge target:** preserve rigid lines under prediction, not merely low average pixel error. [New comparison and preliminary edge measurements](bench/results/90fps-2026-09-11/motion-edges/README.md) retain the preferred shared-region prototype; follow-up consensus fitting has not established an improvement.
+
 **Image-only region transforms:** [new animation compares the 8px grid, shared affine regions and true future](bench/results/90fps-2026-09-11/motion-regions/README.md). Some edges straighten, but grouping mistakes remain and aggregate error worsens. No renderer IDs or depth were used.
 
 **Tiny motion blur:** [8px-grid before/after animation and enlarged crop](bench/results/90fps-2026-09-11/motion-tiny-blur/README.md). A 1.5px-capped filter slightly softens edges; incorrect shapes remain. The user prefers the 8px detail candidate; neither finer grids nor blur is deployed by default.
