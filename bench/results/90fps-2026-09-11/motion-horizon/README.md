@@ -36,3 +36,13 @@ A 90 Hz display interval is 11.11 ms; the decoded image can be much older becaus
 The source is the [existing Blender stress-scene generator](../motion-scene/scene.py). Archived scripts render subframes, run the CPU tracker and build the gallery. They use the original sibling `nx-scratch/motion-regions` / `motion-scene` layout; adjust paths for another checkout. Dependencies are Blender, NumPy, Pillow, OpenCV and ffmpeg. The eight [short target images](truth) and raw paired measurements are included.
 
 RGB RMSE uses the central 384×384 crop of 512×512 source sRGB images. CPU timing in the archived short runner includes target loading/scoring; no timing comparison or latency conclusion is drawn from it. No live configuration changed.
+
+## Same old image, conservative shift cap
+
+![Same-target cap comparison](same-target-cap/comparison.gif)
+
+[Animation](same-target-cap/comparison.mp4) · [Scores](same-target-cap/scores.json)
+
+A second evaluation keeps the target fixed at +33.33ms, but caps displacement to +11.11ms. It reuses predictions made without access to either target; this isolates the effect of under-extrapolating rather than making the target nearer. Across the same eight samples, mean RMSE is **38.5021 capped**, **39.0640 full shift**, and **39.8424 held**. Smaller shifts also limit the size of exposed-background damage in the inspected comparison. Rotation remains wrong; this is a modest quality result, not proof of temporal stability or lower latency.
+
+Read-only integration audit: the live client derives motion steps from timestamps and field span, rather than assuming one panel period. Its current cap is three motion intervals. The region predictor here differs from the live GPU field, so this small study does not justify changing that default. The useful next experiment is a matched cap comparison using the actual GPU field and a larger set of frames.
