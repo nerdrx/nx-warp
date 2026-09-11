@@ -113,3 +113,5 @@ The [Pico app-time follow-up](../bench/results/90fps-2026-09-11/pico-motion-cloc
 The [visible-object alignment evaluation](../bench/results/90fps-2026-09-11/motion-alignment/README.md) measures progress toward the reference green block position. Median projected progress is about 34% full versus 16% capped on 30 eligible frames. This quantifies remaining position error, not physical latency; occlusion and deformation can bias silhouette centres.
 
 The [field-transport experiment](../bench/results/90fps-2026-09-11/motion-transport/README.md) solves a source-anchored inverse map. It increases the block’s median position progress to 44%, but introduces tearing; a residual-based fallback loses that progress gain. These CPU-solved GPU-warp diagnostics remain unsuitable for live integration.
+
+The [camera-rotation separation diagnostic](../bench/results/90fps-2026-09-11/motion-rotation/README.md) reduces static rotation image mismatch by 92%, but leaves spurious estimated motion and increases matching difficulty in the mixed scene. Known rotation alone is insufficient; no live change is promoted.
