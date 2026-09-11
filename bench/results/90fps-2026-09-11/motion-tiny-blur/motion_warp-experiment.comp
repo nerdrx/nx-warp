@@ -1,0 +1,127 @@
+/*
+ * WiVRn VR streaming
+ * Copyright (C) 2026  Patrick Nicolas <patricknicolas@laposte.net>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// Server side motion smoothing, second half: move the retained application frame
+// along the motion field, t intervals past the moment it was rendered for, and hand
+// the result to the foveation pass in place of the unchanged repeat.
+//
+// This is the same warp reprojection.glsl does on the headset, in the same space and
+// with the same convention — a field value d means what is at p was at p - d one
+// interval ago, so a frame t intervals old is read at p - t * d — with two
+// differences that come from where it runs:
+//
+// - the vectors are read straight out of the buffer the matching pass wrote, in the
+//   float form it wrote them in, with no quantisation and no packet in between;
+// - the image being sampled is the retained eye view rather than a foveated one, so
+//   there is no foveation Jacobian to undo: the field and the image share one
+//   coordinate system.
+//
+// Coordinates that land outside the image are clamped, which fills disocclusions by
+// stretching the edge. That is the artefact the headset-side mode already accepts.
+
+#version 460
+#extension GL_GOOGLE_include_directive: require
+
+#include "motion_constants.glsl.inc"
+
+layout(local_size_x = MOTION_WARP_GROUP, local_size_y = MOTION_WARP_GROUP, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2DArray retained;
+layout(set = 0, binding = 1, std430) buffer restrict readonly Field
+{
+	// One vec2 per cell, left eye then right eye, in normalized coordinates of the
+	// eye image
+	vec2 vectors[];
+}
+field;
+layout(set = 0, binding = 2) uniform writeonly restrict image2DArray dest;
+
+layout(push_constant) uniform Params
+{
+	// Destination dimensions, one eye
+	ivec2 size;
+	// Cells per eye
+	ivec2 grid;
+	// How far past the retained frame this commit lands, in units of the interval
+	// the field spans. Clamped to [0, MOTION_MAX_STEPS] by the caller.
+	float t;
+}
+params;
+
+vec2 cell(ivec2 c, int view)
+{
+	c = clamp(c, ivec2(0), params.grid - 1);
+	return field.vectors[(view * params.grid.y + c.y) * params.grid.x + c.x];
+}
+
+// The field bilinearly, at p in normalized coordinates of the eye image. Cell (i, j)
+// is centred at ((i + 0.5) / width, (j + 0.5) / height), the same placement the
+// headset samples its field texture at, and the outermost half cell is the edge cell
+// held constant.
+vec2 sample_field(vec2 p, int view)
+{
+	vec2 g = p * vec2(params.grid) - 0.5;
+	ivec2 c = ivec2(floor(g));
+	vec2 f = g - vec2(c);
+
+	return mix(
+		mix(cell(c + ivec2(0, 0), view), cell(c + ivec2(1, 0), view), f.x),
+		mix(cell(c + ivec2(0, 1), view), cell(c + ivec2(1, 1), view), f.x),
+		f.y);
+}
+
+float from_linear_to_srgb_channel(float value)
+{
+	if (value < 0.0031308)
+		return 12.92 * value;
+	return 1.055 * pow(value, 1.0 / 2.4) - 0.055;
+}
+
+vec3 from_linear_to_srgb(vec3 linear_rgb)
+{
+	return vec3(
+		from_linear_to_srgb_channel(linear_rgb.r),
+		from_linear_to_srgb_channel(linear_rgb.g),
+		from_linear_to_srgb_channel(linear_rgb.b));
+}
+
+void main()
+{
+	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+	int view = int(gl_GlobalInvocationID.z);
+
+	if (coord.x >= params.size.x || coord.y >= params.size.y)
+		return;
+
+	vec2 p = (vec2(coord) + 0.5) / vec2(params.size);
+	vec2 d = sample_field(p, view) * params.t;
+
+	// The sampler clamps to edge as well; doing it here too keeps the sampled
+	// position honest for anything that reads this shader looking for the warp.
+	vec2 q = clamp(p - d, vec2(0), vec2(1));
+
+	vec4 colour = texture(retained, vec3(q, view));
+	// Experiment: short symmetric exposure along estimated pixel displacement.
+	vec2 pixels = d * vec2(params.size);
+	float length_px = length(pixels);
+	vec2 offset = length_px > 0.001 ? pixels / length_px * min(1.5, length_px * 0.1) / vec2(params.size) : vec2(0);
+	colour = colour * 0.5 + 0.25 * texture(retained, vec3(q - offset, view))
+	                         + 0.25 * texture(retained, vec3(q + offset, view));
+
+	imageStore(dest, ivec3(coord, view), vec4(from_linear_to_srgb(colour.rgb), colour.a));
+}
