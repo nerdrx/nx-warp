@@ -21,11 +21,28 @@
 
 **NXVC Hybrid — HEVC compression with NX motion prediction and reprojection.** This names the current HEVC-backed mode of NX Warp. **Native NXVC** identifies the custom compression path; the two remain distinct in benchmarks. Hybrid prediction quality and physical latency benefits are still under evaluation. [Naming and architecture](docs/NAMING.md).
 
+## Tested NXVC Hybrid profile — 11 September 2026
+
+The user-tested path is **hardware HEVC 10-bit + capped NX motion warp**, at **2176 × 2176 per eye (100%)**. It retains four decoded sources, prefers a recent past source for prediction, and has tiny blur disabled. The 60 FPS source cap remains selected; the faster source-rate experiment below was restored after testing.
+
+| Result or change | Evidence | Availability |
+|---|---|---|
+| ~90 viewer iterations/s, ~59 fresh selections/s | [100% short pacing tests](bench/results/90fps-2026-09-11/pico-res100-pacing/README.md), after startup | Selected profile |
+| Fewer estimated-timeline stalls with four retained sources | [Repeat and actual Pico recordings](bench/results/90fps-2026-09-11/pico-retained-repeat/README.md) | Installed; recordings use the earlier higher resolution |
+| ~83 fresh selections/s at ~90 viewer iterations/s without the source cap | [Two short uncapped runs](bench/results/90fps-2026-09-11/pico-source-rate/README.md) | Tested candidate; source cap restored |
+| Preserve four distinct sources when frame IDs skip | [Regression and Android build](bench/results/90fps-2026-09-11/retained-slot-fix/README.md) | Built, **not installed or validated live** |
+
+![Fresh-source cadence at 100% resolution](bench/results/90fps-2026-09-11/pico-source-rate/fresh-rate.png)
+
+These are application counters, not proof of distinct panel images or physical motion-to-photon latency. Both source-rate modes show bitrate congestion events. A later visual attempt was blocked by Pico's dark-environment tracking dialog; [that failure is recorded](bench/results/90fps-2026-09-11/pico-source-network/README.md), not counted as a quality test. The headset's new warp readout estimates timestamp coverage, not optical latency.
+
+[Hybrid state, architecture and next checks](docs/HYBRID_STATUS.md) · [Motion research gallery](docs/IMAGE_ONLY_MOTION.md)
+
 ## Abstract
 
 **NX Warp is an experimental video codec for rendered VR, developed with the custom WiVRn NX streaming stack.** It explores a simple premise: head pose, reusable tiles and renderer information should let a headset reconstruct useful pixels with less work than a conventional whole-frame pipeline.
 
-The current work combines a Vulkan encoder, a Vulkan decoder and an atlas renderer tested on Pico 4. The priority is **low latency, full-resolution output and inexpensive reconstruction**, especially at low bitrate. Visual approximations are valid experiments when they preserve useful structure and measurably reduce cost. Quality, bitrate and power remain measured tradeoffs.
+The project includes a native Vulkan encoder/decoder and atlas renderer, alongside the current NXVC Hybrid path using hardware HEVC and NX motion processing on Pico. The priority is **low latency, full-resolution output and inexpensive reconstruction**, especially at low bitrate. Visual approximations are valid experiments when they preserve useful structure and measurably reduce cost. Quality, bitrate and power remain measured tradeoffs.
 
 The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, with centre-first correction scheduling under investigation. The stretch target remains **240 Hz / 4.17 ms per update**. Individual stages and repeated-render throughput have crossed parts of that budget; **consistent 240 Hz delivery has not been demonstrated**. This is a research prototype, with visible artifacts and incomplete quality gates, rather than a production-ready streaming release.
 
@@ -35,9 +52,9 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 
 *Figure 1. Actual Pico capture from the native atlas renderer, configured for 2160 × 2160 output per eye. Tile seams and cube trails remain visible. A screenshot establishes the captured appearance, not moving-head quality or display FPS. [Capture settings, control image and binary identity](bench/results/240fps-2026-09-08/atlas-vertex-warp/v3-final/README.md).*
 
-![Current large-centre fresh update history](bench/results/90fps-2026-09-11/large-centre-soak/fresh-rate.png)
+![Historical native NXVC large-centre fresh update history](bench/results/90fps-2026-09-11/large-centre-soak/fresh-rate.png)
 
-*Current large-centre profile: 15 minutes of changing full-field content on Pico. [Both-eye screenshots, raw logs and limitations](bench/results/90fps-2026-09-11/large-centre-soak/README.md). The 90 Hz display setting does not imply 90 fresh frames.*
+*Historical native NXVC large-centre profile: 15 minutes of changing full-field content on Pico. [Both-eye screenshots, raw logs and limitations](bench/results/90fps-2026-09-11/large-centre-soak/README.md). The 90 Hz display setting does not imply 90 fresh frames.*
 
 ## Image-only motion: animations and research report
 
@@ -54,7 +71,7 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 | Application | Rendered stereo VR through **custom WiVRn NX** |
 | Implementation | C++20 and Vulkan compute/graphics; library identifier `nxvc` |
 | Primary measured hardware | Radeon RX 7900 XTX host; Pico 4 / Adreno 650 headset |
-| Native output in current profile | **2688 × 2688 per eye**, with a **1024px native sharp centre**; older captures use different dimensions |
+| Selected Hybrid source resolution | **2176 × 2176 per eye (100%)**; historical native-codec and higher-resolution results use other dimensions |
 | Live integration | WiVRn NX [`atlas-live`](https://github.com/nerdrx/wivrn-nx/tree/atlas-live); experimental renderer switches remain opt-in |
 | Presentation target | **90 → 120 → 144 → 180 → 240 Hz**; recent live Pico captures use 90 Hz |
 | Evidence | Controlled comparisons, raw timings, fixture/build identities and actual captures |
@@ -113,7 +130,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Full-frame HEVC + motion warp experiment
 
-A parallel [hardware-decoded image with headset motion warp](bench/results/90fps-2026-09-11/hevc-motion/README.md) prototype is implemented in WiVRn NX. The final 30-second screen at 2688² per eye selected **84.39 fresh source frames/s**. Matching motion fields reached presentation, but their extrapolation steps were mostly zero or tiny: **no latency or perceptual improvement is proven**. Both-eye captures, raw measurements and the next timestamp-validation gate are published. The original NX large-centre profile remains selected.
+A parallel [hardware-decoded image with headset motion warp](bench/results/90fps-2026-09-11/hevc-motion/README.md) prototype is implemented in WiVRn NX. The final 30-second screen at 2688² per eye selected **84.39 fresh source frames/s**. Matching motion fields reached presentation, but their extrapolation steps were mostly zero or tiny: **no latency or perceptual improvement is proven**. Both-eye captures, raw measurements and the next timestamp-validation gate are published. That historical test restored the native NX large-centre profile; the selected Hybrid profile is summarized above.
 
 The follow-up [60-source / 90-Hz pacing screen](bench/results/90fps-2026-09-11/hevc-60-warp/README.md) reached **59.6 fresh selections/s and a 90 Hz render loop** with warp enabled or disabled. Only 22/1,512 matched views received a nonzero shift: improved motion responsiveness remains unproven. Scene-time alignment and camera-motion compensation are the next gates.
 
@@ -139,7 +156,7 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ![Motion pulls before and after nearby matching](bench/results/90fps-2026-09-11/motion-nearby-match/comparison.png)
 
-**Latest motion check:** full-frame HEVC retained **59.5 fresh selections/s and 90 render iterations/s** in a short Pico application-clock trial; lower latency remains unproven. The real GPU fixture found and fixed tiny shifts on perfect matches, but another motion case still predicts worse than holding the image. [Pico clock measurements](bench/results/90fps-2026-09-11/hevc-motion-clock/README.md) · [GPU readbacks, successful and failed cases](bench/results/90fps-2026-09-11/motion-gpu-truth/README.md).
+**Earlier motion check:** full-frame HEVC retained **59.5 fresh selections/s and 90 render iterations/s** in a short Pico application-clock trial; lower latency remains unproven. The real GPU fixture found and fixed tiny shifts on perfect matches, but another motion case still predicts worse than holding the image. [Pico clock measurements](bench/results/90fps-2026-09-11/hevc-motion-clock/README.md) · [GPU readbacks, successful and failed cases](bench/results/90fps-2026-09-11/motion-gpu-truth/README.md).
 
 ![GPU motion prediction versus future truth](bench/results/90fps-2026-09-11/motion-gpu-truth/comparison.png)
 
@@ -172,9 +189,9 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 **Selected decode improvement:** [64-thread compact flat PLANAR](bench/results/90fps-2026-09-10/compact-flat64/README.md) reduced **Pass B GPU time by 5.3%**, total decode GPU by **4.1%**, and source-offset proxy by **2.34 ms**, with essentially unchanged fresh delivery. A Pico fixture decoded byte-for-byte identically; startup failures and repeat methodology are disclosed.
 
-**New optimization baseline: 2688×2688 per eye.** [Pico measurements and both-eye captures](bench/results/90fps-2026-09-10/resolution150/README.md): **152.6% of previous encoded pixels**, roughly **71 fresh selections/s** versus **88/s** before. Decode GPU time grows **4.41 → 6.54 ms**; source-offset proxy grows **51.40 → 63.97 ms**. This is working higher-resolution support, not a 90/240 FPS success.
+**Historical native optimization baseline: 2688×2688 per eye.** [Pico measurements and both-eye captures](bench/results/90fps-2026-09-10/resolution150/README.md): **152.6% of previous encoded pixels**, roughly **71 fresh selections/s** versus **88/s** before. Decode GPU time grows **4.41 → 6.54 ms**; source-offset proxy grows **51.40 → 63.97 ms**. This is working higher-resolution support, not a 90/240 FPS success.
 
-**Current low-latency profile:** with the faster shader and continuous wake, [four new wait-budget trials](bench/results/90fps-2026-09-10/awake-wait/README.md) favor a **1 ms ready wait**: source-time offset **51.72 → 46.71 ms**, at about **1% fewer fresh updates** (89.08 → 88.17 per covered wall-second). All four runs had zero session stops. Source offset is a software proxy, not measured photon latency. The earlier shorter-wait rejection below concerns an older profile and remains historical evidence.
+**Historical native low-latency profile:** with the faster shader and continuous wake, [four new wait-budget trials](bench/results/90fps-2026-09-10/awake-wait/README.md) favor a **1 ms ready wait**: source-time offset **51.72 → 46.71 ms**, at about **1% fewer fresh updates** (89.08 → 88.17 per covered wall-second). All four runs had zero session stops. Source offset is a software proxy, not measured photon latency. The earlier shorter-wait rejection below concerns an older profile and remains historical evidence.
 
 The [zero-wait follow-up](bench/results/90fps-2026-09-10/zero-wait/README.md) keeps **1 ms selected**: disabling the wait saved only **0.31 ms** of source-offset proxy while reducing fresh source selections by about **1.6%**. All four runs stayed awake, but per-run drift limits attribution.
 
@@ -206,11 +223,11 @@ The [shorter-wait follow-up](bench/results/90fps-2026-09-10/fdm-wait/README.md) 
 
 Optional Kuwahara approximations reduce extra samples from 16 to [8](bench/results/90fps-2026-09-10/kuwahara-eight-tap/RESULTS.md), [4](bench/results/90fps-2026-09-10/kuwahara-four-tap/RESULTS.md), and [2](bench/results/90fps-2026-09-10/kuwahara-two-tap/RESULTS.md). Isolated Pico RGBA probes measured about 38% lower draw time for eight taps versus sixteen, then a further 22% for four versus eight; the two-tap gain was smaller and varied between runs. These are approximate filters and GPU microbenchmarks, not live latency improvements.
 
-**Latest live tradeoff:** [decode queue priority](bench/results/90fps-2026-09-09/queue-priority/README.md) reduced the mean of two run medians from **27.44 to 24.48 ms encode-to-selection**, while fresh source selections fell from **76.52 to 72.67/s**. Four animated Pico runs; opt-in, with equal priority still the default. This is not photon latency.
+**Earlier native live tradeoff:** [decode queue priority](bench/results/90fps-2026-09-09/queue-priority/README.md) reduced the mean of two run medians from **27.44 to 24.48 ms encode-to-selection**, while fresh source selections fell from **76.52 to 72.67/s**. Four animated Pico runs; opt-in, with equal priority still the default. This is not photon latency.
 
 ![Live Pico latency and freshness tradeoff](bench/results/90fps-2026-09-09/queue-priority/comparison.png)
 
-**Latest work-omission experiment:** [exact PLANAR reuse](bench/results/90fps-2026-09-09/exact-reuse/README.md) passes CPU-reference and dropped-frame checks. It saves about **0.30 ms** in a local-motion standalone decoder fixture, but shows **no full-motion decode-time gain**. The prototype remains archived; it is not a live latency improvement.
+**Earlier work-omission experiment:** [exact PLANAR reuse](bench/results/90fps-2026-09-09/exact-reuse/README.md) passes CPU-reference and dropped-frame checks. It saves about **0.30 ms** in a local-motion standalone decoder fixture, but shows **no full-motion decode-time gain**. The prototype remains archived; it is not a live latency improvement.
 
 ![Exact-reuse Pico experiment: reconstruction and standalone decode times](bench/results/90fps-2026-09-09/exact-reuse/timings.png)
 
@@ -695,7 +712,7 @@ Use `cmake --list-presets` to inspect other configurations. Vulkan is off in the
 
 ## Roadmap
 
-**Current direction:** [an independent low-latency alternative to HEVC](docs/LOW_LATENCY_DIRECTION.md). Preserve the large native centre; redesign tile data to reduce entropy work, reconstruction and transferred bytes together. Use short motion screens and reject gains that merely move cost into another stage.
+**Current Hybrid direction:** [steadier motion, useful fresh-frame delivery and measured latency](docs/HYBRID_STATUS.md). The [independent native-codec direction](docs/LOW_LATENCY_DIRECTION.md) remains a separate research track. Use short motion screens and reject gains that merely move cost into another stage.
 
 Progress is measured against **90 → 120 → 144 → 180 → 240 Hz**, with full-resolution output and low latency carried through every checkpoint.
 

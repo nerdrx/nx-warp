@@ -1,5 +1,7 @@
 # NX Warp: an independent low-latency alternative
 
+> Historical native-codec research direction. The selected HEVC-backed NXVC Hybrid path and its current checks are described in [Hybrid status](HYBRID_STATUS.md). The 2688px native centre discussed below is not the current 100%-resolution Hybrid profile.
+
 ## Decision — September 11
 
 The independent NX codec remains one research path. A subsequently requested parallel experiment uses full-frame hardware HEVC plus NX/WiVRn headset motion warp. That hybrid depends on HEVC for compression; it does not establish an independent replacement format. Both paths must justify latency and visual quality with measurements.
