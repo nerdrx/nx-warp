@@ -26,3 +26,5 @@ No visual reconstruction algorithm changed, and no resolution reduction was appl
 The original 60 FPS source configuration was restored after testing. The candidate can be enabled by restarting the owned server without `WIVRN_NX_SOURCE_FPS=60`; headset cap, blur, retention and resolution settings need not change. No production default was silently changed.
 
 Logs, launch and summarization scripts accompany the chart. The repeat used the same uncapped launch/capture procedure. Future work: user visual check of this mode and a bandwidth/quality comparison before promoting it.
+
+Follow-up: [network-event review and blocked visual capture](../pico-source-network/README.md). Both modes reached the bitrate floor with congestion events, and a later headset recording was obscured by a dark-environment tracking dialog. The fresh-rate counters must not be read as proof of displayed quality or network neutrality.
