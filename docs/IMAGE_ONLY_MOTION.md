@@ -115,3 +115,5 @@ The [visible-object alignment evaluation](../bench/results/90fps-2026-09-11/moti
 The [field-transport experiment](../bench/results/90fps-2026-09-11/motion-transport/README.md) solves a source-anchored inverse map. It increases the block’s median position progress to 44%, but introduces tearing; a residual-based fallback loses that progress gain. These CPU-solved GPU-warp diagnostics remain unsuitable for live integration.
 
 The [camera-rotation separation diagnostic](../bench/results/90fps-2026-09-11/motion-rotation/README.md) reduces static rotation image mismatch by 92%, but leaves spurious estimated motion and increases matching difficulty in the mixed scene. Known rotation alone is insufficient; no live change is promoted.
+
+A [zero-motion photometric preference](../bench/results/90fps-2026-09-11/motion-zero-preference/README.md) nearly removes spurious flow in the aligned static control, but reduces moving-block position progress from 34% to 23%. It remains an offline diagnostic, not a live improvement.
