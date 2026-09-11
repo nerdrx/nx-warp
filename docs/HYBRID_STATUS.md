@@ -44,3 +44,7 @@ Avoid more filter-parameter sweeps: previous local smoothing, zero-motion gating
 ## Evidence
 
 [100% pacing](../bench/results/90fps-2026-09-11/pico-res100-pacing/README.md) · [Retention repeat and recordings](../bench/results/90fps-2026-09-11/pico-retained-repeat/README.md) · [Higher source rate](../bench/results/90fps-2026-09-11/pico-source-rate/README.md) · [Network and visual-capture caveats](../bench/results/90fps-2026-09-11/pico-source-network/README.md) · [Distinct-ID fix](../bench/results/90fps-2026-09-11/retained-slot-fix/README.md) · [Image-only research paper](IMAGE_ONLY_MOTION.md)
+
+## Installation update, 12 September 2026
+
+User requested installation of the stronger motion-history candidate. Client f799d6b9 is installed with opt-in guarded alpha=.5 history and up to22.22ms extrapolation while active, falling back to11.11ms otherwise. It includes the distinct-ID retention fix previously listed as built-only. Decoder connection at2176²/eye succeeded, but Environment Too Dark blocks visual/activation verification. See [installation evidence](../bench/results/90fps-2026-09-12/pico-temporal-install/README.md). The earlier selected-profile measurements do not validate this new mode.
