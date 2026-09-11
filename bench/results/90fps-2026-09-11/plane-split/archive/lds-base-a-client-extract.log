@@ -1,0 +1,186 @@
+09-11 04:00:41.263 24995  9715 I WiVRn   : [2026-09-11 04:00:41.263] [WiVRn] [info] nxwarp[0]: decoupled display -- frames are published complete and the reprojection pass waits on nothing
+09-11 04:00:43.664 24995  9715 I WiVRn   : [2026-09-11 04:00:43.664] [WiVRn] [info] nxwarp[0]: PLANAR centre mode requested; using generic mixed-frame decoder
+09-11 04:00:43.671 24995  9715 I WiVRn   : [2026-09-11 04:00:43.671] [WiVRn] [info] nxwarp[0]: borrowed NV12 output enabled
+09-11 04:00:43.671 24995  9715 I WiVRn   : [2026-09-11 04:00:43.671] [WiVRn] [info] nxwarp[0]: atlas borrowed-target dirty catchup enabled
+09-11 04:00:43.671 24995  9715 I WiVRn   : [2026-09-11 04:00:43.671] [WiVRn] [info] nxwarp[0]: direct atlas targets false
+09-11 04:00:43.671 24995  9715 I WiVRn   : [2026-09-11 04:00:43.671] [WiVRn] [info] nxwarp[0]: 2688x2688 per eye, 2 eyes, on Adreno (TM) 650, 84 x 42 tiles, 1166 bytes per tile
+09-11 04:00:44.471 24995  9718 I WiVRn   : [2026-09-11 04:00:44.471] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:44.471 24995  9718 I WiVRn   : [2026-09-11 04:00:44.471] [WiVRn] [info] nxwarp[0]: 1 frames in 3.2 s: 133872 B/frame, wait-prev 0.0 ms, wall 794.5 ms, nxvc passA 1.1 passB 5.3 gpu 6.3 ms; holes 1, refused 0
+09-11 04:00:44.471 24995  9718 I WiVRn   : [2026-09-11 04:00:44.471] [WiVRn] [info] nxwarp[0] passB 5.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 5.3; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:44.471 24995  9718 I WiVRn   : [2026-09-11 04:00:44.471] [WiVRn] [info] nxwarp[0]: 78 frames dropped late (queue kept to 1)
+09-11 04:00:44.471 24995  9718 I WiVRn   : [2026-09-11 04:00:44.471] [WiVRn] [info] nxwarp[0] stage: gap 0.0 | wait-prev 0.0 | submit 788.1 (qlock 0.0 + codec 788.1) | get_free 0.0 | fence-pre 0.0 | record 0.1 | qsubmit 0.0 | fence-post 6.3 | publish 0.1 ms; withheld 0, stride 1, arrival 11.3 ms
+09-11 04:00:44.471 24995  9718 I WiVRn   : [2026-09-11 04:00:44.471] [WiVRn] [info] nxwarp[0] fence-post 6.3 ms = nxvc gpu 6.3 + copy gpu 0.00 + queue -0.1 (over 1 frames with timestamps)
+09-11 04:00:46.477 24995  9718 I WiVRn   : [2026-09-11 04:00:46.477] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:46.477 24995  9718 I WiVRn   : [2026-09-11 04:00:46.477] [WiVRn] [info] nxwarp[0]: 83 frames in 2.0 s: 269755 B/frame, wait-prev 0.0 ms, wall 15.7 ms, nxvc passA 4.8 passB 7.9 gpu 12.7 ms; holes 1, refused 0
+09-11 04:00:46.477 24995  9718 I WiVRn   : [2026-09-11 04:00:46.477] [WiVRn] [info] nxwarp[0] passB 7.9 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 7.9; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:46.477 24995  9718 I WiVRn   : [2026-09-11 04:00:46.477] [WiVRn] [info] nxwarp[0]: 79 frames dropped late (queue kept to 1)
+09-11 04:00:46.477 24995  9718 I WiVRn   : [2026-09-11 04:00:46.477] [WiVRn] [info] nxwarp[0] stage: gap 8.4 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.1 | publish 0.0 ms; withheld 0, stride 1, arrival 18.1 ms
+09-11 04:00:46.477 24995  9718 I WiVRn   : [2026-09-11 04:00:46.477] [WiVRn] [info] nxwarp[0] fence-post 14.1 ms = nxvc gpu 12.7 + copy gpu 0.00 + queue 1.4 (over 83 frames with timestamps)
+09-11 04:00:48.489 24995  9718 I WiVRn   : [2026-09-11 04:00:48.489] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:48.489 24995  9718 I WiVRn   : [2026-09-11 04:00:48.489] [WiVRn] [info] nxwarp[0]: 105 frames in 2.0 s: 286535 B/frame, wait-prev 0.0 ms, wall 16.6 ms, nxvc passA 5.2 passB 8.0 gpu 13.2 ms; holes 1, refused 0
+09-11 04:00:48.489 24995  9718 I WiVRn   : [2026-09-11 04:00:48.489] [WiVRn] [info] nxwarp[0] passB 8.0 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.0; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:48.489 24995  9718 I WiVRn   : [2026-09-11 04:00:48.489] [WiVRn] [info] nxwarp[0]: 79 frames dropped late (queue kept to 1)
+09-11 04:00:48.489 24995  9718 I WiVRn   : [2026-09-11 04:00:48.489] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.7 (qlock 0.0 + codec 1.7) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.8 | publish 0.0 ms; withheld 0, stride 1, arrival 19.3 ms
+09-11 04:00:48.489 24995  9718 I WiVRn   : [2026-09-11 04:00:48.489] [WiVRn] [info] nxwarp[0] fence-post 14.9 ms = nxvc gpu 13.2 + copy gpu 0.00 + queue 1.6 (over 105 frames with timestamps)
+09-11 04:00:50.502 24995  9718 I WiVRn   : [2026-09-11 04:00:50.502] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:50.502 24995  9718 I WiVRn   : [2026-09-11 04:00:50.502] [WiVRn] [info] nxwarp[0]: 100 frames in 2.0 s: 276432 B/frame, wait-prev 0.0 ms, wall 16.5 ms, nxvc passA 5.1 passB 8.1 gpu 13.2 ms; holes 1, refused 0
+09-11 04:00:50.502 24995  9718 I WiVRn   : [2026-09-11 04:00:50.502] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:50.502 24995  9718 I WiVRn   : [2026-09-11 04:00:50.502] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:00:50.502 24995  9718 I WiVRn   : [2026-09-11 04:00:50.502] [WiVRn] [info] nxwarp[0] stage: gap 3.7 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.9 | publish 0.0 ms; withheld 0, stride 1, arrival 17.1 ms
+09-11 04:00:50.502 24995  9718 I WiVRn   : [2026-09-11 04:00:50.502] [WiVRn] [info] nxwarp[0] fence-post 15.0 ms = nxvc gpu 13.2 + copy gpu 0.00 + queue 1.7 (over 100 frames with timestamps)
+09-11 04:00:52.513 24995  9718 I WiVRn   : [2026-09-11 04:00:52.513] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:52.513 24995  9718 I WiVRn   : [2026-09-11 04:00:52.513] [WiVRn] [info] nxwarp[0]: 104 frames in 2.0 s: 261835 B/frame, wait-prev 0.0 ms, wall 16.2 ms, nxvc passA 4.9 passB 8.2 gpu 13.1 ms; holes 1, refused 0
+09-11 04:00:52.513 24995  9718 I WiVRn   : [2026-09-11 04:00:52.513] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:52.513 24995  9718 I WiVRn   : [2026-09-11 04:00:52.513] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:00:52.513 24995  9718 I WiVRn   : [2026-09-11 04:00:52.513] [WiVRn] [info] nxwarp[0] stage: gap 3.2 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.5 | publish 0.0 ms; withheld 0, stride 1, arrival 19.4 ms
+09-11 04:00:52.513 24995  9718 I WiVRn   : [2026-09-11 04:00:52.513] [WiVRn] [info] nxwarp[0] fence-post 14.6 ms = nxvc gpu 13.1 + copy gpu 0.00 + queue 1.4 (over 104 frames with timestamps)
+09-11 04:00:54.516 24995  9718 I WiVRn   : [2026-09-11 04:00:54.516] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:54.516 24995  9718 I WiVRn   : [2026-09-11 04:00:54.516] [WiVRn] [info] nxwarp[0]: 106 frames in 2.0 s: 267419 B/frame, wait-prev 0.0 ms, wall 16.4 ms, nxvc passA 5.0 passB 8.1 gpu 13.1 ms; holes 1, refused 0
+09-11 04:00:54.516 24995  9718 I WiVRn   : [2026-09-11 04:00:54.516] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:54.516 24995  9718 I WiVRn   : [2026-09-11 04:00:54.516] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:00:54.516 24995  9718 I WiVRn   : [2026-09-11 04:00:54.516] [WiVRn] [info] nxwarp[0] stage: gap 2.5 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.8 | publish 0.0 ms; withheld 0, stride 1, arrival 19.7 ms
+09-11 04:00:54.516 24995  9718 I WiVRn   : [2026-09-11 04:00:54.516] [WiVRn] [info] nxwarp[0] fence-post 14.8 ms = nxvc gpu 13.1 + copy gpu 0.00 + queue 1.6 (over 106 frames with timestamps)
+09-11 04:00:56.517 24995  9718 I WiVRn   : [2026-09-11 04:00:56.517] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:56.517 24995  9718 I WiVRn   : [2026-09-11 04:00:56.517] [WiVRn] [info] nxwarp[0]: 104 frames in 2.0 s: 276751 B/frame, wait-prev 0.0 ms, wall 16.8 ms, nxvc passA 5.2 passB 8.2 gpu 13.4 ms; holes 1, refused 0
+09-11 04:00:56.517 24995  9718 I WiVRn   : [2026-09-11 04:00:56.517] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:56.517 24995  9718 I WiVRn   : [2026-09-11 04:00:56.517] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:00:56.517 24995  9718 I WiVRn   : [2026-09-11 04:00:56.517] [WiVRn] [info] nxwarp[0] stage: gap 2.5 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 15.1 | publish 0.0 ms; withheld 0, stride 1, arrival 18.7 ms
+09-11 04:00:56.517 24995  9718 I WiVRn   : [2026-09-11 04:00:56.517] [WiVRn] [info] nxwarp[0] fence-post 15.1 ms = nxvc gpu 13.4 + copy gpu 0.00 + queue 1.7 (over 104 frames with timestamps)
+09-11 04:00:58.532 24995  9718 I WiVRn   : [2026-09-11 04:00:58.532] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:00:58.532 24995  9718 I WiVRn   : [2026-09-11 04:00:58.532] [WiVRn] [info] nxwarp[0]: 106 frames in 2.0 s: 258751 B/frame, wait-prev 0.0 ms, wall 16.2 ms, nxvc passA 4.9 passB 8.1 gpu 13.1 ms; holes 1, refused 0
+09-11 04:00:58.532 24995  9718 I WiVRn   : [2026-09-11 04:00:58.532] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:00:58.532 24995  9718 I WiVRn   : [2026-09-11 04:00:58.532] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:00:58.532 24995  9718 I WiVRn   : [2026-09-11 04:00:58.532] [WiVRn] [info] nxwarp[0] stage: gap 2.8 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.6 | publish 0.0 ms; withheld 0, stride 1, arrival 18.7 ms
+09-11 04:00:58.532 24995  9718 I WiVRn   : [2026-09-11 04:00:58.532] [WiVRn] [info] nxwarp[0] fence-post 14.6 ms = nxvc gpu 13.1 + copy gpu 0.00 + queue 1.5 (over 106 frames with timestamps)
+09-11 04:01:00.542 24995  9718 I WiVRn   : [2026-09-11 04:01:00.542] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:00.542 24995  9718 I WiVRn   : [2026-09-11 04:01:00.542] [WiVRn] [info] nxwarp[0]: 109 frames in 2.0 s: 255934 B/frame, wait-prev 0.0 ms, wall 15.9 ms, nxvc passA 4.7 passB 8.1 gpu 12.8 ms; holes 1, refused 0
+09-11 04:01:00.542 24995  9718 I WiVRn   : [2026-09-11 04:01:00.542] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:00.542 24995  9718 I WiVRn   : [2026-09-11 04:01:00.542] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:00.542 24995  9718 I WiVRn   : [2026-09-11 04:01:00.542] [WiVRn] [info] nxwarp[0] stage: gap 2.5 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.3 | publish 0.0 ms; withheld 0, stride 1, arrival 18.5 ms
+09-11 04:01:00.542 24995  9718 I WiVRn   : [2026-09-11 04:01:00.542] [WiVRn] [info] nxwarp[0] fence-post 14.3 ms = nxvc gpu 12.8 + copy gpu 0.00 + queue 1.5 (over 109 frames with timestamps)
+09-11 04:01:02.555 24995  9718 I WiVRn   : [2026-09-11 04:01:02.555] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:02.555 24995  9718 I WiVRn   : [2026-09-11 04:01:02.555] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 258546 B/frame, wait-prev 0.0 ms, wall 16.1 ms, nxvc passA 4.7 passB 8.2 gpu 12.9 ms; holes 1, refused 0
+09-11 04:01:02.555 24995  9718 I WiVRn   : [2026-09-11 04:01:02.555] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:02.555 24995  9718 I WiVRn   : [2026-09-11 04:01:02.555] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:02.555 24995  9718 I WiVRn   : [2026-09-11 04:01:02.555] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.4 | publish 0.0 ms; withheld 0, stride 1, arrival 18.4 ms
+09-11 04:01:02.555 24995  9718 I WiVRn   : [2026-09-11 04:01:02.555] [WiVRn] [info] nxwarp[0] fence-post 14.5 ms = nxvc gpu 12.9 + copy gpu 0.00 + queue 1.5 (over 108 frames with timestamps)
+09-11 04:01:04.556 24995  9718 I WiVRn   : [2026-09-11 04:01:04.556] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:04.556 24995  9718 I WiVRn   : [2026-09-11 04:01:04.556] [WiVRn] [info] nxwarp[0]: 105 frames in 2.0 s: 283412 B/frame, wait-prev 0.0 ms, wall 16.6 ms, nxvc passA 5.0 passB 8.2 gpu 13.2 ms; holes 1, refused 0
+09-11 04:01:04.556 24995  9718 I WiVRn   : [2026-09-11 04:01:04.556] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:04.556 24995  9718 I WiVRn   : [2026-09-11 04:01:04.556] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:04.556 24995  9718 I WiVRn   : [2026-09-11 04:01:04.556] [WiVRn] [info] nxwarp[0] stage: gap 2.4 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 15.0 | publish 0.0 ms; withheld 0, stride 1, arrival 19.0 ms
+09-11 04:01:04.556 24995  9718 I WiVRn   : [2026-09-11 04:01:04.556] [WiVRn] [info] nxwarp[0] fence-post 15.0 ms = nxvc gpu 13.2 + copy gpu 0.00 + queue 1.8 (over 105 frames with timestamps)
+09-11 04:01:06.567 24995  9718 I WiVRn   : [2026-09-11 04:01:06.567] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:06.567 24995  9718 I WiVRn   : [2026-09-11 04:01:06.567] [WiVRn] [info] nxwarp[0]: 103 frames in 2.0 s: 301879 B/frame, wait-prev 0.0 ms, wall 16.8 ms, nxvc passA 5.3 passB 8.2 gpu 13.5 ms; holes 1, refused 0
+09-11 04:01:06.567 24995  9718 I WiVRn   : [2026-09-11 04:01:06.567] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:06.567 24995  9718 I WiVRn   : [2026-09-11 04:01:06.567] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:06.567 24995  9718 I WiVRn   : [2026-09-11 04:01:06.567] [WiVRn] [info] nxwarp[0] stage: gap 2.7 | wait-prev 0.0 | submit 1.7 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 15.1 | publish 0.0 ms; withheld 0, stride 1, arrival 19.2 ms
+09-11 04:01:06.567 24995  9718 I WiVRn   : [2026-09-11 04:01:06.567] [WiVRn] [info] nxwarp[0] fence-post 15.1 ms = nxvc gpu 13.5 + copy gpu 0.00 + queue 1.6 (over 103 frames with timestamps)
+09-11 04:01:08.582 24995  9718 I WiVRn   : [2026-09-11 04:01:08.582] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:08.582 24995  9718 I WiVRn   : [2026-09-11 04:01:08.582] [WiVRn] [info] nxwarp[0]: 103 frames in 2.0 s: 299749 B/frame, wait-prev 0.0 ms, wall 16.9 ms, nxvc passA 5.4 passB 8.1 gpu 13.5 ms; holes 1, refused 0
+09-11 04:01:08.582 24995  9718 I WiVRn   : [2026-09-11 04:01:08.582] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:08.582 24995  9718 I WiVRn   : [2026-09-11 04:01:08.582] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:08.582 24995  9718 I WiVRn   : [2026-09-11 04:01:08.582] [WiVRn] [info] nxwarp[0] stage: gap 2.7 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 15.3 | publish 0.0 ms; withheld 0, stride 1, arrival 18.7 ms
+09-11 04:01:08.582 24995  9718 I WiVRn   : [2026-09-11 04:01:08.582] [WiVRn] [info] nxwarp[0] fence-post 15.3 ms = nxvc gpu 13.5 + copy gpu 0.00 + queue 1.8 (over 103 frames with timestamps)
+09-11 04:01:10.594 24995  9718 I WiVRn   : [2026-09-11 04:01:10.593] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:10.594 24995  9718 I WiVRn   : [2026-09-11 04:01:10.594] [WiVRn] [info] nxwarp[0]: 104 frames in 2.0 s: 286244 B/frame, wait-prev 0.0 ms, wall 16.6 ms, nxvc passA 5.2 passB 8.3 gpu 13.4 ms; holes 1, refused 0
+09-11 04:01:10.594 24995  9718 I WiVRn   : [2026-09-11 04:01:10.594] [WiVRn] [info] nxwarp[0] passB 8.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.3; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:10.594 24995  9718 I WiVRn   : [2026-09-11 04:01:10.594] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:10.594 24995  9718 I WiVRn   : [2026-09-11 04:01:10.594] [WiVRn] [info] nxwarp[0] stage: gap 2.8 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 15.0 | publish 0.0 ms; withheld 0, stride 1, arrival 17.9 ms
+09-11 04:01:10.594 24995  9718 I WiVRn   : [2026-09-11 04:01:10.594] [WiVRn] [info] nxwarp[0] fence-post 15.0 ms = nxvc gpu 13.4 + copy gpu 0.00 + queue 1.6 (over 104 frames with timestamps)
+09-11 04:01:12.615 24995  9718 I WiVRn   : [2026-09-11 04:01:12.615] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:12.615 24995  9718 I WiVRn   : [2026-09-11 04:01:12.615] [WiVRn] [info] nxwarp[0]: 107 frames in 2.0 s: 279548 B/frame, wait-prev 0.0 ms, wall 16.4 ms, nxvc passA 5.0 passB 8.1 gpu 13.1 ms; holes 1, refused 0
+09-11 04:01:12.615 24995  9718 I WiVRn   : [2026-09-11 04:01:12.615] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:12.615 24995  9718 I WiVRn   : [2026-09-11 04:01:12.615] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:12.615 24995  9718 I WiVRn   : [2026-09-11 04:01:12.615] [WiVRn] [info] nxwarp[0] stage: gap 2.5 | wait-prev 0.0 | submit 1.6 (qlock 0.0 + codec 1.6) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.7 | publish 0.0 ms; withheld 0, stride 1, arrival 18.1 ms
+09-11 04:01:12.615 24995  9718 I WiVRn   : [2026-09-11 04:01:12.615] [WiVRn] [info] nxwarp[0] fence-post 14.8 ms = nxvc gpu 13.1 + copy gpu 0.00 + queue 1.6 (over 107 frames with timestamps)
+09-11 04:01:14.626 24995  9718 I WiVRn   : [2026-09-11 04:01:14.626] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:14.626 24995  9718 I WiVRn   : [2026-09-11 04:01:14.626] [WiVRn] [info] nxwarp[0]: 106 frames in 2.0 s: 281928 B/frame, wait-prev 0.0 ms, wall 16.3 ms, nxvc passA 5.0 passB 8.1 gpu 13.1 ms; holes 1, refused 0
+09-11 04:01:14.626 24995  9718 I WiVRn   : [2026-09-11 04:01:14.626] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:14.626 24995  9718 I WiVRn   : [2026-09-11 04:01:14.626] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:14.626 24995  9718 I WiVRn   : [2026-09-11 04:01:14.626] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.7 | publish 0.0 ms; withheld 0, stride 1, arrival 18.7 ms
+09-11 04:01:14.626 24995  9718 I WiVRn   : [2026-09-11 04:01:14.626] [WiVRn] [info] nxwarp[0] fence-post 14.7 ms = nxvc gpu 13.1 + copy gpu 0.00 + queue 1.6 (over 106 frames with timestamps)
+09-11 04:01:16.629 24995  9718 I WiVRn   : [2026-09-11 04:01:16.629] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:16.629 24995  9718 I WiVRn   : [2026-09-11 04:01:16.629] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 257436 B/frame, wait-prev 0.0 ms, wall 15.9 ms, nxvc passA 4.5 passB 8.0 gpu 12.5 ms; holes 1, refused 0
+09-11 04:01:16.629 24995  9718 I WiVRn   : [2026-09-11 04:01:16.629] [WiVRn] [info] nxwarp[0] passB 8.0 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.0; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:16.629 24995  9718 I WiVRn   : [2026-09-11 04:01:16.629] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:16.629 24995  9718 I WiVRn   : [2026-09-11 04:01:16.629] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.4 | publish 0.0 ms; withheld 0, stride 1, arrival 17.4 ms
+09-11 04:01:16.629 24995  9718 I WiVRn   : [2026-09-11 04:01:16.629] [WiVRn] [info] nxwarp[0] fence-post 14.4 ms = nxvc gpu 12.5 + copy gpu 0.00 + queue 1.9 (over 108 frames with timestamps)
+09-11 04:01:18.632 24995  9718 I WiVRn   : [2026-09-11 04:01:18.632] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:18.632 24995  9718 I WiVRn   : [2026-09-11 04:01:18.632] [WiVRn] [info] nxwarp[0]: 111 frames in 2.0 s: 240177 B/frame, wait-prev 0.0 ms, wall 15.6 ms, nxvc passA 4.4 passB 8.0 gpu 12.4 ms; holes 1, refused 0
+09-11 04:01:18.632 24995  9718 I WiVRn   : [2026-09-11 04:01:18.632] [WiVRn] [info] nxwarp[0] passB 8.0 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.0; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:18.632 24995  9718 I WiVRn   : [2026-09-11 04:01:18.632] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:18.632 24995  9718 I WiVRn   : [2026-09-11 04:01:18.632] [WiVRn] [info] nxwarp[0] stage: gap 2.5 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.0 | publish 0.0 ms; withheld 0, stride 1, arrival 18.2 ms
+09-11 04:01:18.632 24995  9718 I WiVRn   : [2026-09-11 04:01:18.632] [WiVRn] [info] nxwarp[0] fence-post 14.1 ms = nxvc gpu 12.4 + copy gpu 0.00 + queue 1.7 (over 111 frames with timestamps)
+09-11 04:01:20.640 24995  9718 I WiVRn   : [2026-09-11 04:01:20.640] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:20.640 24995  9718 I WiVRn   : [2026-09-11 04:01:20.640] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 258871 B/frame, wait-prev 0.0 ms, wall 16.0 ms, nxvc passA 4.8 passB 8.1 gpu 13.0 ms; holes 1, refused 0
+09-11 04:01:20.640 24995  9718 I WiVRn   : [2026-09-11 04:01:20.640] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:20.640 24995  9718 I WiVRn   : [2026-09-11 04:01:20.640] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:20.640 24995  9718 I WiVRn   : [2026-09-11 04:01:20.640] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.4 | publish 0.0 ms; withheld 0, stride 1, arrival 18.0 ms
+09-11 04:01:20.640 24995  9718 I WiVRn   : [2026-09-11 04:01:20.640] [WiVRn] [info] nxwarp[0] fence-post 14.5 ms = nxvc gpu 13.0 + copy gpu 0.00 + queue 1.5 (over 108 frames with timestamps)
+09-11 04:01:22.643 24995  9718 I WiVRn   : [2026-09-11 04:01:22.643] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:22.643 24995  9718 I WiVRn   : [2026-09-11 04:01:22.643] [WiVRn] [info] nxwarp[0]: 105 frames in 2.0 s: 268236 B/frame, wait-prev 0.0 ms, wall 16.4 ms, nxvc passA 4.9 passB 8.3 gpu 13.2 ms; holes 1, refused 0
+09-11 04:01:22.643 24995  9718 I WiVRn   : [2026-09-11 04:01:22.643] [WiVRn] [info] nxwarp[0] passB 8.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.3; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:22.643 24995  9718 I WiVRn   : [2026-09-11 04:01:22.643] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:22.643 24995  9718 I WiVRn   : [2026-09-11 04:01:22.643] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.9 | publish 0.0 ms; withheld 0, stride 1, arrival 18.7 ms
+09-11 04:01:22.643 24995  9718 I WiVRn   : [2026-09-11 04:01:22.643] [WiVRn] [info] nxwarp[0] fence-post 14.9 ms = nxvc gpu 13.2 + copy gpu 0.00 + queue 1.7 (over 105 frames with timestamps)
+09-11 04:01:24.655 24995  9718 I WiVRn   : [2026-09-11 04:01:24.655] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:24.655 24995  9718 I WiVRn   : [2026-09-11 04:01:24.655] [WiVRn] [info] nxwarp[0]: 109 frames in 2.0 s: 243534 B/frame, wait-prev 0.0 ms, wall 15.9 ms, nxvc passA 4.5 passB 8.1 gpu 12.6 ms; holes 1, refused 0
+09-11 04:01:24.655 24995  9718 I WiVRn   : [2026-09-11 04:01:24.655] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:24.655 24995  9718 I WiVRn   : [2026-09-11 04:01:24.655] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:24.655 24995  9718 I WiVRn   : [2026-09-11 04:01:24.655] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.4 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.4 | publish 0.0 ms; withheld 0, stride 1, arrival 18.2 ms
+09-11 04:01:24.655 24995  9718 I WiVRn   : [2026-09-11 04:01:24.655] [WiVRn] [info] nxwarp[0] fence-post 14.4 ms = nxvc gpu 12.6 + copy gpu 0.00 + queue 1.8 (over 109 frames with timestamps)
+09-11 04:01:26.669 24995  9718 I WiVRn   : [2026-09-11 04:01:26.669] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:26.669 24995  9718 I WiVRn   : [2026-09-11 04:01:26.669] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 249823 B/frame, wait-prev 0.0 ms, wall 16.2 ms, nxvc passA 4.5 passB 8.2 gpu 12.7 ms; holes 1, refused 0
+09-11 04:01:26.669 24995  9718 I WiVRn   : [2026-09-11 04:01:26.669] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:26.669 24995  9718 I WiVRn   : [2026-09-11 04:01:26.669] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:26.669 24995  9718 I WiVRn   : [2026-09-11 04:01:26.669] [WiVRn] [info] nxwarp[0] stage: gap 2.4 | wait-prev 0.0 | submit 1.4 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.7 | publish 0.0 ms; withheld 0, stride 1, arrival 19.6 ms
+09-11 04:01:26.669 24995  9718 I WiVRn   : [2026-09-11 04:01:26.669] [WiVRn] [info] nxwarp[0] fence-post 14.7 ms = nxvc gpu 12.7 + copy gpu 0.00 + queue 2.0 (over 108 frames with timestamps)
+09-11 04:01:28.682 24995  9718 I WiVRn   : [2026-09-11 04:01:28.682] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:28.682 24995  9718 I WiVRn   : [2026-09-11 04:01:28.682] [WiVRn] [info] nxwarp[0]: 106 frames in 2.0 s: 266403 B/frame, wait-prev 0.0 ms, wall 16.4 ms, nxvc passA 4.7 passB 8.2 gpu 12.9 ms; holes 1, refused 0
+09-11 04:01:28.682 24995  9718 I WiVRn   : [2026-09-11 04:01:28.682] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:28.682 24995  9718 I WiVRn   : [2026-09-11 04:01:28.682] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:28.682 24995  9718 I WiVRn   : [2026-09-11 04:01:28.682] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.8 | publish 0.0 ms; withheld 0, stride 1, arrival 18.8 ms
+09-11 04:01:28.682 24995  9718 I WiVRn   : [2026-09-11 04:01:28.682] [WiVRn] [info] nxwarp[0] fence-post 14.8 ms = nxvc gpu 12.9 + copy gpu 0.00 + queue 1.9 (over 106 frames with timestamps)
+09-11 04:01:30.692 24995  9718 I WiVRn   : [2026-09-11 04:01:30.692] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:30.692 24995  9718 I WiVRn   : [2026-09-11 04:01:30.692] [WiVRn] [info] nxwarp[0]: 105 frames in 2.0 s: 291347 B/frame, wait-prev 0.0 ms, wall 16.5 ms, nxvc passA 5.1 passB 8.4 gpu 13.4 ms; holes 1, refused 0
+09-11 04:01:30.692 24995  9718 I WiVRn   : [2026-09-11 04:01:30.692] [WiVRn] [info] nxwarp[0] passB 8.4 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.4; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:30.692 24995  9718 I WiVRn   : [2026-09-11 04:01:30.692] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:30.692 24995  9718 I WiVRn   : [2026-09-11 04:01:30.692] [WiVRn] [info] nxwarp[0] stage: gap 2.7 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.9 | publish 0.0 ms; withheld 0, stride 1, arrival 19.3 ms
+09-11 04:01:30.692 24995  9718 I WiVRn   : [2026-09-11 04:01:30.692] [WiVRn] [info] nxwarp[0] fence-post 14.9 ms = nxvc gpu 13.4 + copy gpu 0.00 + queue 1.4 (over 105 frames with timestamps)
+09-11 04:01:32.700 24995  9718 I WiVRn   : [2026-09-11 04:01:32.700] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:32.700 24995  9718 I WiVRn   : [2026-09-11 04:01:32.700] [WiVRn] [info] nxwarp[0]: 106 frames in 2.0 s: 276127 B/frame, wait-prev 0.0 ms, wall 16.3 ms, nxvc passA 4.7 passB 8.3 gpu 13.0 ms; holes 1, refused 0
+09-11 04:01:32.700 24995  9718 I WiVRn   : [2026-09-11 04:01:32.700] [WiVRn] [info] nxwarp[0] passB 8.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.3; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:32.700 24995  9718 I WiVRn   : [2026-09-11 04:01:32.700] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:32.700 24995  9718 I WiVRn   : [2026-09-11 04:01:32.700] [WiVRn] [info] nxwarp[0] stage: gap 2.7 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.7 | publish 0.0 ms; withheld 0, stride 1, arrival 17.8 ms
+09-11 04:01:32.700 24995  9718 I WiVRn   : [2026-09-11 04:01:32.700] [WiVRn] [info] nxwarp[0] fence-post 14.8 ms = nxvc gpu 13.0 + copy gpu 0.00 + queue 1.8 (over 106 frames with timestamps)
+09-11 04:01:34.714 24995  9718 I WiVRn   : [2026-09-11 04:01:34.714] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:34.714 24995  9718 I WiVRn   : [2026-09-11 04:01:34.714] [WiVRn] [info] nxwarp[0]: 108 frames in 2.0 s: 265823 B/frame, wait-prev 0.0 ms, wall 16.1 ms, nxvc passA 4.6 passB 8.1 gpu 12.7 ms; holes 1, refused 0
+09-11 04:01:34.714 24995  9718 I WiVRn   : [2026-09-11 04:01:34.714] [WiVRn] [info] nxwarp[0] passB 8.1 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.1; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:34.714 24995  9718 I WiVRn   : [2026-09-11 04:01:34.714] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:34.714 24995  9718 I WiVRn   : [2026-09-11 04:01:34.714] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.6 | publish 0.0 ms; withheld 0, stride 1, arrival 19.5 ms
+09-11 04:01:34.714 24995  9718 I WiVRn   : [2026-09-11 04:01:34.714] [WiVRn] [info] nxwarp[0] fence-post 14.6 ms = nxvc gpu 12.7 + copy gpu 0.00 + queue 1.8 (over 108 frames with timestamps)
+09-11 04:01:36.737 24995  9718 I WiVRn   : [2026-09-11 04:01:36.737] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:36.737 24995  9718 I WiVRn   : [2026-09-11 04:01:36.737] [WiVRn] [info] nxwarp[0]: 107 frames in 2.0 s: 268363 B/frame, wait-prev 0.0 ms, wall 16.3 ms, nxvc passA 4.5 passB 8.3 gpu 12.9 ms; holes 1, refused 0
+09-11 04:01:36.737 24995  9718 I WiVRn   : [2026-09-11 04:01:36.737] [WiVRn] [info] nxwarp[0] passB 8.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.3; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:36.737 24995  9718 I WiVRn   : [2026-09-11 04:01:36.737] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:36.737 24995  9718 I WiVRn   : [2026-09-11 04:01:36.737] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.8 | publish 0.0 ms; withheld 0, stride 1, arrival 19.7 ms
+09-11 04:01:36.737 24995  9718 I WiVRn   : [2026-09-11 04:01:36.737] [WiVRn] [info] nxwarp[0] fence-post 14.8 ms = nxvc gpu 12.9 + copy gpu 0.00 + queue 1.9 (over 107 frames with timestamps)
+09-11 04:01:38.747 24995  9718 I WiVRn   : [2026-09-11 04:01:38.747] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:38.747 24995  9718 I WiVRn   : [2026-09-11 04:01:38.747] [WiVRn] [info] nxwarp[0]: 107 frames in 2.0 s: 265975 B/frame, wait-prev 0.0 ms, wall 16.1 ms, nxvc passA 4.6 passB 8.3 gpu 12.9 ms; holes 1, refused 0
+09-11 04:01:38.747 24995  9718 I WiVRn   : [2026-09-11 04:01:38.747] [WiVRn] [info] nxwarp[0] passB 8.3 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.3; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:38.747 24995  9718 I WiVRn   : [2026-09-11 04:01:38.747] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:38.747 24995  9718 I WiVRn   : [2026-09-11 04:01:38.747] [WiVRn] [info] nxwarp[0] stage: gap 2.7 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.6 | publish 0.0 ms; withheld 0, stride 1, arrival 17.7 ms
+09-11 04:01:38.747 24995  9718 I WiVRn   : [2026-09-11 04:01:38.747] [WiVRn] [info] nxwarp[0] fence-post 14.6 ms = nxvc gpu 12.9 + copy gpu 0.00 + queue 1.7 (over 107 frames with timestamps)
+09-11 04:01:40.748 24995  9718 I WiVRn   : [2026-09-11 04:01:40.748] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:40.748 24995  9718 I WiVRn   : [2026-09-11 04:01:40.748] [WiVRn] [info] nxwarp[0]: 106 frames in 2.0 s: 273339 B/frame, wait-prev 0.0 ms, wall 16.2 ms, nxvc passA 4.8 passB 8.2 gpu 13.0 ms; holes 1, refused 0
+09-11 04:01:40.748 24995  9718 I WiVRn   : [2026-09-11 04:01:40.748] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:40.748 24995  9718 I WiVRn   : [2026-09-11 04:01:40.748] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:40.748 24995  9718 I WiVRn   : [2026-09-11 04:01:40.748] [WiVRn] [info] nxwarp[0] stage: gap 2.6 | wait-prev 0.0 | submit 1.5 (qlock 0.0 + codec 1.5) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.7 | publish 0.0 ms; withheld 0, stride 1, arrival 17.1 ms
+09-11 04:01:40.748 24995  9718 I WiVRn   : [2026-09-11 04:01:40.748] [WiVRn] [info] nxwarp[0] fence-post 14.7 ms = nxvc gpu 13.0 + copy gpu 0.00 + queue 1.7 (over 106 frames with timestamps)
+09-11 04:01:42.756 24995  9718 I WiVRn   : [2026-09-11 04:01:42.756] [WiVRn] [info] nxwarp[0] native plane split 0, reject mask 0
+09-11 04:01:42.756 24995  9718 I WiVRn   : [2026-09-11 04:01:42.756] [WiVRn] [info] nxwarp[0]: 107 frames in 2.0 s: 262487 B/frame, wait-prev 0.0 ms, wall 16.2 ms, nxvc passA 4.6 passB 8.2 gpu 12.8 ms; holes 1, refused 0
+09-11 04:01:42.756 24995  9718 I WiVRn   : [2026-09-11 04:01:42.756] [WiVRn] [info] nxwarp[0] passB 8.2 ms = warp 0.0 + skip 0.0 + coded 0.0 + dir 0.0 + other 8.2; tiles skip 0 / coded 3528 / dir 0 (eye pass 0)
+09-11 04:01:42.756 24995  9718 I WiVRn   : [2026-09-11 04:01:42.756] [WiVRn] [info] nxwarp[0]: 83 frames dropped late (queue kept to 1)
+09-11 04:01:42.756 24995  9718 I WiVRn   : [2026-09-11 04:01:42.756] [WiVRn] [info] nxwarp[0] stage: gap 2.5 | wait-prev 0.0 | submit 1.4 (qlock 0.0 + codec 1.4) | get_free 0.0 | fence-pre 0.0 | record 0.0 | qsubmit 0.0 | fence-post 14.7 | publish 0.0 ms; withheld 0, stride 1, arrival 17.5 ms
+09-11 04:01:42.756 24995  9718 I WiVRn   : [2026-09-11 04:01:42.756] [WiVRn] [info] nxwarp[0] fence-post 14.7 ms = nxvc gpu 12.8 + copy gpu 0.00 + queue 1.9 (over 107 frames with timestamps)

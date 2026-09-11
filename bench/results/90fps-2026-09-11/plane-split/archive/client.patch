@@ -1,0 +1,23 @@
+diff --git a/client/decoder/nxwarp/nxwarp_decoder.cpp b/client/decoder/nxwarp/nxwarp_decoder.cpp
+index 358a91e9..a98708cb 100644
+--- a/client/decoder/nxwarp/nxwarp_decoder.cpp
++++ b/client/decoder/nxwarp/nxwarp_decoder.cpp
+@@ -668,6 +668,10 @@ bool nxwarp_decoder::on_stream_header(std::span<const uint8_t> header)
+ 	    __system_property_get("debug.wivrn.nx.compact_large_centre", large_centre) > 0 && large_centre[0] == '1';
+ 	if (compact_large_centre_active)
+ 		ci.flags |= NXVC_VKD_FLAG_COMPACT_LARGE_CENTRE;
++	// Experimental core selector; shared Android property is process-wide.
++	char plane_split[PROP_VALUE_MAX] = {};
++	const bool split_requested = __system_property_get("debug.wivrn.nx.native_plane_split", plane_split) > 0 && plane_split[0] == '1';
++	setenv("NXVC_VKD_NATIVE_PLANE_SPLIT", split_requested ? "1" : "0", 1);
+ 	char flat64[PROP_VALUE_MAX] = {};
+ 	if (compact_centre_active && __system_property_get("debug.wivrn.nx.compact_flat64", flat64) > 0 && flat64[0] == '1')
+ 		ci.flags |= NXVC_VKD_FLAG_COMPACT_FLAT64;
+@@ -2422,6 +2426,7 @@ void nxwarp_decoder::decode_unit(decode_job & job)
+ 		}
+ 		if (t_end - prof.since > std::chrono::seconds(2))
+ 		{
++			spdlog::info("nxwarp[{}] native plane split {}, reject mask {}", stream_index, nxvc_vk_decoder_native_plane_split_active(nxvc), nxvc_vk_decoder_native_plane_split_reject_mask(nxvc));
+ 			const double n = prof.n;
+ 			spdlog::info("nxwarp[{}]: {} frames in {:.1f} s: {:.0f} B/frame, wait-prev {:.1f} ms, wall {:.1f} ms, nxvc passA {:.1f} passB {:.1f} gpu {:.1f} ms; holes {}, refused {}",
+ 			             stream_index, prof.n, ms(t_end - prof.since) / 1000.0, prof.bytes / n,
