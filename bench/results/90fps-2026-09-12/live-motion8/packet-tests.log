@@ -1,0 +1,15 @@
+Part A: chunks fit in a datagram
+  27x29: 3132 B of vectors in 4 chunks, largest packet 1128 B
+  32x35: 4480 B of vectors in 6 chunks, largest packet 1136 B
+  40x40: 6400 B of vectors in 6 chunks, largest packet 1168 B
+  272x272: 295936 B of vectors in 272 chunks, largest packet 1136 B
+  336x336: 451584 B of vectors in 672 chunks, largest packet 720 B
+  512x512: 1048576 B of vectors in 1024 chunks, largest packet 1072 B
+Part B: split, serialize, shuffle, reassemble
+  6 chunks, 20 orders, all reassembled identically
+Part C2: dense RLE and malformed encodings
+Part C: losses, duplicates, stale and malformed chunks
+  losses, duplicates, stale, resized and malformed chunks all handled
+Part D: how far along the field to move
+Part E: which end warps
+2284 checks, 0 failures

@@ -48,3 +48,11 @@ Avoid more filter-parameter sweeps: previous local smoothing, zero-motion gating
 ## Installation update, 12 September 2026
 
 User requested installation of the stronger motion-history candidate. Client f799d6b9 is installed with opt-in guarded alpha=.5 history and up to22.22ms extrapolation while active, falling back to11.11ms otherwise. It includes the distinct-ID retention fix previously listed as built-only. Decoder connection at2176²/eye succeeded, but Environment Too Dark blocks visual/activation verification. See [installation evidence](../bench/results/90fps-2026-09-12/pico-temporal-install/README.md). The earlier selected-profile measurements do not validate this new mode.
+
+## Live 8px candidate, 12 September 2026
+
+WiVRn `163d0b84` builds both ends of a live 8px motion path: 272² cells per eye at 2176² source resolution, bounded dense packet assembly, optional per-chunk lossless RLE with raw fallback, exact stationary search skipping, and immutable render snapshots that release the network lock early. The prepared local installer selects 8px, HEVC 10-bit, 100% resolution, source cap60 and blur off. `--grid 64` is the conservative protocol-compatible rollback.
+
+**Not installed or live-verified: ADB has no connected device.** The old installed client cannot be assumed to support the revised wire format. Matched client/server installation and a received 272² grid must be confirmed before reporting live 8px activation. No new headset FPS or motion-to-photon claim is made.
+
+[Candidate artifacts, tests and measured limits](../bench/results/90fps-2026-09-12/live-motion8/README.md) · [Stop/reversal quality tradeoffs and animations](../bench/results/90fps-2026-09-12/motion-reversal/README.md).

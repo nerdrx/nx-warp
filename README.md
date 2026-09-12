@@ -138,6 +138,15 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
+### Live 8px candidate — 12 September 2026
+
+**The 8px motion grid is now implemented in the live server/client path, but the new pair is not installed or Pico-verified yet.** At 100% resolution it carries 272×272 vectors per eye; the previous live grid was 34×34. Dense transport now supports lossless repeated-vector compression, and presentation no longer holds the motion receive lock through runtime waits.
+
+[Builds, packet tests and full-size transport results](bench/results/90fps-2026-09-12/live-motion8/README.md) · [New stop/reversal animations](bench/results/90fps-2026-09-12/motion-reversal/README.md)
+
+![Stop/reversal tradeoffs; offline proxies, not headset latency](bench/results/90fps-2026-09-12/motion-reversal/tradeoffs.png)
+
+
 **Straight-edge target:** preserve rigid lines under prediction, not merely low average pixel error. [New comparison and preliminary edge measurements](bench/results/90fps-2026-09-11/motion-edges/README.md) retain the preferred shared-region prototype; follow-up consensus fitting has not established an improvement.
 
 **Image-only region transforms:** [new animation compares the 8px grid, shared affine regions and true future](bench/results/90fps-2026-09-11/motion-regions/README.md). Some edges straighten, but grouping mistakes remain and aggregate error worsens. No renderer IDs or depth were used.
