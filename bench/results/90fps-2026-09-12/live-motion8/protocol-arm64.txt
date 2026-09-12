@@ -1,0 +1,11 @@
+
+/tmp/nx-client.so:	file format elf64-littleaarch64
+
+Disassembly of section .text:
+
+00000000004ad0a0 <android_main>:
+  62cf30: d2899d08     	mov	x8, #0x4ce8             // =19688
+  62cf34: f2b96f28     	movk	x8, #0xcb79, lsl #16
+  62cf38: f2c88ae8     	movk	x8, #0x4457, lsl #32
+  62cf3c: f2f01e88     	movk	x8, #0x80f4, lsl #48
+  62cf40: f9017be8     	str	x8, [sp, #0x2f0]
