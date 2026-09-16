@@ -21,7 +21,11 @@
 
 **NXVC Hybrid — HEVC compression with NX motion prediction and reprojection.** This names the current HEVC-backed mode of NX Warp. **Native NXVC** identifies the custom compression path; the two remain distinct in benchmarks. Hybrid prediction quality and physical latency benefits are still under evaluation. [Naming and architecture](docs/NAMING.md).
 
-## Tested NXVC Hybrid profile — 11 September 2026
+## Current direction — 16 September 2026
+
+Wearer feedback found dense object-motion warp distracting and too expensive. The next **Pico headroom profile** removes object-motion estimation, transport and client warp, retains platform head-pose reprojection, and reuses unchanged presentation images where eligible. Existing resolution and foveation are preserved. A release-compatible motion-off switch is prepared; full development presets request either 90 fresh frames/s or 45 fresh frames/s with 90 Hz presentation. **Prepared offline; no new Pico performance result.** [Profile, rollback and validation](docs/PICO_HEADROOM.md).
+
+## Historical tested NXVC Hybrid profile — 11 September 2026
 
 The user-tested path is **hardware HEVC 10-bit + capped NX motion warp**, at **2176 × 2176 per eye (100%)**. It retains four decoded sources, prefers a recent past source for prediction, and has tiny blur disabled. The 60 FPS source cap remains selected; the faster source-rate experiment below was restored after testing.
 
