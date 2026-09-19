@@ -58,3 +58,7 @@ No new headset FPS, latency, temperature or power measurement is available. The 
 The [cached-submission change](../bench/results/90fps-2026-09-16/cached-submit/README.md) also removes the otherwise redundant Vulkan submission on eligible unchanged images. Android build and host Vulkan lifecycle smoke pass; a new APK is prepared but not installed. It leaves resolution and OpenXR head-pose reprojection unchanged. Unlike the motion-off properties above, this optimization requires the new client build.
 
 The subsequent [decoder-cache candidate](../bench/results/90fps-2026-09-16/decode-cache/README.md) skips repeated Android driver property queries for already imported decoder buffers and adds optional output-queue diagnostics. Android build passed; device latency remains unmeasured.
+
+## Sender recovery-data reuse
+
+The [FEC/history change](../bench/results/90fps-2026-09-19/fec-history/README.md) removes duplicate shard serialization when parity and retransmission are both enabled, and avoids history serialization for secondary TCP shards. Payload quality and recovery formats are unchanged. Existing recovery tests and local sender compilation pass; this is host-side packet-processing work, with no new Pico or end-to-end latency measurement.

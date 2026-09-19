@@ -1,0 +1,15 @@
+Part A: group construction
+  154 shards, 20 parity, 13.2% overhead
+  largest parity 1372 B, largest data 1350 B, reserve 64 B
+Part B: parity round trip
+  rebuilt 50 shards, one per position of every group
+Part C: what a single parity cannot do
+Part D: a rebuilt shard is an ordinary shard
+Part E: the ratios the adaptive scheme picks between
+  4+1: 153 shards, 39 parity, 25.6% overhead, reserve 56 B
+  8+1: 154 shards, 20 parity, 13.2% overhead, reserve 64 B
+  16+1: 156 shards, 10 parity, 6.6% overhead, reserve 80 B
+Part F: striding, and the bursts it is for
+  bursts of 2..4 recovered strided, none of them contiguous
+Part G: choosing the ratio from the loss
+2101 checks, 0 failures

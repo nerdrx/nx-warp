@@ -1,0 +1,8 @@
+Host only; no Pico connected or modified.
+FEC tests: 2101 checks, 0 failures.
+NACK tests: 292 checks, 0 failures.
+NACK tests with AddressSanitizer + UndefinedBehaviorSanitizer: 292 checks, 0 failures.
+Actual server/encoder/video_encoder.cpp compiled using existing compile_commands.json flags, output /tmp/nx-video-encoder-reuse.o; exit 0, no diagnostics.
+Translation-unit compilation only; no server link, streaming session or device latency measurement.
+CPU: AMD Ryzen 9 9950X3D. Compiler: GCC 16.2.1 20260810.
+FEC/history A/B benchmark: parity/history equivalence passed for FEC on/off and primary/mixed paths; repeated with ASan/UBSan, exit 0.
