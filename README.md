@@ -21,7 +21,7 @@
 
 **Native NXVC: spend bandwidth to reduce headset reconstruction work.** The active experimental path uses a Vulkan encoder and custom direct-sampled RGB blocks in WiVRn NX. It does not use HEVC for image compression or dense object-motion prediction. Platform head-pose reprojection remains part of presentation. The HEVC-backed **NXVC Hybrid** work remains an earlier research track. [Naming background](docs/NAMING.md) · [Direct-path integration and configuration](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md).
 
-The practical starting point is **100% stream scale, 90 Hz and a 200 Mbit/s ceiling**, with adaptive bitrate for changing network conditions. This is an experimental build, not a general release. **Sustained 500 Mbit/s and 90 fresh frames/s are not solved.** A display refresh, a submitted layer and a fresh source image are different measurements.
+The practical starting point is **100% stream scale, 90 Hz and a 160 Mbit/s ceiling with LZ4**, with adaptive bitrate for changing network conditions. This is an experimental build, not a general release. **Sustained 500 Mbit/s and 90 fresh frames/s are not solved.** A display refresh, a submitted layer and a fresh source image are different measurements.
 
 | Latest evidence | Result | What it establishes |
 |---|---:|---|
@@ -31,6 +31,22 @@ The practical starting point is **100% stream scale, 90 Hz and a 200 Mbit/s ceil
 | Reject excessive loss, isolated Pico helper | **0.969 → 0.263 ms** | About **73% less CPU time** for this rejection case; not a whole-pipeline speedup |
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
+
+### Latest: LZ4 is integrated
+
+Optional lossless LZ4 compresses native block units before transport, with a raw bypass below 5% savings. Pico restores the same block bytes before the existing presentation path. The host stages GPU output in ordinary CPU memory first; compressing directly from the mapped GPU buffer caused a measured regression and was replaced.
+
+| Short live scene check | LZ4 off | LZ4 on |
+|---|---:|---:|
+| 500 Mbit/s encoder setting: fresh updates/s | 40.7 | 80.6–82.3 |
+| Same setting: receive-to-predicted-display | 143.1 ms | 43.5–44.3 ms |
+| 160 Mbit/s setting: fresh updates/s | 87.3 | 88.3 |
+
+These are approximately 25-second runs, not sustained 90 FPS or photon measurements. LZ4 saved 59%/75% of image-unit bytes at the 160/500 settings on this simple scene; realistic-photo fixtures saved less and noise barely compressed. A 500 setting does not mean 500 Mbit/s over the radio. Partial-history repair is disabled for LZ4 streams; incomplete compressed units are dropped through normal loss handling.
+
+![Live LZ4 comparisons](bench/results/90fps-2026-09-22/lz4-live/live-results.png)
+
+[Live evidence, failed first version and limitations](bench/results/90fps-2026-09-22/lz4-live/README.md) · [Photo/noise fixtures and Pico microbenchmarks](bench/results/90fps-2026-09-22/lz4/README.md)
 
 ### Keep moving shapes coherent
 
@@ -46,9 +62,9 @@ Partial recovery can fill missing tiles from an earlier complete frame, but movi
 
 ### Trying the current build
 
-Use matching server and Android builds from [WiVRn NX `atlas-live`](https://github.com/nerdrx/wivrn-nx/tree/atlas-live), following its [direct-block setup](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md). Start with the normal 200 Mbit/s ceiling and automatic bitrate. Launch your own OpenXR application; the research scene is not required.
+Use matching server and Android builds from [WiVRn NX `atlas-live`](https://github.com/nerdrx/wivrn-nx/tree/atlas-live), following its [direct-block setup](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md). Start with a 160 Mbit/s ceiling, automatic bitrate and `"lz4":"true"` in the direct encoder options. Launch your own OpenXR application; the research scene is not required.
 
-Guarded partial recovery is **off by default**. For an explicit comparison, set `adb shell setprop debug.wivrn.nx.partial_direct 1` before opening a new stream. Set it to `0` and reopen the stream to disable it. Recovery requires intact metadata, retains at most 10% of tiles and uses complete history no older than 50 ms by client arrival time. That limit does not bound total source age. Corrupt input checks and loss feedback remain active.
+Guarded partial recovery is **off by default** and available only with LZ4 disabled. For an explicit comparison, set `adb shell setprop debug.wivrn.nx.partial_direct 1` before opening a new stream. Set it to `0` and reopen the stream to disable it. Recovery requires intact metadata, retains at most 10% of tiles and uses complete history no older than 50 ms by client arrival time. That limit does not bound total source age. Corrupt input checks and loss feedback remain active.
 
 ## Historical tested NXVC Hybrid profile — 11 September 2026
 
