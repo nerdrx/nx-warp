@@ -1,0 +1,18 @@
+#version 450
+layout(local_size_x=64) in;
+layout(std430,binding=0) readonly buffer Jobs { uvec4 jobs[]; };
+layout(std430,binding=1) readonly buffer Source { uint rgba[]; };
+layout(std430,binding=2) writeonly buffer Output { uint words[]; };
+layout(push_constant) uniform P { uint width; uint height; } pc;
+uint pixel(ivec2 p) { p=clamp(p,ivec2(0),ivec2(pc.width-1,pc.height-1)); uint v=rgba[uint(p.y)*pc.width+uint(p.x)]; return v; }
+uvec3 rgb(uint v) { return uvec3(v&255u,(v>>8)&255u,(v>>16)&255u); }
+uvec3 avgPixel(uvec2 o,uint x,uint y,uint s) { uvec3 outc=uvec3(0); for(uint yy=0;yy<s;yy++){uvec3 row=uvec3(0);for(uint xx=0;xx<s;xx++)row+=rgb(pixel(ivec2(o.x+x*s+xx,o.y+y*s+yy))); outc+=(row+s/2u)/s;} return (outc+s/2u)/s; }
+uint pack565(uvec3 c) { return ((c.r*31u+127u)/255u<<11)|((c.g*63u+127u)/255u<<5)|((c.b*31u+127u)/255u); }
+uvec3 expand(uint p) { uint r=(p>>11)&31u,g=(p>>5)&63u,b=p&31u; return uvec3((r<<3)|(r>>2),(g<<2)|(g>>4),(b<<3)|(b>>2)); }
+void main() {
+ uint id=gl_GlobalInvocationID.x; if(id>=jobs.length()) return; uvec4 j=jobs[id]; uvec3 c0=uvec3(255),c1=uvec3(0); uint best0=0xffffffffu,best1=0u;
+ for(uint y=0;y<8;y++) for(uint x=0;x<8;x++) { uvec3 s=avgPixel(j.xy,x,y,j.z); uint l=s.r*299u+s.g*587u+s.b*114u; if(l<best0){best0=l;c0=s;} if(l>best1){best1=l;c1=s;} }
+ uint p0=pack565(c0),p1=pack565(c1); uvec3 a=expand(p0),b=expand(p1); uint base=j.w; words[base]=p0|(p1<<16); uvec4 sw=uvec4(0);
+ for(uint y=0;y<8;y++) for(uint x=0;x<8;x++) { uvec3 s=avgPixel(j.xy,x,y,j.z); uint sel=0,best=0xffffffffu; for(uint q=0;q<4;q++){uvec3 p=((3u-q)*a+q*b+1u)/3u; uvec3 d=uvec3(s.r>p.r?s.r-p.r:p.r-s.r,s.g>p.g?s.g-p.g:p.g-s.g,s.b>p.b?s.b-p.b:p.b-s.b); uint e=d.x*d.x+d.y*d.y+d.z*d.z; if(e<best){best=e;sel=q;}} sw[(y*8u+x)/16u]|=sel<<(2u*((y*8u+x)%16u)); }
+ words[base+1u]=sw.x; words[base+2u]=sw.y; words[base+3u]=sw.z; words[base+4u]=sw.w;
+}

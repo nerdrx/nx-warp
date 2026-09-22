@@ -62,3 +62,7 @@ The subsequent [decoder-cache candidate](../bench/results/90fps-2026-09-16/decod
 ## Sender recovery-data reuse
 
 The [FEC/history change](../bench/results/90fps-2026-09-19/fec-history/README.md) removes duplicate shard serialization when parity and retransmission are both enabled, and avoids history serialization for secondary TCP shards. Payload quality and recovery formats are unchanged. Existing recovery tests and local sender compilation pass; this is host-side packet-processing work, with no new Pico or end-to-end latency measurement.
+
+## High-bitrate custom-path experiment (September 22)
+
+The [direct-block experiment](../bench/results/90fps-2026-09-22/direct-blocks/README.md) now includes real Pico measurements, images and readable budget graphs. At 2048² per eye the prototype carries about 480 Mbit/s of image data, but has coarse peripheral colour blocks. Direct sampling measured about 5.42 ms; manual smoothing 15.00 ms; a native-filter atlas 8.53–8.61 ms including unpacking. Both smoothing variants are rejected for now to preserve headroom. A host GPU encoder matches the reference bytes. **These are isolated prototypes, not an installed live codec or a measured end-to-end latency improvement.**

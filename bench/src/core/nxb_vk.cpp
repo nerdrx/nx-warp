@@ -107,8 +107,7 @@ bool VkCtx::create(const std::vector<const char*>& instExtIn,
             ci.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
             ci.pfnUserCallback = debugCb;
-            VkDebugUtilsMessengerEXT m;
-            f(instance, &ci, nullptr, &m);
+            NXB_VK(f(instance, &ci, nullptr, &debugMessenger));
         }
     }
 
@@ -241,8 +240,8 @@ bool VkCtx::create(const std::vector<const char*>& instExtIn,
     dci.pEnabledFeatures = &feat;
     dci.enabledExtensionCount = uint32_t(devExt.size());
     dci.ppEnabledExtensionNames = devExt.data();
-    dci.enabledLayerCount = uint32_t(layers.size());
-    dci.ppEnabledLayerNames = layers.data();
+    dci.enabledLayerCount = 0;
+    dci.ppEnabledLayerNames = nullptr;
 
     VkPhysicalDeviceSubgroupSizeControlFeaturesEXT sizeFeat{
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT};
@@ -271,6 +270,12 @@ void VkCtx::destroy()
         if (pool) vkDestroyCommandPool(dev, pool, nullptr);
         vkDestroyDevice(dev, nullptr);
         dev = VK_NULL_HANDLE;
+    }
+    if (debugMessenger) {
+        auto destroy = (PFN_vkDestroyDebugUtilsMessengerEXT)
+            vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (destroy) destroy(instance, debugMessenger, nullptr);
+        debugMessenger = VK_NULL_HANDLE;
     }
     if (instance) { vkDestroyInstance(instance, nullptr); instance = VK_NULL_HANDLE; }
 }

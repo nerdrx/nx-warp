@@ -1,0 +1,16 @@
+#version 450
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=0,binding=0,std430) readonly buffer Tiles { uint tile[]; };
+layout(set=0,binding=3) uniform sampler2D atlas;
+layout(set=0,binding=4,std430) writeonly buffer Output { uint pixel[]; };
+layout(push_constant) uniform Push { uint width; uint height; } pc;
+void main() {
+    uvec2 p=gl_GlobalInvocationID.xy;
+    if(p.x>=pc.width || p.y>=pc.height) return;
+    uvec2 t=p/32u;
+    uint shift=tile[t.y*(pc.width/32u)+t.x]>>30;
+    vec2 a=vec2(t*34u)+1.0+(vec2(p%32u)+.5)/float(1u<<shift);
+    vec2 size=vec2((pc.width/32u)*34u,(pc.height/32u)*34u);
+    uvec4 c=uvec4(clamp(textureLod(atlas,a/size,0.0)*255.0+.5,0.0,255.0));
+    pixel[p.y*pc.width+p.x]=c.r|(c.g<<8)|(c.b<<16)|0xff000000u;
+}

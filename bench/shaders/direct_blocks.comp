@@ -1,0 +1,29 @@
+#version 450
+// Direct-block sampling surrogate. One output write, no reconstructed source image.
+// Real integration must call sampleBlock() from the presentation fragment shader.
+layout(local_size_x=8, local_size_y=8) in;
+layout(set=0,binding=0,std430) readonly buffer Tiles { uint tile[]; };
+layout(set=0,binding=1,std430) readonly buffer Blocks { uint block[]; };
+layout(set=0,binding=2,std430) writeonly buffer Output { uint pixel[]; };
+layout(push_constant) uniform Push { uint width; uint height; } pc;
+uvec3 rgb565(uint v) {
+    uvec3 c = uvec3((v>>11)&31u,(v>>5)&63u,v&31u);
+    return uvec3((c.r<<3)|(c.r>>2),(c.g<<2)|(c.g>>4),(c.b<<3)|(c.b>>2));
+}
+uvec3 sampleBlock(uvec2 p) {
+    uint descriptor=tile[(p.y/32u)*(pc.width/32u)+p.x/32u];
+    uint shift=descriptor>>30;
+    uvec2 q=(p%32u)>>shift;
+    uint blocksPerRow=4u>>shift;
+    uint offset=(descriptor&0x3fffffffu)+5u*((q.y/8u)*blocksPerRow+q.x/8u);
+    uint endpoints=block[offset];
+    uint index=(q.y%8u)*8u+q.x%8u;
+    uint selector=(block[offset+1u+index/16u]>>(2u*(index%16u)))&3u;
+    return ((3u-selector)*rgb565(endpoints&65535u)+selector*rgb565(endpoints>>16)+1u)/3u;
+}
+void main() {
+    uvec2 p=gl_GlobalInvocationID.xy;
+    if(p.x>=pc.width || p.y>=pc.height) return;
+    uvec3 c=sampleBlock(p);
+    pixel[p.y*pc.width+p.x]=c.r|(c.g<<8)|(c.b<<16)|0xff000000u;
+}

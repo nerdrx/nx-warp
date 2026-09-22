@@ -56,6 +56,7 @@ struct DeviceInfo
 struct VkCtx
 {
     VkInstance       instance = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
     VkPhysicalDevice phys     = VK_NULL_HANDLE;
     VkDevice         dev      = VK_NULL_HANDLE;
     VkQueue          queue    = VK_NULL_HANDLE;

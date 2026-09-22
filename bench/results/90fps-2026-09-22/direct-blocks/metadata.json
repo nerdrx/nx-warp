@@ -1,0 +1,37 @@
+{
+  "format": "direct-blocks-v1",
+  "dimensions": [
+    4096,
+    2048
+  ],
+  "eye_dimensions": [
+    2048,
+    2048
+  ],
+  "tile": 32,
+  "foveation_radii": [
+    0.42,
+    0.72
+  ],
+  "descriptor_words": 8192,
+  "block_bytes": 20,
+  "descriptor_bytes": 32768,
+  "blocks_bytes": 633280,
+  "payload_bytes": 666048,
+  "payload_sha256": "03ea2f270527f71f11847b96b816d9b514a543bb471994646d9a82f752f83525",
+  "stereo_bitrate_mbps": 479.55456,
+  "payload_bytes_per_eye": 333024,
+  "foveated_tile_fractions": {
+    "0": 0.13671875,
+    "1": 0.271484375,
+    "2": 0.591796875
+  },
+  "unfoveated_payload_bitrate_mbps": 1911.02976,
+  "payload_bitrate_mbps": 479.55456,
+  "bitrate_scope": "payload only; excludes FEC, transport, and display headers",
+  "refresh_hz": 90,
+  "psnr_db_cpu_reference": 21.267258478137222,
+  "psnr_is_live_measurement": false,
+  "descriptor_layout": "uint32 little-endian; offset in block-stream WORDS, low 30 bits; scale log2 top 2 bits",
+  "block_layout": "20 bytes: RGB565 c0 low16/c1 high16, then 4 uint32 words with 64 2-bit selectors"
+}
