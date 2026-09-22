@@ -32,6 +32,16 @@ The practical starting point is **100% stream scale, 90 Hz and a 160 Mbit/s ceil
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 23 September: stronger lossless compression, same decoded detail
+
+The native path can now choose **Zstd level 3 or LZ4 per detail image**. On three supplied VRChat screenshots, Zstd reduced detail bytes by **28–41% relative to LZ4**, with exactly the same decoded RGB888 representation. Pico production decode helpers measured **0.31–0.35 ms median**, around **0.20–0.23 ms more than LZ4**. The safety image stays independent.
+
+These controlled fixtures duplicate an image for both eyes and reproduce the earlier 500 Mbit/s allocation. Savings exclude safety/FEC/transport; this is not a promise of the same savings in arbitrary stereo motion. Short moving-scene Pico tests maintained approximately 90 encoder frames/s and 89–90 display refreshes/s; automatic-rate behaviour and delivered-image freshness remain separate checks.
+
+[Method, raw sizes, Pico timings and limitations](bench/results/90fps-2026-09-23/scene-compression/README.md) · [Integration settings](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_NATIVE_CENTRE.md)
+
+![Same-pixel compression comparison](bench/results/90fps-2026-09-23/scene-compression/comparison.png)
+
 ### Latest: a small safety image covers detail stalls
 
 An optional native safety prefix reserves up to **20 Mbit/s inside the total budget**. After two refreshes without fresh detail, the viewer can use a newer complete low-resolution image while automatic bitrate responds. Short Pico tests with deliberately dropped detail chunks switched in **22.24–22.28 ms**, maintained **88.1 fresh source selections/s**, and recorded **zero rewinds**. These are software traces; the headset tracking overlay prevented visual validation. Arbitrary Wi-Fi congestion remains unproven.

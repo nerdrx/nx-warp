@@ -36,3 +36,28 @@ Bounds, corrupt/truncated payload, exact roundtrip, native layout, and real Vulk
 Both runs use the same headless moving test scene and the Pico at a fixed requested 500 Mbit/s; automatic bitrate is disabled only in separate test configurations. Both retained RGB888 precision. The client counter proves Zstd units were actually decoded (the earlier backend label alone was insufficient evidence). Last samples showed 89–90 display refreshes/s and roughly 90 fresh encoder frames/s in both runs. The Zstd path reduced payload size while adding roughly 0.4–0.5 ms encoder time in observed windows. Detailed 2-second-window medians are in `live-summary.json`; these are not per-frame p95 values.
 
 Runs have unequal lengths and unsynchronised scene phase; this is integration/performance smoke, not a frame-identical network comparison. The supplied-image comparison above is the controlled byte comparison. Automatic-controller backoff and raw-byte planning remain separate open issues; a fixed-rate success does not resolve them.
+
+## Selected level 3: production decode path
+
+`pico-production-decode.csv` measures the actual envelope helpers used by the client, including bounds/frame checks and a reused output vector. Columns: scene, method, raw bytes, envelope bytes, median ms, p95 ms, p99 ms. Twenty warmups precede 500 timed decodes per case, with byte-exact comparison after each timing. Same RGB888 reference payloads as the controlled table. Android arm64, pinned Zstd 1.5.7; isolated CPU test, no concurrent renderer.
+
+| Scene | LZ4 median / p95 ms | Zstd3 median / p95 ms | Detail bytes saved |
+|---|---:|---:|---:|
+| Foliage | 0.113 / 0.133 | 0.309 / 0.332 | 40.9% |
+| Dark patterns | 0.124 / 0.147 | 0.352 / 0.377 | 35.6% |
+| Crowded group | 0.095 / 0.114 | 0.319 / 0.339 | 27.7% |
+
+The extra median CPU decode cost is 0.20–0.23 ms in this run. This measures level 3 directly and supersedes level 1 as the relevant selected-mode decode estimate. It does not measure whole presentation cost, motion-to-photon latency, or decoding under concurrent GPU load. `production_decode.cpp` is the reproducible harness; private payload fixtures are not redistributed.
+
+![Pico production decode cost](pico-decode.png)
+
+## Different-eye stress check
+
+An additional fixture offsets the right-eye input horizontally by eight pixels. This is a synthetic disparity stress case, not captured binocular rendering. It removes exact eye duplication while retaining the same allocation. Production envelope results:
+
+| Scene | LZ4 bytes | Zstd3 bytes | Saving | Pico Zstd3 median / p95 / p99 ms |
+|---|---:|---:|---:|---:|
+| Foliage, shifted eye | 195,851 | 121,748 | 37.8% | 0.521 / 0.983 / 1.715 |
+| Dark patterns, shifted eye | 230,709 | 155,058 | 32.8% | 0.591 / 1.133 / 1.665 |
+
+This isolated helper run followed live streaming, whereas the earlier duplicate-eye run was cooler. It changes both payload and device state: the latency difference cannot be attributed solely to eye disparity. The compression saving still holds for these less-redundant inputs. Decoder output was checked byte-for-byte on every iteration.
