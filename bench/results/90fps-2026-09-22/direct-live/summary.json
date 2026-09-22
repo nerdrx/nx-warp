@@ -1,0 +1,82 @@
+{
+  "date": "2026-09-22",
+  "mode": "NXDB direct blocks",
+  "geometry": "2176x2176 stereo, 136x68 tiles per stream grid (9248 slots)",
+  "automatic_target_mbit": [
+    500.0,
+    200.0,
+    80.0,
+    32.0,
+    22.4,
+    9.0
+  ],
+  "window_seconds": 2.0,
+  "metric_definition": {
+    "submitted_layer_fps": "submitted a layer divided by the same render interval",
+    "fresh_update_fps": "new-source divided by the same render interval",
+    "source": "render: ... iterations in ... s (.../s), ... submitted a layer, ... new-source"
+  },
+  "windows": {
+    "low39_72": {
+      "requested_mbit": 39.0,
+      "refresh_hz": 72.0,
+      "valid_windows": 107,
+      "submitted_layer_fps_mean": 71.8,
+      "fresh_update_fps_mean": 70.6
+    },
+    "adaptive500_90": {
+      "requested_mbit": 500.0,
+      "refresh_hz": 90.0,
+      "valid_windows": 11,
+      "submitted_layer_fps_mean": 89.5,
+      "fresh_update_fps_mean": 52.2
+    },
+    "fixed500_before": {
+      "requested_mbit": 500.0,
+      "refresh_hz": 90.0,
+      "valid_windows": 5,
+      "submitted_layer_fps_mean": 79.9,
+      "fresh_update_fps_mean": 6.4,
+      "startup_excluded": "1 iteration in 16.9 s (0.1/s)"
+    },
+    "fixed500_after": {
+      "requested_mbit": 500.0,
+      "refresh_hz": 90.0,
+      "valid_windows": 5,
+      "submitted_layer_fps_mean": 81.8,
+      "fresh_update_fps_mean": 6.0,
+      "startup_excluded": "1 iteration in 19.9 s (0.1/s)"
+    }
+  },
+  "server": {
+    "fixed500_frame_bytes": 473488,
+    "fixed500_raw_mbit": 340.9,
+    "fixed500_codec_budget_mbit": 433.604,
+    "fixed500_encode_ms_per_frame": 0.8,
+    "client_net_ms_per_datagram": {
+      "high500_range": [
+        0.028,
+        0.035
+      ]
+    }
+  },
+  "interpretation": {
+    "conclusion": "90/500 fails sustained fresh delivery; the old band-deadline change is insufficient",
+    "limits": [
+      "High fixed runs stopped early; startup rows are disclosed and excluded from the five valid two-second windows.",
+      "Logs do not separate receiver CPU saturation from Wi-Fi loss.",
+      "No wire-500 or motion-to-photon claim."
+    ]
+  },
+  "evidence_file": "evidence.txt",
+  "sources": [
+    "client-low.log",
+    "client-500.log",
+    "client-fixed500-before.log",
+    "client-fixed500-after.log",
+    "server-500.log",
+    "server-fixed500.log",
+    "server-fixed500-after.log",
+    "motion-fixed500-after.log"
+  ]
+}
