@@ -1,0 +1,204 @@
+render: 8 iterations in 2.0 s (4.0/s), 8 submitted a layer, 8 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 20.9 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 7 backward 0 repeat 0, greatest forward gap 4
+render: this app's own GPU pass 4.4 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 8 GPU submissions, 0 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 6.2 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.487 ms mean (max 3.394) over 8 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 44.7 ms | slept 0.0 ms mean (max 0.0, 0 of 8 iterations) | budget 39.8 = pass 38.8 + margin 1.0 | sleep cap 45.0 ms
+render: source display-time offset 52.2 ms mean (worst 63.5) over 8 frames | submit lead 38.2 ms mean (worst -7.6) | misses: 0 overrun 0 late 0 skipped refresh
+render: source->first -5.1 ms | wire 6.8 | queue 0.4 | decode 0.1 | decode->selection 5.4 | selection->predicted 44.6 | sum 52.2 over 8 selected frames (0 invalid)
+nxwarp[0] net: 75 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 74 decoded so far, 74 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.007 ms per datagram over 21069 datagrams (69.06 ms of every second)
+nxwarp[0] rx: 21070 datagrams, placed 17625 (+17625), late 2248 (+2248), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 5
+render: 176 iterations in 2.0 s (87.5/s), 176 submitted a layer, 151 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.4 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 151 backward 0 repeat 25, greatest forward gap 3
+render: this app's own GPU pass 4.9 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 6 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 170 GPU submissions, 6 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.4) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.062 ms mean (max 0.121) over 170 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 36.8 ms | slept 1.3 ms mean (max 17.9, 93 of 176 iterations) | budget 22.9 = pass 21.9 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset 49.3 ms mean (worst 170.4) over 176 frames | submit lead 34.9 ms mean (worst 26.8) | misses: 0 overrun 0 late 4 skipped refresh
+render: source->first -2.0 ms | wire 9.0 | queue 0.3 | decode 0.1 | decode->selection 6.4 | selection->predicted 35.5 | sum 49.3 over 176 selected frames (0 invalid)
+nxwarp[0] net: 193 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 267 decoded so far, 267 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.006 ms per datagram over 54217 datagrams (166.20 ms of every second)
+nxwarp[0] rx: 75287 datagrams, placed 62980 (+45355), late 3138 (+890), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 7
+render: 180 iterations in 2.0 s (89.8/s), 180 submitted a layer, 164 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 164 backward 0 repeat 16, greatest forward gap 2
+render: this app's own GPU pass 5.1 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 3 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 177 GPU submissions, 3 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.062 ms mean (max 0.132) over 177 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 35.8 ms | slept 0.4 ms mean (max 0.4, 180 of 180 iterations) | budget 21.1 = pass 20.1 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -42.3 ms mean (worst 11.6) over 180 frames | submit lead 34.8 ms mean (worst 34.3) | misses: 0 overrun 0 late 0 skipped refresh
+render: source->first -90.2 ms | wire 7.6 | queue 0.4 | decode 0.1 | decode->selection 4.6 | selection->predicted 35.3 | sum -42.3 over 180 selected frames (0 invalid)
+nxwarp[0] net: 179 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 446 decoded so far, 446 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.006 ms per datagram over 50299 datagrams (153.63 ms of every second)
+nxwarp[0] rx: 125586 datagrams, placed 105045 (+42065), late 5514 (+2376), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 10
+render: 179 iterations in 2.0 s (89.2/s), 179 submitted a layer, 156 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 156 backward 0 repeat 23, greatest forward gap 3
+render: this app's own GPU pass 4.9 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 1 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 178 GPU submissions, 1 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.063 ms mean (max 0.243) over 178 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 35.6 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 19.3 = pass 18.3 + margin 1.0 | sleep cap 0.5 ms
+render: source display-time offset -37.2 ms mean (worst 2.8) over 179 frames | submit lead 34.5 ms mean (worst 22.0) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -88.7 ms | wire 9.8 | queue 0.3 | decode 0.1 | decode->selection 6.6 | selection->predicted 34.8 | sum -37.2 over 179 selected frames (0 invalid)
+nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 626 decoded so far, 626 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.006 ms per datagram over 50580 datagrams (156.31 ms of every second)
+nxwarp[0] rx: 176166 datagrams, placed 147345 (+42300), late 7939 (+2425), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 16
+render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 170 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 170 backward 0 repeat 9, greatest forward gap 2
+render: this app's own GPU pass 5.0 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 177 GPU submissions, 2 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.071 ms mean (max 0.172) over 177 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.8 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 17.5 = pass 16.5 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -53.0 ms mean (worst 0.0) over 179 frames | submit lead 33.5 ms mean (worst 20.3) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -101.0 ms | wire 8.1 | queue 0.4 | decode 0.1 | decode->selection 5.5 | selection->predicted 34.0 | sum -53.0 over 179 selected frames (0 invalid)
+nxwarp[0] net: 179 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 805 decoded so far, 805 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.006 ms per datagram over 50299 datagrams (154.49 ms of every second)
+nxwarp[0] rx: 226465 datagrams, placed 189410 (+42065), late 8742 (+803), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 16
+render: 179 iterations in 2.0 s (89.4/s), 179 submitted a layer, 173 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 173 backward 0 repeat 6, greatest forward gap 2
+render: this app's own GPU pass 5.2 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 179 GPU submissions, 0 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.6) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.071 ms mean (max 0.256) over 179 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 35.0 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 15.7 = pass 14.7 + margin 1.0 | sleep cap 0.5 ms
+render: source display-time offset -48.0 ms mean (worst 0.0) over 179 frames | submit lead 33.7 ms mean (worst 21.0) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -95.9 ms | wire 8.7 | queue 0.3 | decode 0.1 | decode->selection 4.7 | selection->predicted 34.2 | sum -48.0 over 179 selected frames (0 invalid)
+nxwarp[0] net: 181 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 986 decoded so far, 986 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.006 ms per datagram over 50861 datagrams (155.34 ms of every second)
+nxwarp[0] rx: 277326 datagrams, placed 231945 (+42535), late 9256 (+514), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 17
+render: 180 iterations in 2.0 s (89.7/s), 180 submitted a layer, 175 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 175 backward 0 repeat 5, greatest forward gap 2
+render: this app's own GPU pass 5.9 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 178 GPU submissions, 2 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.065 ms mean (max 0.179) over 178 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.9 ms | slept 0.5 ms mean (max 0.5, 180 of 180 iterations) | budget 13.9 = pass 12.9 + margin 1.0 | sleep cap 0.5 ms
+render: source display-time offset -53.7 ms mean (worst 0.0) over 180 frames | submit lead 34.0 ms mean (worst 33.3) | misses: 0 overrun 0 late 0 skipped refresh
+render: source->first -101.6 ms | wire 7.5 | queue 0.4 | decode 0.1 | decode->selection 5.6 | selection->predicted 34.4 | sum -53.7 over 180 selected frames (0 invalid)
+nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 1166 decoded so far, 1166 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.007 ms per datagram over 50580 datagrams (169.58 ms of every second)
+nxwarp[0] rx: 327906 datagrams, placed 274245 (+42300), late 9942 (+686), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 17
+render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 172 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 172 backward 0 repeat 7, greatest forward gap 2
+render: this app's own GPU pass 5.8 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 177 GPU submissions, 2 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.067 ms mean (max 0.179) over 177 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.9 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 12.2 = pass 11.2 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -42.8 ms mean (worst 0.0) over 179 frames | submit lead 33.7 ms mean (worst 20.7) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -92.2 ms | wire 8.8 | queue 0.4 | decode 0.1 | decode->selection 6.0 | selection->predicted 34.1 | sum -42.8 over 179 selected frames (0 invalid)
+nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 1346 decoded so far, 1346 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.008 ms per datagram over 50578 datagrams (193.60 ms of every second)
+nxwarp[0] rx: 378484 datagrams, placed 316545 (+42300), late 10496 (+554), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 23
+render: 179 iterations in 2.0 s (89.2/s), 179 submitted a layer, 171 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 171 backward 0 repeat 8, greatest forward gap 2
+render: this app's own GPU pass 5.8 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 3 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 176 GPU submissions, 3 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.068 ms mean (max 0.230) over 176 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.6 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 10.4 = pass 9.4 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -50.3 ms mean (worst 0.0) over 179 frames | submit lead 33.4 ms mean (worst 20.2) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -97.8 ms | wire 7.7 | queue 0.4 | decode 0.1 | decode->selection 5.5 | selection->predicted 33.8 | sum -50.3 over 179 selected frames (0 invalid)
+nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 1526 decoded so far, 1526 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.008 ms per datagram over 50580 datagrams (195.67 ms of every second)
+nxwarp[0] rx: 429064 datagrams, placed 358845 (+42300), late 11336 (+840), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 23
+render: 180 iterations in 2.0 s (89.8/s), 180 submitted a layer, 173 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 173 backward 0 repeat 7, greatest forward gap 2
+render: this app's own GPU pass 5.9 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 178 GPU submissions, 2 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.070 ms mean (max 0.266) over 178 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.2 ms | slept 0.4 ms mean (max 0.4, 180 of 180 iterations) | budget 8.6 = pass 7.6 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -52.6 ms mean (worst 0.0) over 180 frames | submit lead 33.3 ms mean (worst 32.7) | misses: 0 overrun 0 late 0 skipped refresh
+render: source->first -100.2 ms | wire 8.1 | queue 0.4 | decode 0.1 | decode->selection 5.3 | selection->predicted 33.7 | sum -52.6 over 180 selected frames (0 invalid)
+nxwarp[0] net: 179 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 1705 decoded so far, 1705 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.008 ms per datagram over 50299 datagrams (193.90 ms of every second)
+nxwarp[0] rx: 479363 datagrams, placed 400910 (+42065), late 12099 (+763), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 29
+render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 174 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 174 backward 0 repeat 5, greatest forward gap 2
+render: this app's own GPU pass 6.0 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 179 GPU submissions, 0 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.069 ms mean (max 0.257) over 179 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.3 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 6.8 = pass 5.8 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -54.4 ms mean (worst 0.0) over 179 frames | submit lead 33.1 ms mean (worst 20.0) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -100.8 ms | wire 7.6 | queue 0.4 | decode 0.1 | decode->selection 4.8 | selection->predicted 33.5 | sum -54.4 over 179 selected frames (0 invalid)
+nxwarp[0] net: 180 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 1885 decoded so far, 1885 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.008 ms per datagram over 50580 datagrams (194.27 ms of every second)
+nxwarp[0] rx: 529943 datagrams, placed 443210 (+42300), late 12916 (+817), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 31
+render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 171 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+render: selected source transitions forward 171 backward 0 repeat 8, greatest forward gap 3
+render: this app's own GPU pass 6.0 ms per iteration
+render: defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+render: shader path sharpness 0.00 fsr false alpha false motion false blend true glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+render: 179 GPU submissions, 0 cached refreshes without GPU submission
+render: per iteration fence 0.0 (worst 4.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+render: source-clock pose shifts 0
+render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+render: selection-to-defoveate CPU 0.068 ms mean (max 0.190) over 179 actual defoveate calls; not GPU/photon latency
+render: jit on | wake slack 34.2 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 5.4 = pass 4.4 + margin 1.0 | sleep cap 0.4 ms
+render: source display-time offset -45.5 ms mean (worst 0.0) over 179 frames | submit lead 32.9 ms mean (worst 19.8) | misses: 0 overrun 0 late 1 skipped refresh
+render: source->first -94.3 ms | wire 9.0 | queue 0.4 | decode 0.1 | decode->selection 6.0 | selection->predicted 33.4 | sum -45.5 over 179 selected frames (0 invalid)
+nxwarp[0] net: 181 frames closed in 2.0 s, 0 with a hole, 0 out-of-order datagrams, 0 frames completed late, 0 queued for the worker, 2066 decoded so far, 2066 stragglers dropped; last hole 0/0 chunks, first missing -1, short false, chunk 1166 B; worker phase idle
+nxwarp[0] net: 0.008 ms per datagram over 50859 datagrams (193.35 ms of every second)
+nxwarp[0] rx: 580802 datagrams, placed 485745 (+42535), late 14967 (+2051), stale_frame 0, bad_range 0, bad_dir 0, bad_caps 0, bad_ver 0, auth_fail 0, replay 0, frozen 0, dup 37
