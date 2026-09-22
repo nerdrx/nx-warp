@@ -1,0 +1,84 @@
+2 iterations in 2.0 s (1.0/s), 2 submitted a layer, 2 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 39.0 ms
+ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+selected source transitions forward 1 backward 0 repeat 0, greatest forward gap 2
+this app's own GPU pass 2.9 ms per iteration
+defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+2 GPU submissions, 0 cached refreshes without GPU submission
+per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 25.2 ms
+source-clock pose shifts 0
+motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+selection-to-defoveate CPU 1.801 ms mean (max 3.504) over 2 actual defoveate calls; not GPU/photon latency
+jit on | wake slack 39.5 ms | slept 0.0 ms mean (max 0.0, 0 of 2 iterations) | budget 43.1 = pass 42.1 + margin 1.0 | sleep cap 45.0 ms
+source display-time offset 93.7 ms mean (worst 116.0) over 2 frames | submit lead -14.9 ms mean (worst -14.9) | misses: 0 overrun 0 late 0 skipped refresh
+source->first 26.8 ms | wire 21.1 | queue 0.3 | decode 0.1 | decode->selection 5.9 | selection->predicted 39.4 | sum 93.7 over 2 selected frames (0 invalid)
+171 iterations in 2.0 s (85.4/s), 171 submitted a layer, 17 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.6 ms
+ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+selected source transitions forward 17 backward 0 repeat 154, greatest forward gap 71
+this app's own GPU pass 1.4 ms per iteration
+defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 122 re-presented from the cache (reduce_gpu_load on)
+shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.80 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+49 GPU submissions, 122 cached refreshes without GPU submission
+per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+source-clock pose shifts 0
+motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+selection-to-defoveate CPU 0.061 ms mean (max 0.108) over 49 actual defoveate calls; not GPU/photon latency
+jit on | wake slack 37.1 ms | slept 2.5 ms mean (max 19.5, 82 of 171 iterations) | budget 23.2 = pass 22.2 + margin 1.0 | sleep cap 0.4 ms
+source display-time offset 353.6 ms mean (worst 919.1) over 171 frames | submit lead 34.1 ms mean (worst 23.8) | misses: 0 overrun 0 late 4 skipped refresh
+source->first 95.4 ms | wire 14.0 | queue 0.3 | decode 0.1 | decode->selection 209.2 | selection->predicted 34.5 | sum 353.6 over 171 selected frames (0 invalid)
+180 iterations in 2.0 s (89.7/s), 180 submitted a layer, 19 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+selected source transitions forward 19 backward 0 repeat 161, greatest forward gap 48
+this app's own GPU pass 0.7 ms per iteration
+defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 157 re-presented from the cache (reduce_gpu_load on)
+shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.80 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+23 GPU submissions, 157 cached refreshes without GPU submission
+per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+source-clock pose shifts 0
+motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+selection-to-defoveate CPU 0.062 ms mean (max 0.104) over 23 actual defoveate calls; not GPU/photon latency
+jit on | wake slack 31.2 ms | slept 0.4 ms mean (max 0.4, 180 of 180 iterations) | budget 21.4 = pass 20.4 + margin 1.0 | sleep cap 0.4 ms
+source display-time offset 255.7 ms mean (worst 669.2) over 180 frames | submit lead 30.3 ms mean (worst 29.2) | misses: 0 overrun 0 late 0 skipped refresh
+source->first 99.9 ms | wire 15.1 | queue 0.4 | decode 0.1 | decode->selection 109.6 | selection->predicted 30.7 | sum 255.7 over 180 selected frames (0 invalid)
+179 iterations in 2.0 s (89.4/s), 179 submitted a layer, 43 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+selected source transitions forward 43 backward 0 repeat 136, greatest forward gap 14
+this app's own GPU pass 1.6 ms per iteration
+defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 123 re-presented from the cache (reduce_gpu_load on)
+shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.80 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+56 GPU submissions, 123 cached refreshes without GPU submission
+per iteration fence 0.0 (worst 4.6) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+source-clock pose shifts 0
+motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+selection-to-defoveate CPU 0.065 ms mean (max 0.224) over 56 actual defoveate calls; not GPU/photon latency
+jit on | wake slack 31.9 ms | slept 0.8 ms mean (max 11.6, 179 of 179 iterations) | budget 19.6 = pass 18.6 + margin 1.0 | sleep cap 0.4 ms
+source display-time offset 187.0 ms mean (worst 296.1) over 179 frames | submit lead 30.6 ms mean (worst 20.4) | misses: 0 overrun 0 late 1 skipped refresh
+source->first 102.4 ms | wire 13.7 | queue 0.4 | decode 0.1 | decode->selection 39.5 | selection->predicted 30.9 | sum 187.0 over 179 selected frames (0 invalid)
+179 iterations in 2.0 s (89.1/s), 179 submitted a layer, 48 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+selected source transitions forward 48 backward 0 repeat 131, greatest forward gap 18
+this app's own GPU pass 2.0 ms per iteration
+defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 109 re-presented from the cache (reduce_gpu_load on)
+shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.80 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+70 GPU submissions, 109 cached refreshes without GPU submission
+per iteration fence 0.0 (worst 4.7) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+source-clock pose shifts 0
+motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+selection-to-defoveate CPU 0.062 ms mean (max 0.116) over 70 actual defoveate calls; not GPU/photon latency
+jit on | wake slack 32.0 ms | slept 0.6 ms mean (max 11.6, 179 of 179 iterations) | budget 17.8 = pass 16.8 + margin 1.0 | sleep cap 0.4 ms
+source display-time offset 192.5 ms mean (worst 346.9) over 179 frames | submit lead 30.9 ms mean (worst 17.8) | misses: 0 overrun 0 late 1 skipped refresh
+source->first 105.7 ms | wire 13.3 | queue 0.4 | decode 0.1 | decode->selection 41.8 | selection->predicted 31.2 | sum 192.5 over 179 selected frames (0 invalid)
+180 iterations in 2.0 s (89.8/s), 180 submitted a layer, 13 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+selected source transitions forward 13 backward 0 repeat 167, greatest forward gap 43
+this app's own GPU pass 0.4 ms per iteration
+defoveate 2160x2160 per eye x2 = 9.33 Mpx/frame at scale 1.00 atlas-prototype 0; 163 re-presented from the cache (reduce_gpu_load on)
+shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.80 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+17 GPU submissions, 163 cached refreshes without GPU submission
+per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.3 ms
+source-clock pose shifts 0
+motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+selection-to-defoveate CPU 0.083 ms mean (max 0.217) over 17 actual defoveate calls; not GPU/photon latency
+jit on | wake slack 29.8 ms | slept 0.4 ms mean (max 0.4, 180 of 180 iterations) | budget 16.0 = pass 15.0 + margin 1.0 | sleep cap 0.4 ms
+source display-time offset 320.2 ms mean (worst 696.4) over 174 frames | submit lead 29.0 ms mean (worst 26.9) | misses: 0 overrun 0 late 0 skipped refresh
+source->first 101.3 ms | wire 13.2 | queue 0.4 | decode 0.1 | decode->selection 175.9 | selection->predicted 29.3 | sum 320.2 over 174 selected frames (6 invalid)
