@@ -23,8 +23,8 @@ FrameRing::Slot* FrameRing::acquire(uint16_t frame_id) {
     // Carry pose_seq and age forward from the previous frame before resetting.
     const Slot& prev = slots_[uint16_t(frame_id - 1) % kRingSlots];
     bool have_prev = prev.used && prev.frame_id == uint16_t(frame_id - 1);
-    std::vector<TileMeta> old;
-    if (have_prev) old = prev.meta;
+    // Previous and current frames occupy distinct ring slots; read metadata in place.
+    static_assert(kRingSlots > 1);
     s.used = true;
     s.frame_id = frame_id;
     s.seen_data.clear();
@@ -35,8 +35,8 @@ FrameRing::Slot* FrameRing::acquire(uint16_t frame_id) {
     for (size_t i = 0; i < s.meta.size(); ++i) {
         TileMeta m;
         if (have_prev) {
-            m.pose_seq = old[i].pose_seq;
-            m.age = uint8_t(old[i].age < 255 ? old[i].age + 1 : 255);
+            m.pose_seq = prev.meta[i].pose_seq;
+            m.age = uint8_t(prev.meta[i].age < 255 ? prev.meta[i].age + 1 : 255);
         }
         m.state = TileState::kEmpty;
         s.meta[i] = m;
@@ -149,7 +149,7 @@ double Receiver::path_loss(uint8_t path_id) const {
 
 bool Receiver::on_datagram(std::span<const uint8_t> wire, uint8_t path_id,
                            uint64_t now_us, std::vector<TileOutput>* tiles) {
-    arena_.clear();
+    arena_used_ = 0;
     return process(wire, path_id, now_us, false, tiles, 0);
 }
 
@@ -176,8 +176,9 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
         account_seq(path_id, ext, now_us);
     }
 
-    arena_.emplace_back(h.payload_len, 0);
-    ByteVec& pt = arena_.back();
+    if (arena_used_ == arena_.size()) arena_.emplace_back();
+    ByteVec& pt = arena_[arena_used_++];
+    pt.resize(h.payload_len);
     Nonce n = derive_nonce(cfg_.stream_id, h.path_id, epoch_, ext);
     size_t got = aead_->open(subkey_dn_[path_id], n,
                              std::span<const uint8_t>(wire.data(), kHeaderBytes),
@@ -240,11 +241,9 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
         }
         size_t dir = size_t(h.tile_count) * kDirEntryBytes;
         if (pt.size() < off + dir) { ++stats.bad_directory; return false; }
-        std::vector<TileDirEntry> entries(h.tile_count);
         size_t sum = 0;
         for (uint32_t i = 0; i < h.tile_count; ++i) {
-            entries[i] = unpack_dir_entry(rd32(pt.data() + off + i * kDirEntryBytes));
-            sum += entries[i].len;
+            sum += unpack_dir_entry(rd32(pt.data() + off + i * kDirEntryBytes)).len;
         }
         if (off + dir + sum != pt.size()) { ++stats.bad_directory; return false; }
         if (uint32_t(h.tile_first) + h.tile_count > cfg_.tiles_per_frame()) {
@@ -262,6 +261,7 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
                     slot->band_deadline_passed[band];
         size_t bpos = off + dir;
         for (uint32_t i = 0; i < h.tile_count; ++i) {
+            const auto entry = unpack_dir_entry(rd32(pt.data() + off + i * kDirEntryBytes));
             uint32_t ti = uint32_t(h.tile_first) + i;
             TileMeta& m = ring_.at(*slot, h.layer_id, ti);
             m.pose_seq = h.pose_seq;
@@ -277,20 +277,20 @@ bool Receiver::process(std::span<const uint8_t> wire, uint8_t path_id, uint64_t 
                 t.layer_id = h.layer_id;
                 t.row = cfg_.row_of(ti);
                 t.col = cfg_.col_of(ti);
-                t.cls = TileClass(entries[i].tile_class);
-                t.ref_delta = entries[i].ref_delta;
+                t.cls = TileClass(entry.tile_class);
+                t.ref_delta = entry.ref_delta;
                 t.pose_seq = h.pose_seq;
-                t.qp = entries[i].qp;
-                t.mode = TileMode(entries[i].mode);
-                t.res_level = entries[i].res_level;
-                t.lossless = entries[i].lossless;
+                t.qp = entry.qp;
+                t.mode = TileMode(entry.mode);
+                t.res_level = entry.res_level;
+                t.lossless = entry.lossless;
                 t.late = late;
                 t.recovered = from_fec;
-                t.bytes = std::span<const uint8_t>(pt.data() + bpos, entries[i].len);
+                t.bytes = std::span<const uint8_t>(pt.data() + bpos, entry.len);
                 tiles->push_back(t);
             }
-            stats.tile_bytes += entries[i].len;
-            bpos += entries[i].len;
+            stats.tile_bytes += entry.len;
+            bpos += entry.len;
         }
 
         if (h.fec_k > 0 && !from_fec) {

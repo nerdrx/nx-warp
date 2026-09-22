@@ -295,6 +295,49 @@ static void null_aead_known_vector() {
     tt::end();
 }
 
+static void trusted_lan_aead_integrity() {
+    tt::begin("trusted LAN AEAD CRC32 framing and corruption checks");
+    auto aead = make_trusted_lan_aead();
+    TT_CHECK(aead);
+    Key key{};
+    Nonce nonce = derive_nonce(2, 1, 3, 99);
+    ByteVec aad(kHeaderBytes), pt(37);
+    for (size_t i = 0; i < aad.size(); ++i) aad[i] = uint8_t(i * 5 + 1);
+    for (size_t i = 0; i < pt.size(); ++i) pt[i] = uint8_t(i * 11 + 7);
+    ByteVec sealed(pt.size() + kTagBytes);
+    TT_EQ(aead->seal(key, nonce, aad, pt, sealed.data()), sealed.size());
+    for (size_t i = 4; i < kTagBytes; ++i) TT_EQ(int(sealed[pt.size() + i]), 0);
+    ByteVec out(pt.size());
+    TT_EQ(aead->open(key, nonce, aad, sealed, out.data()), pt.size());
+    TT_CHECK(out == pt);
+
+    auto rejects = [&](size_t index) {
+        ByteVec bad = sealed;
+        bad[index] ^= 0x80;
+        TT_CHECK(aead->open(key, nonce, aad, bad, out.data()) == SIZE_MAX);
+    };
+    rejects(0);                 // plaintext corruption
+    auto bad_nonce = nonce;
+    bad_nonce[0] ^= 1;
+    TT_CHECK(aead->open(key, bad_nonce, aad, sealed, out.data()) == SIZE_MAX);
+    TT_CHECK(aead->open(key, nonce, aad, std::span<const uint8_t>(sealed).first(kTagBytes - 1), out.data()) == SIZE_MAX);
+    ByteVec bad_aad = aad;
+    bad_aad[2] ^= 1;            // associated header corruption
+    TT_CHECK(aead->open(key, nonce, bad_aad, sealed, out.data()) == SIZE_MAX);
+    rejects(pt.size());         // CRC bytes
+    ByteVec bad_reserved = sealed;
+    bad_reserved[pt.size() + 7] = 1;
+    TT_CHECK(aead->open(key, nonce, aad, bad_reserved, out.data()) == SIZE_MAX);
+    ByteVec truncated(sealed.begin(), sealed.end() - 1);
+    TT_CHECK(aead->open(key, nonce, aad, truncated, out.data()) == SIZE_MAX);
+
+    ByteVec empty(kTagBytes);
+    TT_EQ(aead->seal(key, nonce, aad, {}, empty.data()), size_t(kTagBytes));
+    uint8_t empty_out = 0;
+    TT_EQ(aead->open(key, nonce, aad, empty, &empty_out), size_t(0));
+    tt::end();
+}
+
 int main() {
     header_roundtrip();
     header_is_24_bytes_and_version_gated();
@@ -305,5 +348,6 @@ int main() {
     nonce_and_seq_extension();
     aead_seal_open();
     null_aead_known_vector();
+    trusted_lan_aead_integrity();
     return tt::report("transport.wire");
 }

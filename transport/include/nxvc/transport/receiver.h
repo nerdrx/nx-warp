@@ -225,7 +225,9 @@ class Receiver {
     PathRx path_[kMaxPaths];
     std::map<uint64_t, GroupState> groups_;
     std::deque<BandReport> recent_bands_;
-    std::vector<ByteVec> arena_;
+    // Keep payload capacity between datagrams; deque keeps buffers stable during FEC recursion.
+    std::deque<ByteVec> arena_;
+    size_t arena_used_ = 0;
 
     // Per-frame miss accounting for the deadline controller.
     uint16_t acct_frame_ = 0;

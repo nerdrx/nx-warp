@@ -44,6 +44,10 @@ class Aead {
 // detects corruption.  Never use it on a real link.
 std::unique_ptr<Aead> make_null_aead();
 
+// Opt-in trusted-LAN framing: plaintext plus CRC-32/IEEE integrity tag.
+// This provides no confidentiality or cryptographic authentication.
+std::unique_ptr<Aead> make_trusted_lan_aead();
+
 // Real backends, present only when OpenSSL or libsodium was found at configure
 // time.  Return nullptr otherwise.
 std::unique_ptr<Aead> make_aes256gcm();

@@ -264,6 +264,12 @@ static void fec_recovery_in_the_live_path() {
         out.clear();
         p.rx.on_datagram(std::span<const uint8_t>(d.bytes.data(), d.bytes.size()),
                          d.path_id, 1000, &out);
+        // All payload spans from this call must survive recursive FEC recovery.
+        for (const auto& tile : out) {
+            const auto& expected = p.pool[(tile.row * p.c.cols + tile.col) % p.pool.size()];
+            TT_EQ(tile.bytes.size(), expected.size());
+            TT_CHECK(std::equal(tile.bytes.begin(), tile.bytes.end(), expected.begin(), expected.end()));
+        }
     }
     TT_CHECK(p.rx.stats.fec_recovered >= 1);
     TT_EQ(p.rx.classify(1).fresh, p.c.tiles_in_band(0));

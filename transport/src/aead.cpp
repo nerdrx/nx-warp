@@ -232,6 +232,68 @@ class NullAead final : public Aead {
     }
 };
 
+// ------------------------------------------------------- Trusted LAN CRC32
+namespace {
+constexpr std::array<uint32_t, 256> make_crc32_table() {
+    std::array<uint32_t, 256> table{};
+    for (uint32_t i = 0; i < table.size(); ++i) {
+        uint32_t v = i;
+        for (int bit = 0; bit < 8; ++bit)
+            v = (v >> 1) ^ (0xEDB88320u & (-(v & 1u)));
+        table[i] = v;
+    }
+    return table;
+}
+
+constexpr auto kCrc32Table = make_crc32_table();
+
+uint32_t trusted_crc32(const Nonce& nonce, std::span<const uint8_t> aad,
+                       std::span<const uint8_t> payload) {
+    uint32_t crc = 0xFFFFFFFFu;
+    auto add = [&crc](uint8_t b) { crc = kCrc32Table[(crc ^ b) & 0xFFu] ^ (crc >> 8); };
+    for (uint8_t b : nonce) add(b);
+    for (uint8_t b : aad) add(b);
+    for (uint8_t b : payload) add(b);
+    return crc ^ 0xFFFFFFFFu;
+}
+
+class TrustedLanAead final : public Aead {
+  public:
+    const char* name() const override { return "trusted-lan-crc32"; }
+
+    size_t seal(const Key&, const Nonce& nonce, std::span<const uint8_t> aad,
+                std::span<const uint8_t> plaintext, uint8_t* out) const override {
+        if (!plaintext.empty()) std::memcpy(out, plaintext.data(), plaintext.size());
+        const uint32_t crc = trusted_crc32(nonce, aad, plaintext);
+        out[plaintext.size() + 0] = uint8_t(crc);
+        out[plaintext.size() + 1] = uint8_t(crc >> 8);
+        out[plaintext.size() + 2] = uint8_t(crc >> 16);
+        out[plaintext.size() + 3] = uint8_t(crc >> 24);
+        std::memset(out + plaintext.size() + 4, 0, kTagBytes - 4);
+        return plaintext.size() + kTagBytes;
+    }
+
+    size_t open(const Key&, const Nonce& nonce, std::span<const uint8_t> aad,
+                std::span<const uint8_t> ciphertext_and_tag, uint8_t* out) const override {
+        if (ciphertext_and_tag.size() < kTagBytes) return SIZE_MAX;
+        const size_t n = ciphertext_and_tag.size() - kTagBytes;
+        const uint32_t crc = trusted_crc32(nonce, aad, ciphertext_and_tag.first(n));
+        uint32_t got = uint32_t(ciphertext_and_tag[n]) |
+                       (uint32_t(ciphertext_and_tag[n + 1]) << 8) |
+                       (uint32_t(ciphertext_and_tag[n + 2]) << 16) |
+                       (uint32_t(ciphertext_and_tag[n + 3]) << 24);
+        uint8_t diff = uint8_t(crc) ^ uint8_t(got);
+        diff |= uint8_t(crc >> 8) ^ uint8_t(got >> 8);
+        diff |= uint8_t(crc >> 16) ^ uint8_t(got >> 16);
+        diff |= uint8_t(crc >> 24) ^ uint8_t(got >> 24);
+        for (size_t i = 4; i < kTagBytes; ++i) diff |= ciphertext_and_tag[n + i];
+        if (diff) return SIZE_MAX;
+        if (n) std::memcpy(out, ciphertext_and_tag.data(), n);
+        return n;
+    }
+};
+} // namespace
+
 #if defined(NXT_HAVE_OPENSSL)
 class EvpAead final : public Aead {
   public:
@@ -368,6 +430,7 @@ Key derive_subkey(const Key& session_key, const Key& session_salt, uint8_t path_
 }
 
 std::unique_ptr<Aead> make_null_aead() { return std::make_unique<NullAead>(); }
+std::unique_ptr<Aead> make_trusted_lan_aead() { return std::make_unique<TrustedLanAead>(); }
 
 std::unique_ptr<Aead> make_aes256gcm() {
 #if defined(NXT_HAVE_OPENSSL)
