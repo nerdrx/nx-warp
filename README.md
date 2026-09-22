@@ -17,13 +17,38 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
-## NXVC Hybrid
+## Current direction — 22 September 2026
 
-**NXVC Hybrid — HEVC compression with NX motion prediction and reprojection.** This names the current HEVC-backed mode of NX Warp. **Native NXVC** identifies the custom compression path; the two remain distinct in benchmarks. Hybrid prediction quality and physical latency benefits are still under evaluation. [Naming and architecture](docs/NAMING.md).
+**Native NXVC: spend bandwidth to reduce headset reconstruction work.** The active experimental path uses a Vulkan encoder and custom direct-sampled RGB blocks in WiVRn NX. It does not use HEVC for image compression or dense object-motion prediction. Platform head-pose reprojection remains part of presentation. The HEVC-backed **NXVC Hybrid** work remains an earlier research track. [Naming background](docs/NAMING.md) · [Direct-path integration and configuration](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md).
 
-## Current direction — 16 September 2026
+The practical starting point is **100% stream scale, 90 Hz and a 200 Mbit/s ceiling**, with adaptive bitrate for changing network conditions. This is an experimental build, not a general release. **Sustained 500 Mbit/s and 90 fresh frames/s are not solved.** A display refresh, a submitted layer and a fresh source image are different measurements.
 
-Wearer feedback found dense object-motion warp distracting and too expensive. The next **Pico headroom profile** removes object-motion estimation, transport and client warp, retains platform head-pose reprojection, and reuses unchanged presentation images where eligible. Existing resolution and foveation are preserved. A release-compatible motion-off switch is prepared; full development presets request either 90 fresh frames/s or 45 fresh frames/s with 90 Hz presentation. **Prepared offline; no new Pico performance result.** [Profile, rollback and validation](docs/PICO_HEADROOM.md).
+| Latest evidence | Result | What it establishes |
+|---|---:|---|
+| Normal 200 Mbit/s smoke check, recovery off | **85.8 new-source updates/s**, zero holes in 1,882 closed units | Short live Pico check after startup; not sustained-session proof |
+| Same normal smoke check | **51.1 ms** receive-to-predicted-display telemetry | Software timeline only; not physical motion-to-photon latency |
+| Guarded recovery at fixed 400 Mbit/s | **67.5 new-source updates/s**, including concealed output | Short live smoke check; 306 incomplete units among 1,878 closures |
+| Reject excessive loss, isolated Pico helper | **0.969 → 0.263 ms** | About **73% less CPU time** for this rejection case; not a whole-pipeline speedup |
+
+[Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
+
+### Keep moving shapes coherent
+
+Partial recovery can fill missing tiles from an earlier complete frame, but moving edges then break at patch boundaries. The new **opt-in stable-neighbor guard** rejects repairs near changed received tiles and keeps the whole previous image instead. That preserves coherent shapes in the synthetic test at the cost of more held images. It cannot detect motion entirely hidden inside missing regions and does not guarantee jitter-free output.
+
+[![Four-way motion comparison: target, whole-frame hold, unguarded recovery and guarded recovery](bench/results/90fps-2026-09-22/recovery-motion/comparison.png)](bench/results/90fps-2026-09-22/recovery-motion/recovery-motion.mp4)
+
+*Click for the 10-second comparison at 10× slow motion. This is a deterministic CPU test of the real recovery helper, not headset footage. Top: one lost frame; bottom: three. Camera motion stops halfway while objects keep moving.*
+
+![Pico CPU cost of successful recovery and early rejection](bench/results/90fps-2026-09-22/recovery-motion/cost.png)
+
+*Isolated helper timings over three alternating before/after pairs. The successful-path measurement excludes the neighbor guard. Networking, GPU work and scanout are outside these timings.*
+
+### Trying the current build
+
+Use matching server and Android builds from [WiVRn NX `atlas-live`](https://github.com/nerdrx/wivrn-nx/tree/atlas-live), following its [direct-block setup](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md). Start with the normal 200 Mbit/s ceiling and automatic bitrate. Launch your own OpenXR application; the research scene is not required.
+
+Guarded partial recovery is **off by default**. For an explicit comparison, set `adb shell setprop debug.wivrn.nx.partial_direct 1` before opening a new stream. Set it to `0` and reopen the stream to disable it. Recovery requires intact metadata, retains at most 10% of tiles and uses complete history no older than 50 ms by client arrival time. That limit does not bound total source age. Corrupt input checks and loss feedback remain active.
 
 ## Historical tested NXVC Hybrid profile — 11 September 2026
 
@@ -46,7 +71,7 @@ These are application counters, not proof of distinct panel images or physical m
 
 **NX Warp is an experimental video codec for rendered VR, developed with the custom WiVRn NX streaming stack.** It explores a simple premise: head pose, reusable tiles and renderer information should let a headset reconstruct useful pixels with less work than a conventional whole-frame pipeline.
 
-The project includes a native Vulkan encoder/decoder and atlas renderer, alongside the current NXVC Hybrid path using hardware HEVC and NX motion processing on Pico. The priority is **low latency, full-resolution output and inexpensive reconstruction**, especially at low bitrate. Visual approximations are valid experiments when they preserve useful structure and measurably reduce cost. Quality, bitrate and power remain measured tradeoffs.
+The project includes a native Vulkan encoder/decoder and atlas renderer, alongside earlier NXVC Hybrid experiments using hardware HEVC and NX motion processing on Pico. Current integration explores independent direct-sampled blocks. The priority is **low latency, full-resolution output and inexpensive reconstruction**, especially at low bitrate. Visual approximations are valid experiments when they preserve useful structure and measurably reduce cost. Quality, bitrate and power remain measured tradeoffs.
 
 The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, with centre-first correction scheduling under investigation. The stretch target remains **240 Hz / 4.17 ms per update**. Individual stages and repeated-render throughput have crossed parts of that budget; **consistent 240 Hz delivery has not been demonstrated**. This is a research prototype, with visible artifacts and incomplete quality gates, rather than a production-ready streaming release.
 
@@ -75,7 +100,7 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 | Application | Rendered stereo VR through **custom WiVRn NX** |
 | Implementation | C++20 and Vulkan compute/graphics; library identifier `nxvc` |
 | Primary measured hardware | Radeon RX 7900 XTX host; Pico 4 / Adreno 650 headset |
-| Selected Hybrid source resolution | **2176 × 2176 per eye (100%)**; historical native-codec and higher-resolution results use other dimensions |
+| Current resolution policy | **100% stream scale**; encoded sampling varies with the bitrate budget. Output dimensions do not imply full detail everywhere. |
 | Live integration | WiVRn NX [`atlas-live`](https://github.com/nerdrx/wivrn-nx/tree/atlas-live); experimental renderer switches remain opt-in |
 | Presentation target | **90 → 120 → 144 → 180 → 240 Hz**; recent live Pico captures use 90 Hz |
 | Evidence | Controlled comparisons, raw timings, fixture/build identities and actual captures |
@@ -85,9 +110,13 @@ The immediate target follows the Pico display: **90 Hz / 11.11 ms per update**, 
 
 ## Architecture
 
-The design divides images into **64 × 64 tiles** and makes reusable content cheap. The reference codec defines reconstruction behavior; Vulkan implementations and live rendering experiments are checked against their relevant reference or control paths.
+The current direct path is **rendered stereo image → Vulkan block encoder → packet transport → packed block upload → direct sampling in presentation → OpenXR compositor**. Independent images remove temporal codec-reference dependencies. Bitrate adaptation changes the sampling budget; optional partial recovery adds a separate, bounded history mechanism. Avoiding reconstruction stages does not remove packet handling, upload, presentation or radio costs.
 
-The current atlas work separates stored tile content from the mapping used to render it. Reusing content can avoid full-picture reconstruction, while a tile-aware mesh moves warp calculations out of repeated fragment work. Changes to codec references still need explicit synchronization and correct feedback handling.
+### Earlier reference and atlas architecture
+
+The original reference design divides images into **64 × 64 tiles**. The current direct-block path uses **32 × 32 descriptor tiles** and packed sample blocks; these are distinct representations. The reference codec defines reconstruction behavior; Vulkan implementations and live rendering experiments are checked against their relevant reference or control paths.
+
+The earlier atlas work separates stored tile content from the mapping used to render it. Reusing content can avoid full-picture reconstruction, while a tile-aware mesh moves warp calculations out of repeated fragment work. Changes to codec references still need explicit synchronization and correct feedback handling.
 
 ```mermaid
 flowchart TB
@@ -134,7 +163,7 @@ Stable references, disocclusion handling and bounded image age are essential. Qu
 
 ## Full-frame HEVC + motion warp experiment
 
-A parallel [hardware-decoded image with headset motion warp](bench/results/90fps-2026-09-11/hevc-motion/README.md) prototype is implemented in WiVRn NX. The final 30-second screen at 2688² per eye selected **84.39 fresh source frames/s**. Matching motion fields reached presentation, but their extrapolation steps were mostly zero or tiny: **no latency or perceptual improvement is proven**. Both-eye captures, raw measurements and the next timestamp-validation gate are published. That historical test restored the native NX large-centre profile; the selected Hybrid profile is summarized above.
+A parallel [hardware-decoded image with headset motion warp](bench/results/90fps-2026-09-11/hevc-motion/README.md) prototype is implemented in WiVRn NX. The final 30-second screen at 2688² per eye selected **84.39 fresh source frames/s**. Matching motion fields reached presentation, but their extrapolation steps were mostly zero or tiny: **no latency or perceptual improvement is proven**. Both-eye captures, raw measurements and the next timestamp-validation gate are published. That historical test restored the native NX large-centre profile; the historical Hybrid profile is summarized above.
 
 The follow-up [60-source / 90-Hz pacing screen](bench/results/90fps-2026-09-11/hevc-60-warp/README.md) reached **59.6 fresh selections/s and a 90 Hz render loop** with warp enabled or disabled. Only 22/1,512 matched views received a nonzero shift: improved motion responsiveness remains unproven. Scene-time alignment and camera-motion compensation are the next gates.
 
@@ -142,7 +171,9 @@ The subsequent [pose-history integration](bench/results/90fps-2026-09-11/hevc-mo
 
 ## Measured results
 
-### Live 8px candidate — 12 September 2026
+The latest direct-path measurements are summarized [above](#current-direction--22-september-2026). Results below document earlier paths and must not be read as current settings.
+
+### Historical live 8px candidate — 12 September 2026
 
 **The 8px motion grid is now implemented in the live server/client path, but the new pair is not installed or Pico-verified yet.** At 100% resolution it carries 272×272 vectors per eye; the previous live grid was 34×34. Dense transport now supports lossless repeated-vector compression, and presentation no longer holds the motion receive lock through runtime waits.
 
@@ -725,7 +756,7 @@ Use `cmake --list-presets` to inspect other configurations. Vulkan is off in the
 
 ## Roadmap
 
-**Current Hybrid direction:** [steadier motion, useful fresh-frame delivery and measured latency](docs/HYBRID_STATUS.md). The [independent native-codec direction](docs/LOW_LATENCY_DIRECTION.md) remains a separate research track. Use short motion screens and reject gains that merely move cost into another stage.
+**Current priority:** make native direct streaming deliver fresh images reliably within the Pico budget. Improve packet handling and completion-time tails, keep automatic bitrate responsive, and preserve coherent motion when data is missing. The [Hybrid status](docs/HYBRID_STATUS.md) and [native-codec direction](docs/LOW_LATENCY_DIRECTION.md) provide historical design context. Use short motion screens and reject gains that merely move cost into another stage.
 
 Progress is measured against **90 → 120 → 144 → 180 → 240 Hz**, with full-resolution output and low latency carried through every checkpoint.
 
