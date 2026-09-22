@@ -1,5 +1,7 @@
 # Native-colour centre
 
+**User verdict: disabled after testing.** The transition from the native patch to the outer image was visibly abrupt and irritating. The previous rendering path was restored; this experiment is not the active profile. A future version needs a much more gradual spatial-quality transition.
+
 The experimental direct stream now carries a 128×128 RGB888 patch per eye, sampled before 4:2:0 chroma averaging and bypassing the four-colour block palette. The outer image keeps its existing cheaper representation. This first version uses a tile-aligned square patch; a separate smooth colour-resolution transition is not implemented yet.
 
 ## What was proved
