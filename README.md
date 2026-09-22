@@ -32,6 +32,14 @@ The practical starting point is **100% stream scale, 90 Hz and a 160 Mbit/s ceil
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### Latest: a small safety image covers detail stalls
+
+An optional native safety prefix reserves up to **20 Mbit/s inside the total budget**. After two refreshes without fresh detail, the viewer can use a newer complete low-resolution image while automatic bitrate responds. Short Pico tests with deliberately dropped detail chunks switched in **22.24–22.28 ms**, maintained **88.1 fresh source selections/s**, and recorded **zero rewinds**. These are software traces; the headset tracking overlay prevented visual validation. Arbitrary Wi-Fi congestion remains unproven.
+
+[Method, graph, raw traces and limitations](bench/results/90fps-2026-09-22/safety-prefix/README.md) · [Enable safety](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_SAFETY.md)
+
+![Safety handover measurements](bench/results/90fps-2026-09-22/safety-prefix/handover.png)
+
 ### Latest: LZ4 is integrated
 
 Optional lossless LZ4 compresses native block units before transport, with a raw bypass below 5% savings. Pico restores the same block bytes before the existing presentation path. The host stages GPU output in ordinary CPU memory first; compressing directly from the mapped GPU buffer caused a measured regression and was replaced.
