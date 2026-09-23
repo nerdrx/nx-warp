@@ -1,0 +1,185 @@
+{
+  "cases": {
+    "crowd-nearest0": {
+      "encoder_fps": {
+        "count": 20,
+        "mean": 90.0,
+        "median": 90.0,
+        "p95": 90.0,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "encode_ms": {
+        "count": 20,
+        "mean": 4.95,
+        "median": 5.0,
+        "p95": 5.1,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "payload_mbps": {
+        "count": 20,
+        "mean": 103.455359,
+        "median": 103.45392,
+        "p95": 103.46256,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "new_source_fps": {
+        "count": 20,
+        "mean": 87.0,
+        "median": 87.5,
+        "p95": 89.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "app_renderloop_fps": {
+        "count": 20,
+        "mean": 89.44,
+        "median": 89.3,
+        "p95": 89.7,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "wire_ms": {
+        "count": 20,
+        "mean": 3.295,
+        "median": 3.3,
+        "p95": 3.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "queue_ms": {
+        "count": 20,
+        "mean": 0.325,
+        "median": 0.3,
+        "p95": 0.4,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_ms": {
+        "count": 20,
+        "mean": 0.6,
+        "median": 0.6,
+        "p95": 0.6,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_to_selection_ms": {
+        "count": 20,
+        "mean": 5.88,
+        "median": 6.15,
+        "p95": 6.8,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "selection_to_predicted_ms": {
+        "count": 20,
+        "mean": 31.105,
+        "median": 30.95,
+        "p95": 31.9,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "own_gpu_ms": {
+        "count": 20,
+        "mean": 4.19,
+        "median": 4.2,
+        "p95": 4.2,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "predicted_runtime_first_arrival_to_prediction_ms": {
+        "count": 20,
+        "mean": 41.205,
+        "median": 41.4,
+        "p95": 42.2,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "network_holes_total": 0
+    },
+    "crowd-nearest1": {
+      "encoder_fps": {
+        "count": 21,
+        "mean": 89.97619047619048,
+        "median": 90.0,
+        "p95": 90.0,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "encode_ms": {
+        "count": 21,
+        "mean": 4.8238095238095235,
+        "median": 4.8,
+        "p95": 4.9,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "payload_mbps": {
+        "count": 21,
+        "mean": 103.42857219047619,
+        "median": 103.45536,
+        "p95": 103.46616,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "new_source_fps": {
+        "count": 20,
+        "mean": 89.15,
+        "median": 89.25,
+        "p95": 90.0,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "app_renderloop_fps": {
+        "count": 20,
+        "mean": 89.46,
+        "median": 89.3,
+        "p95": 89.8,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "wire_ms": {
+        "count": 20,
+        "mean": 3.48,
+        "median": 3.4,
+        "p95": 3.8,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "queue_ms": {
+        "count": 20,
+        "mean": 0.38,
+        "median": 0.4,
+        "p95": 0.4,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_ms": {
+        "count": 20,
+        "mean": 0.6,
+        "median": 0.6,
+        "p95": 0.6,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_to_selection_ms": {
+        "count": 20,
+        "mean": 12.275,
+        "median": 11.05,
+        "p95": 16.3,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "selection_to_predicted_ms": {
+        "count": 20,
+        "mean": 30.98,
+        "median": 30.95,
+        "p95": 31.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "own_gpu_ms": {
+        "count": 20,
+        "mean": 4.2,
+        "median": 4.2,
+        "p95": 4.2,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "predicted_runtime_first_arrival_to_prediction_ms": {
+        "count": 20,
+        "mean": 47.715,
+        "median": 46.650000000000006,
+        "p95": 51.6,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "network_holes_total": 0
+    }
+  },
+  "_method": {
+    "modes": {
+      "crowd-nearest0": "newest-direct",
+      "crowd-nearest1": "nearest-target"
+    },
+    "p95": "nearest-rank ceil(0.95*n)-1"
+  }
+}
