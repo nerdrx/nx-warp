@@ -1,0 +1,285 @@
+{
+  "status": "rejected",
+  "aborted": true,
+  "abort_reason": "quality remained stuck after the early backoff; soak stopped after about four minutes",
+  "configuration": {
+    "ceiling_mbps": 500,
+    "control": "BBR v2",
+    "native_rgb888": true,
+    "tail_packets": 64,
+    "compression_credit": false
+  },
+  "controller_events": [
+    {
+      "line": 138,
+      "event": "backing off, 500.0 -> 245.0 Mbit/s (estimate 350.0 Mbit/s, gain 0.70, recent 0.0 Mbit/s over 0 samples, slowdown x1.00, p90 utilisation 1.03, 0 lost, 11 late over 180 frames)"
+    },
+    {
+      "line": 142,
+      "event": "steady, 245.0 -> 297.5 Mbit/s (estimate 350.0 Mbit/s, gain 0.85, recent 335.1 Mbit/s over 1 samples, slowdown x1.04, p90 utilisation 0.19, 0 lost, 0 late over 78 frames)"
+    },
+    {
+      "line": 155,
+      "event": "probing at gain 1.10, estimate 350.0 Mbit/s"
+    },
+    {
+      "line": 156,
+      "event": "probing, 297.5 -> 385.0 Mbit/s (estimate 350.0 Mbit/s, gain 1.10, recent 0.0 Mbit/s over 0 samples, slowdown x1.00, p90 utilisation 0.20, 0 lost, 3 late over 179 frames)"
+    },
+    {
+      "line": 157,
+      "event": "steady, 385.0 -> 297.5 Mbit/s (estimate 350.0 Mbit/s, gain 0.85, recent 0.0 Mbit/s over 0 samples, slowdown x1.00, p90 utilisation 0.29, 0 lost, 0 late over 30 frames)"
+    },
+    {
+      "line": 161,
+      "event": "no loaded frame for 10000 ms, dropping the bandwidth estimate"
+    }
+  ],
+  "representative_windows": [
+    {
+      "line": 97,
+      "frames": 70,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 53566,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 100,
+      "frames": 178,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 73380,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 103,
+      "frames": 178,
+      "seconds": 2.0,
+      "encode_ms": 3.8,
+      "bytes_per_frame": 73375,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 106,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.8,
+      "bytes_per_frame": 73378,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 109,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.8,
+      "bytes_per_frame": 73395,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 112,
+      "frames": 181,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 73372,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 115,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 73386,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 118,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 73369,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 121,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 73392,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 124,
+      "frames": 181,
+      "seconds": 2.0,
+      "encode_ms": 3.7,
+      "bytes_per_frame": 73372,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 127,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 4.0,
+      "bytes_per_frame": 89796,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 130,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 4.8,
+      "bytes_per_frame": 143691,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 133,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 4.8,
+      "bytes_per_frame": 143688,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 136,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 4.8,
+      "bytes_per_frame": 143693,
+      "budget_mbps": 433.604
+    },
+    {
+      "line": 140,
+      "frames": 181,
+      "seconds": 2.0,
+      "encode_ms": 4.7,
+      "bytes_per_frame": 139412,
+      "budget_mbps": 212.466
+    },
+    {
+      "line": 144,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 69255,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 147,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.3,
+      "bytes_per_frame": 71823,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 150,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.3,
+      "bytes_per_frame": 71824,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 153,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.3,
+      "bytes_per_frame": 71822,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 159,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.5,
+      "bytes_per_frame": 79228,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 163,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.2,
+      "bytes_per_frame": 68625,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 166,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56783,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 169,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56775,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 172,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56779,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 175,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56775,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 178,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56785,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 181,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.2,
+      "bytes_per_frame": 56775,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 184,
+      "frames": 179,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56785,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 187,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.1,
+      "bytes_per_frame": 56775,
+      "budget_mbps": 257.995
+    },
+    {
+      "line": 190,
+      "frames": 180,
+      "seconds": 2.0,
+      "encode_ms": 3.2,
+      "bytes_per_frame": 56787,
+      "budget_mbps": 257.995
+    }
+  ],
+  "unit_validation": {
+    "bbr_checks": 74,
+    "asan_ubsan_checks": 74,
+    "asan_ubsan_diagnostics": 0
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "cases": {
+    "crowd-wait0": {
+      "encoder_fps": {
+        "count": 21,
+        "mean": 90.0,
+        "median": 90.0,
+        "p95": 90.0,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "new_source_fps": {
+        "count": 20,
+        "mean": 87.3,
+        "median": 87.75,
+        "p95": 89.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "app_renderloop_fps": {
+        "count": 20,
+        "mean": 89.445,
+        "median": 89.3,
+        "p95": 89.7,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "wire_ms": {
+        "count": 20,
+        "mean": 3.295,
+        "median": 3.3,
+        "p95": 3.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_to_selection_ms": {
+        "count": 20,
+        "mean": 6.3,
+        "median": 6.8,
+        "p95": 7.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "own_gpu_ms": {
+        "count": 20,
+        "mean": 4.2,
+        "median": 4.2,
+        "p95": 4.2,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "predicted_runtime_first_arrival_to_prediction_ms": {
+        "count": 20,
+        "mean": 41.645,
+        "median": 41.75,
+        "p95": 42.9,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "network_holes_total": 0
+    },
+    "crowd-wait1000": {
+      "encoder_fps": {
+        "count": 20,
+        "mean": 90.0,
+        "median": 90.0,
+        "p95": 90.0,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "new_source_fps": {
+        "count": 20,
+        "mean": 87.175,
+        "median": 87.75,
+        "p95": 89.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "app_renderloop_fps": {
+        "count": 20,
+        "mean": 89.445,
+        "median": 89.3,
+        "p95": 89.8,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "wire_ms": {
+        "count": 20,
+        "mean": 3.325,
+        "median": 3.3,
+        "p95": 3.6,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_to_selection_ms": {
+        "count": 20,
+        "mean": 3.83,
+        "median": 4.1,
+        "p95": 5.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "own_gpu_ms": {
+        "count": 20,
+        "mean": 4.2,
+        "median": 4.2,
+        "p95": 4.2,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "predicted_runtime_first_arrival_to_prediction_ms": {
+        "count": 20,
+        "mean": 39.215,
+        "median": 39.45,
+        "p95": 40.9,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "network_holes_total": 0
+    },
+    "crowd-wait2500": {
+      "encoder_fps": {
+        "count": 20,
+        "mean": 90.0,
+        "median": 90.0,
+        "p95": 90.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "new_source_fps": {
+        "count": 20,
+        "mean": 87.325,
+        "median": 87.5,
+        "p95": 89.0,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "app_renderloop_fps": {
+        "count": 20,
+        "mean": 89.44,
+        "median": 89.3,
+        "p95": 89.8,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "wire_ms": {
+        "count": 20,
+        "mean": 3.435,
+        "median": 3.3,
+        "p95": 3.8,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "decode_to_selection_ms": {
+        "count": 20,
+        "mean": 4.255,
+        "median": 4.35,
+        "p95": 6.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "own_gpu_ms": {
+        "count": 20,
+        "mean": 4.19,
+        "median": 4.2,
+        "p95": 4.2,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "predicted_runtime_first_arrival_to_prediction_ms": {
+        "count": 20,
+        "mean": 39.785,
+        "median": 39.7,
+        "p95": 42.5,
+        "p95_definition": "nearest-rank ceil(0.95*n)-1"
+      },
+      "network_holes_total": 0
+    }
+  },
+  "_method": {
+    "p95": "nearest-rank ceil(0.95*n)-1",
+    "status": "exploratory single trial; not promoted"
+  }
+}

@@ -17,13 +17,13 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
-## Current direction — 22 September 2026
+## Current direction — 23 September 2026
 
 **Native NXVC: spend bandwidth to reduce headset reconstruction work.** The active experimental path uses a Vulkan encoder and custom direct-sampled RGB blocks in WiVRn NX. It does not use HEVC for image compression or dense object-motion prediction. Platform head-pose reprojection remains part of presentation. The HEVC-backed **NXVC Hybrid** work remains an earlier research track. [Naming background](docs/NAMING.md) · [Direct-path integration and configuration](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md).
 
-The practical starting point is **100% stream scale, 90 Hz and a 160 Mbit/s ceiling with LZ4**, with adaptive bitrate for changing network conditions. This is an experimental build, not a general release. **Sustained 500 Mbit/s and 90 fresh frames/s are not solved.** A display refresh, a submitted layer and a fresh source image are different measurements.
+The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 detail and lossless Zstd/LZ4 selection**, with an independent safety image. Its **500 Mbit/s setting is a requested quality budget**, not a claim that every scene sends 500 Mbit/s. Actual complete-frame payload is measured below. Adaptive bitrate and the earlier LZ4 path remain available. **Sustained 90 fresh displayed frames/s and physical motion-to-photon latency are not proven.** An app render loop, a submitted layer and a fresh source image are different measurements.
 
-| Latest evidence | Result | What it establishes |
+| Earlier 22 September baseline | Result | What it establishes |
 |---|---:|---|
 | Normal 200 Mbit/s smoke check, recovery off | **85.8 new-source updates/s**, zero holes in 1,882 closed units | Short live Pico check after startup; not sustained-session proof |
 | Same normal smoke check | **51.1 ms** receive-to-predicted-display telemetry | Software timeline only; not physical motion-to-photon latency |
@@ -44,7 +44,7 @@ Matched 500 Mbit/s quality-budget photo workloads now send **103.5 instead of 15
 
 The native path can now choose **Zstd level 3 or LZ4 per detail image**. On three supplied VRChat screenshots, Zstd reduced detail bytes by **28–41% relative to LZ4**, with exactly the same decoded RGB888 representation. Pico production decode helpers measured **0.31–0.35 ms median**, around **0.20–0.23 ms more than LZ4**. The safety image stays independent.
 
-These controlled fixtures duplicate an image for both eyes and reproduce the earlier 500 Mbit/s allocation. Savings exclude safety/FEC/transport; this is not a promise of the same savings in arbitrary stereo motion. Short moving-scene Pico tests maintained approximately 90 encoder frames/s and 89–90 display refreshes/s; automatic-rate behaviour and delivered-image freshness remain separate checks.
+These controlled fixtures duplicate an image for both eyes and reproduce the earlier 500 Mbit/s allocation. Savings exclude safety/FEC/transport; this is not a promise of the same savings in arbitrary stereo motion. Short moving-scene Pico tests maintained approximately 90 encoder frames/s and 89–90 app render-loop iterations/s; automatic-rate behaviour and delivered-image freshness remain separate checks.
 
 [Method, raw sizes, Pico timings and limitations](bench/results/90fps-2026-09-23/scene-compression/README.md) · [Integration settings](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_NATIVE_CENTRE.md)
 

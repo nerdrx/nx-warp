@@ -1,0 +1,93 @@
+{
+  "source": "photo-safety-crowd-loss1",
+  "detail_loss": "30 of every 180 source frames",
+  "filter": "events at least 10 seconds after the RGBA8 upload marker",
+  "events": 54,
+  "kinds": {
+    "fallback": {
+      "count": 27,
+      "median_ms": 22.277,
+      "p95_ms": 22.283,
+      "max_ms": 22.285,
+      "frame_mod_180": [
+        61,
+        45,
+        62,
+        61,
+        62,
+        61,
+        62,
+        125,
+        61,
+        62,
+        62,
+        5,
+        62,
+        137,
+        25,
+        62,
+        62,
+        61,
+        61,
+        161,
+        19,
+        61,
+        61,
+        62,
+        61,
+        62,
+        62
+      ]
+    },
+    "detail": {
+      "count": 27,
+      "median_ms": 345.297,
+      "p95_ms": 345.309,
+      "max_ms": 356.442,
+      "frame_mod_180": [
+        90,
+        45,
+        90,
+        90,
+        90,
+        90,
+        90,
+        125,
+        90,
+        90,
+        91,
+        5,
+        90,
+        138,
+        25,
+        90,
+        90,
+        90,
+        90,
+        162,
+        19,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ]
+    }
+  },
+  "detail_return_mod_180_counts": {
+    "5": 1,
+    "19": 1,
+    "25": 1,
+    "45": 1,
+    "90": 19,
+    "91": 1,
+    "125": 1,
+    "138": 1,
+    "162": 1
+  },
+  "detail_return_phase_groups": {
+    "mod_90_or_91": 20,
+    "other_mod_180": 7
+  }
+}
