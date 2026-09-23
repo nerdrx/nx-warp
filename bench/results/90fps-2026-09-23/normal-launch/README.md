@@ -4,6 +4,8 @@ This artifact summarizes the completed `photo-saved-settings` run using saved SE
 
 `windows.csv` contains sanitized numeric server and client windows. Server, client, and network windows are independent sequences; rows do not associate network holes with render windows. `summary.json` contains aggregate metrics. Fresh-source FPS mean/min and total network holes are reported there.
 
+Payload is encoded codec output arithmetic, excluding transport, FEC, and optional padding; it is not a link-capacity measurement. Fresh-source FPS counts newly selected source frames and does not establish full physical display cadence.
+
 Rebuild from the bundled files:
 
 ```text

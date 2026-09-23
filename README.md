@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### Overnight follow-up: fewer bytes and shorter software delay
+
+An optional lossless byte predictor saves **another 8–11% of complete codec payload** on two photo fixtures, beyond ordinary Zstd, with exactly the same decoded representation. Exact-repeat caching skips redundant compression on the PC. In paired 120-second Pico captures, the combined candidate reduced payload **83.53 → 74.57 Mbit/s** and encode time **4.38 → 3.59 ms**; decoder telemetry increased **0.595 → 0.685 ms**. Prediction remains opt-in, and both endpoints require the updated protocol.
+
+Separately, a matched timing comparison moved the derived software delay **46.63 → 42.62 ms** and fresh-source selections **88.52 → 89.54/s**, with zero incomplete units in both arms. The candidate caps JIT sleeping at 5 ms and permits up to 4 ms of waiting for a fresh stereo image when the current one would repeat. These are bounded duplicated-photo measurements, not physical photon latency or proof of sustained 90 unique displayed frames/s. No global timing defaults changed.
+
+[Evidence, reproduction and rejected experiments](bench/results/90fps-2026-09-23/overnight-gains/README.md) · [Compression ABBA](bench/results/90fps-2026-09-23/overnight-gains/pointer-live-report/README.md) · [Timing ABBA](bench/results/90fps-2026-09-23/overnight-gains/ready-abba-report/README.md)
+
+![Paired live timing comparison](bench/results/90fps-2026-09-23/overnight-gains/ready-abba-report/comparison.png)
+
 ### Live Pico check: fewer bytes, same encoded detail
 
 Matched 500 Mbit/s quality-budget photo workloads now send **103.5 instead of 152.6 Mbit/s** for the crowded scene and **52.8 instead of 76.5 Mbit/s** for the forest: **31–32% less complete-frame payload** with lossless Zstd selection. Both remain approximately 90 encoded FPS; client fresh-source selection was 85–88 FPS, not a claim of 90 unique displayed frames. Pico decode telemetry increased by roughly 0.2–0.4 ms.

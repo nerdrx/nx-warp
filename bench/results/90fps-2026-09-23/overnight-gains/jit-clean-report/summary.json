@@ -1,0 +1,63 @@
+{
+  "scope": "sanitized fixed-JIT live comparison",
+  "runs": [
+    {
+      "run": 1,
+      "case": "A",
+      "jit_us": 45000,
+      "payload_mbps": 74.53934778571428,
+      "encode_ms": 3.6,
+      "fresh_fps": 88.5346554934823,
+      "decode_ms": 0.6963636363636363,
+      "derived_delay_ms": 47.20545454545454,
+      "fresh_min_fps": 86.30670391061453,
+      "derived_delay_max_ms": 48.4,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 9
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "jit_us": 5000,
+      "payload_mbps": 74.517179,
+      "encode_ms": 3.616071428571429,
+      "fresh_fps": 80.76557575757576,
+      "decode_ms": 0.6818181818181818,
+      "derived_delay_ms": 41.4,
+      "fresh_min_fps": 66.85111111111111,
+      "derived_delay_max_ms": 43.300000000000004,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 14
+    },
+    {
+      "run": 3,
+      "case": "B",
+      "jit_us": 5000,
+      "payload_mbps": 74.42121478571428,
+      "encode_ms": 3.630357142857143,
+      "fresh_fps": 88.63532323232323,
+      "decode_ms": 0.6981818181818181,
+      "derived_delay_ms": 41.48909090909091,
+      "fresh_min_fps": 78.82444444444444,
+      "derived_delay_max_ms": 43.699999999999996,
+      "holes": 7,
+      "safety_fallbacks_postcutoff": 27
+    },
+    {
+      "run": 4,
+      "case": "A",
+      "jit_us": 45000,
+      "payload_mbps": 74.57639278571429,
+      "encode_ms": 3.6,
+      "fresh_fps": 88.62365526776141,
+      "decode_ms": 0.6909090909090909,
+      "derived_delay_ms": 45.583636363636366,
+      "fresh_min_fps": 86.30670391061453,
+      "derived_delay_max_ms": 47.5,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 13
+    }
+  ],
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "conclusion": "5000 us remains inconsistent; no default promotion"
+}

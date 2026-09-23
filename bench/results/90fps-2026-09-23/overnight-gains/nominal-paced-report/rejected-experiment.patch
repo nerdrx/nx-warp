@@ -1,0 +1,550 @@
+diff --git a/docs/DIRECT_NATIVE_CENTRE.md b/docs/DIRECT_NATIVE_CENTRE.md
+index 40171fef..230dd33f 100644
+--- a/docs/DIRECT_NATIVE_CENTRE.md
++++ b/docs/DIRECT_NATIVE_CENTRE.md
+@@ -49,3 +49,9 @@ The encoder now reuses a compressed result when the complete raw frame and compr
+ `NX_DIRECT_PREDICTOR=1`, together with `NX_DIRECT_ZSTD=1`, enables an experimental lossless byte predictor before Zstd. Each byte records its difference from the byte four positions earlier; the decoder restores the original bytes inside the same frame. The encoder compares ordinary and predicted Zstd and requires another 5% reduction before choosing prediction. Existing LZ4/raw fallback remains available. This spends additional PC work and adds a small decoder pass; it is off by default.
+ 
+ Predictor-capable stream versions are 17/18 for RGB888 and 19/20 for RGB565. NXDZ envelope version 2 denotes predicted bytes; version 1 remains ordinary Zstd. Both endpoints must support the new stream version. Old clients reject it rather than interpreting incompatible data. Frame bounds and decompressed-size validation remain enabled.
++
++### Experimental compressed-stream rate accounting
++
++`NX_DIRECT_NOMINAL_BBR=1` makes the sender's BBR quality controller account for pre-compression codec bytes when choosing a codec quality budget. Ordinary streams continue to contribute their wire bytes. This avoids treating a lossless compression saving as a reason to reduce image detail. Loss, lateness and receive-time utilisation checks still apply. The option is off by default.
++
++The codec quality budget is not physical network capacity. Report transmitted bytes separately. FEC parity remains in transport accounting, while the nominal codec byte count excludes parity; this is conservative when translating the estimate into a quality budget. These controls do not prove sustained display cadence or physical motion-to-photon latency.
+diff --git a/server/driver/bitrate_controller.cpp b/server/driver/bitrate_controller.cpp
+index 5d6d88a7..3ddbf015 100644
+--- a/server/driver/bitrate_controller.cpp
++++ b/server/driver/bitrate_controller.cpp
+@@ -22,6 +22,8 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <cstdlib>
++#include <cstring>
+ #include <limits>
+ #include <vector>
+ 
+@@ -43,6 +45,8 @@ void bitrate_controller::configure(const config & c, uint32_t ceiling_bps, bool
+ 	std::lock_guard lock(mutex);
+ 
+ 	conf = c;
++	const char * nominal_env = std::getenv("NX_DIRECT_NOMINAL_BBR");
++	nominal_bbr_mode = nominal_env && std::strcmp(nominal_env, "1") == 0;
+ 	client_enabled = client_enabled_;
+ 	radio_aware = radio_aware_;
+ 	client_mode = client_mode_;
+@@ -247,6 +251,7 @@ void bitrate_controller::flush_radio()
+ void bitrate_controller::flush_estimator()
+ {
+ 	bandwidth.reset();
++	wire_bandwidth.reset();
+ 	bandwidth_samples = 0;
+ 	last_bandwidth_sample = {};
+ 	bbr_st = bbr_state::startup;
+@@ -340,10 +345,17 @@ uint32_t bitrate_controller::bandwidth_estimate() const
+ {
+ 	std::lock_guard lock(mutex);
+ 
+-	if (mode_locked() != mode::bbr or not bandwidth.valid() or bandwidth_samples < estimator_min_samples)
++	const auto & estimate = nominal_bbr_mode ? wire_bandwidth : bandwidth;
++	if (mode_locked() != mode::bbr or not estimate.valid() or bandwidth_samples < estimator_min_samples)
+ 		return 0;
+ 
+-	return uint32_t(std::min<double>(bandwidth.get(), std::numeric_limits<uint32_t>::max()));
++	return uint32_t(std::min<double>(estimate.get(), std::numeric_limits<uint32_t>::max()));
++}
++
++bool bitrate_controller::nominal_bbr_enabled() const
++{
++	std::lock_guard lock(mutex);
++	return nominal_bbr_mode;
+ }
+ 
+ std::optional<uint32_t> bitrate_controller::reset()
+@@ -420,7 +432,15 @@ void bitrate_controller::close_frame(frame_state & frame, clock::time_point now)
+ 		// link can carry. See app_limited_wire_fraction.
+ 		if (mode_locked() == mode::bbr and wire_ns > 0 and frame.bytes and wire_ns >= min_loaded_wire_ns())
+ 		{
+-			rate = 8e9 * double(frame.bytes) / double(wire_ns);
++			const uint64_t accounting_bytes = nominal_bbr_mode && frame.nominal_bytes
++			                                         ? frame.nominal_bytes
++			                                         : frame.bytes;
++			// The wire filter always uses delivered bytes, including FEC and headers. The
++			// nominal filter intentionally excludes parity, so nominal BBR controls quality
++			// budget conservatively while this separate estimate remains physical capacity.
++			const double wire_rate = 8e9 * double(frame.bytes) / double(wire_ns);
++			rate = 8e9 * double(accounting_bytes) / double(wire_ns);
++			wire_bandwidth.update(wire_rate, now, estimator_window);
+ 			bandwidth.update(rate, now, estimator_window);
+ 			++bandwidth_samples;
+ 			last_bandwidth_sample = now;
+@@ -438,7 +458,7 @@ void bitrate_controller::close_frame(frame_state & frame, clock::time_point now)
+ 	frame = {};
+ }
+ 
+-void bitrate_controller::on_frame_bytes(uint64_t frame_index, uint8_t stream_index, uint32_t bytes, clock::time_point now)
++void bitrate_controller::on_frame_bytes(uint64_t frame_index, uint8_t stream_index, uint32_t bytes, clock::time_point now, uint32_t nominal_bytes)
+ {
+ 	std::lock_guard lock(mutex);
+ 
+@@ -472,6 +492,9 @@ void bitrate_controller::on_frame_bytes(uint64_t frame_index, uint8_t stream_ind
+ 	}
+ 
+ 	frame.bytes += bytes;
++	if (nominal_bbr_mode)
++		// Mixed sessions keep ordinary streams in the same estimator as wire bytes.
++		frame.nominal_bytes += nominal_bytes ? nominal_bytes : bytes;
+ }
+ 
+ bitrate_controller::stats bitrate_controller::analyse(clock::time_point now)
+@@ -1050,6 +1073,7 @@ std::optional<uint32_t> bitrate_controller::evaluate_bbr(clock::time_point now,
+ 	if (bandwidth_samples and now - last_bandwidth_sample > estimator_window)
+ 	{
+ 		bandwidth.reset();
++		wire_bandwidth.reset();
+ 		bandwidth_samples = 0;
+ 		U_LOG_I("Automatic bitrate v2: no loaded frame for %d ms, dropping the bandwidth estimate",
+ 		        int(estimator_window.count()));
+@@ -1101,6 +1125,7 @@ std::optional<uint32_t> bitrate_controller::evaluate_bbr(clock::time_point now,
+ 		// backoff below has something to work from, and so that there is an estimate from
+ 		// here on.
+ 		bandwidth.reset();
++		wire_bandwidth.reset();
+ 		bandwidth.update(double(bitrate), now, estimator_window);
+ 		bandwidth_samples = estimator_min_samples;
+ 		last_bandwidth_sample = now;
+@@ -1132,7 +1157,11 @@ std::optional<uint32_t> bitrate_controller::evaluate_bbr(clock::time_point now,
+ 		last_bbr_change = now;
+ 		probe_until = {};
+ 
+-		bitrate = clamp(uint64_t(backoff_factor * bandwidth.get()));
++		const uint32_t backed_off = clamp(uint64_t(backoff_factor * bandwidth.get()));
++		// Nominal samples describe codec budget, and a quantized plan can jump upward
++		// independently of the bitrate that caused it. Congestion evidence must never
++		// turn that jump into a bitrate increase; legacy wire BBR keeps its old behavior.
++		bitrate = nominal_bbr_mode ? std::min(previous, backed_off) : backed_off;
+ 		gain = backoff_factor;
+ 		reason = "backing off";
+ 
+@@ -1247,10 +1276,11 @@ std::optional<uint32_t> bitrate_controller::evaluate_bbr(clock::time_point now,
+ 	if (bitrate == previous)
+ 		return {};
+ 
+-	U_LOG_I("Automatic bitrate v2: %s, %.1f -> %.1f Mbit/s (estimate %.1f Mbit/s, gain %.2f, recent %.1f Mbit/s over %zu samples, slowdown x%.2f, p%d utilisation %.2f, %zu lost, %zu late over %zu frames)",
++	U_LOG_I("Automatic bitrate v2: %s, %.1f -> %.1f Mbit/s (%s %.1f Mbit/s, gain %.2f, recent %.1f Mbit/s over %zu samples, slowdown x%.2f, p%d utilisation %.2f, %zu lost, %zu late over %zu frames)",
+ 	        reason,
+ 	        previous * to_mbits,
+ 	        bitrate * to_mbits,
++	        nominal_bbr_mode ? "codec budget" : "estimate",
+ 	        bandwidth.get() * to_mbits,
+ 	        gain,
+ 	        s.rate * to_mbits,
+diff --git a/server/driver/bitrate_controller.h b/server/driver/bitrate_controller.h
+index 62b2c54a..69c40bae 100644
+--- a/server/driver/bitrate_controller.h
++++ b/server/driver/bitrate_controller.h
+@@ -440,7 +440,8 @@ public:
+ 	// path, i.e. from a different thread than on_feedback and usually a frame or two ahead
+ 	// of it; the frame ring joins the two. Allocation-free, and a no-op unless the v2
+ 	// estimator is the one running.
+-	void on_frame_bytes(uint64_t frame_index, uint8_t stream_index, uint32_t bytes, clock::time_point now = clock::now());
++	void on_frame_bytes(uint64_t frame_index, uint8_t stream_index, uint32_t bytes,
++	                    clock::time_point now = clock::now(), uint32_t nominal_bytes = 0);
+ 
+ 	// A new ceiling was requested (client settings, or a manual change from the dashboard).
+ 	// Resets the controller to it. Returns the bitrate to apply.
+@@ -480,12 +481,16 @@ public:
+ 	// Returns the bitrate to apply, if any.
+ 	std::optional<uint32_t> set_combined(bool combined, uint32_t usb_bps);
+ 
+-	// The delivered-bandwidth estimate in bits per second, or 0 when the v2 estimator is not
+-	// the law in force or has not admitted enough samples yet. While video rides a single
+-	// path this is a measurement of *that* path, which is what the striping scheduler latches
+-	// as its Wi-Fi share when it enters the combine posture.
++	// The delivered physical wire-bandwidth estimate in bits per second, or 0 when the v2
++	// estimator is not the law in force or has not admitted enough samples yet. In nominal
++	// direct mode the internal BBR control estimate is codec-budget equivalent; this getter
++	// deliberately remains a wire-capacity measurement for path sharing and telemetry.
+ 	uint32_t bandwidth_estimate() const;
+ 
++	// Whether BBR is using nominal codec bytes for its internal control estimate. This is
++	// intentionally separate from bandwidth_estimate(), which always reports physical wire rate.
++	bool nominal_bbr_enabled() const;
++
+ 	// Forget all measurements and go back to the ceiling, e.g. when the session is resumed.
+ 	std::optional<uint32_t> reset();
+ 
+@@ -533,6 +538,7 @@ private:
+ 		// Bytes put on the wire for this frame, summed over the video streams. Filled in
+ 		// from the encoder's send path, v2 only.
+ 		uint64_t bytes = 0;
++		uint64_t nominal_bytes = 0;
+ 	};
+ 
+ 	struct sample
+@@ -690,6 +696,7 @@ private:
+ 	std::optional<mode> client_mode;
+ 	// Headset side switch for the radio trend, ANDed with the two above
+ 	bool radio_aware = true;
++	bool nominal_bbr_mode = false;
+ 	// Ceiling requested by the client
+ 	uint32_t ceiling = 0;
+ 	// Ceiling of the path carrying video, if it is more restrictive
+@@ -721,6 +728,8 @@ private:
+ 	bbr_state bbr_st = bbr_state::startup;
+ 	// Bottleneck bandwidth estimate, bits per second, maximum over estimator_window
+ 	max_filter bandwidth;
++	// Physical delivered wire rate, kept separately when nominal BBR controls on codec bytes.
++	max_filter wire_bandwidth;
+ 	// Delivery rate samples admitted into it, and when the last one was: an estimate no
+ 	// loaded frame has refreshed for a whole window is not evidence of a bottleneck any more
+ 	size_t bandwidth_samples = 0;
+diff --git a/server/encoder/nxwarp_codec.h b/server/encoder/nxwarp_codec.h
+index 6b7270d7..5f239b3e 100644
+--- a/server/encoder/nxwarp_codec.h
++++ b/server/encoder/nxwarp_codec.h
+@@ -346,6 +346,9 @@ public:
+ 	// Independent direct blocks use byte budgeting, not transform quantisation.
+ 	virtual bool direct_blocks() const { return false; }
+ 	virtual void set_target_bitrate(uint32_t, float) {}
++	// Uncompressed direct-frame budget used only by opt-in nominal BBR accounting.
++	// Zero means ordinary codec/wire-byte accounting.
++	virtual size_t nominal_frame_bytes() const { return 0; }
+ 	virtual void set_lz4_hc(bool) {}
+ 	virtual void set_native_center(std::span<const uint32_t>) {}
+ 	virtual bool admit_frame(int64_t) { return true; }
+diff --git a/server/encoder/nxwarp_codec_direct.cpp b/server/encoder/nxwarp_codec_direct.cpp
+index 34ded09d..f9e62a88 100644
+--- a/server/encoder/nxwarp_codec_direct.cpp
++++ b/server/encoder/nxwarp_codec_direct.cpp
+@@ -69,6 +69,7 @@ class direct_codec final : public nxwarp_codec
+ 	bool lz4_enabled = false;
+ 	std::atomic_bool lz4_hc = false;
+ 	std::vector<uint8_t> compressed, cached_raw, native_frame, zstd_compressed, zstd_predicted, predictor_scratch;
++	size_t last_nominal_frame_bytes = 0;
+ 	nxwarp_direct::exact_compression_cache compression_cache;
+ 	bool compression_cache_enabled = true;
+ 	std::span<const uint32_t> native_pixels;
+@@ -307,6 +308,10 @@ public:
+ 	{
+ 		return true;
+ 	}
++	size_t nominal_frame_bytes() const override
++	{
++		return last_nominal_frame_bytes;
++	}
+ 	bool accepts_image() const override
+ 	{
+ 		return true;
+@@ -441,6 +446,7 @@ public:
+ 				throw std::runtime_error("NX direct native centre source missing");
+ 			raw = nxwarp_direct::native_center_frame(geometry, raw, native_pixels, native_frame, native_radius);
+ 		}
++		last_nominal_frame_bytes = raw.size() + (safety_codec ? safety_codec->nominal_frame_bytes() + 32u : 0u);
+ 		if (!safety_codec)
+ 		{
+ 			if (!lz4_enabled)
+diff --git a/server/encoder/video_encoder.cpp b/server/encoder/video_encoder.cpp
+index ff230d03..21367c98 100644
+--- a/server/encoder/video_encoder.cpp
++++ b/server/encoder/video_encoder.cpp
+@@ -980,7 +980,8 @@ void video_encoder::SendData(std::span<uint8_t> data, bool end_of_frame, bool co
+ 		// Deliberately the whole frame, both paths together: while combining, the span
+ 		// the headset reports runs from the first arrival on either path to the last on
+ 		// either, so the rate it yields is the rate of the two links as one.
+-		cnx->on_frame_sent(shard.frame_idx, stream_idx, frame_bytes);
++		cnx->on_frame_sent(shard.frame_idx, stream_idx, frame_bytes, frame_nominal_bytes);
++		frame_nominal_bytes = 0;
+ 		cnx->on_frame_paths(frame_bytes_primary, frame_bytes_secondary);
+ 
+ 		if (spill.active())
+@@ -1064,7 +1065,8 @@ void video_encoder::SendPacket(to_headset::nxwarp_datagram && packet, bool end_o
+ 		// time the headset says it spent receiving the frame. Every NX Warp
+ 		// datagram rides the primary path today — the transport's own striper is
+ 		// not wired to WiVRn's secondary path yet — so the split is trivial.
+-		cnx->on_frame_sent(shard.frame_idx, stream_idx, frame_bytes);
++		cnx->on_frame_sent(shard.frame_idx, stream_idx, frame_bytes, frame_nominal_bytes);
++		frame_nominal_bytes = 0;
+ 		cnx->on_frame_paths(frame_bytes_primary, 0);
+ 
+ 		frame_bytes = 0;
+diff --git a/server/encoder/video_encoder.h b/server/encoder/video_encoder.h
+index 75454600..af3a5d07 100644
+--- a/server/encoder/video_encoder.h
++++ b/server/encoder/video_encoder.h
+@@ -146,6 +146,11 @@ public:
+ 	encoder_watchdog watchdog;
+ 
+ protected:
++	void set_frame_nominal_bytes(uint32_t bytes)
++	{
++		frame_nominal_bytes = bytes;
++	}
++
+ 	// The server -> headset clock offset, refreshed at the top of every encode().
+ 	//
+ 	// Reachable by a subclass because a subclass can need it: the shard path fills the
+@@ -242,6 +247,8 @@ private:
+ 	// session at the last one. One SendData call per NAL, so it has to be a member rather
+ 	// than a local. Only touched under `mutex`.
+ 	uint32_t frame_bytes = 0;
++	// Direct codec's uncompressed frame budget; zero keeps legacy wire-byte accounting.
++	uint32_t frame_nominal_bytes = 0;
+ 	// The same bytes split by the path they went out on, while the two are combined
+ 	// (multipath stage 3). Reported to the session at the last shard of the frame.
+ 	uint32_t frame_bytes_primary = 0;
+diff --git a/server/encoder/video_encoder_nxwarp.cpp b/server/encoder/video_encoder_nxwarp.cpp
+index d4ec32f5..bfe25c8e 100644
+--- a/server/encoder/video_encoder_nxwarp.cpp
++++ b/server/encoder/video_encoder_nxwarp.cpp
+@@ -2455,6 +2455,7 @@ std::optional<wivrn::video_encoder::data> wivrn::video_encoder_nxwarp::encode(ui
+ 			client_holds_nothing = true;
+ 		return {};
+ 	}
++	set_frame_nominal_bytes(codec_direct_blocks ? uint32_t(std::min<size_t>(codec->nominal_frame_bytes(), UINT32_MAX)) : 0);
+ 	// --- is this frame a point the headset may start trusting again? ------
+ 	//
+ 	// It is exactly when every tile of it is INTRA, and that is a property of the
+diff --git a/server/driver/wivrn_session.cpp b/server/driver/wivrn_session.cpp
+--- a/server/driver/wivrn_session.cpp
++++ b/server/driver/wivrn_session.cpp
+@@ -936,7 +964,9 @@ void wivrn_session::on_path_switch(path_selector::posture to, std::string_view r
+ 		const uint32_t measured = bitrate_ctl.bandwidth_estimate();
+ 		const uint32_t paced = uint32_t(snapshot.bitrate_bps / window);
+ 
+-		combine_wifi_share_bps = std::max(measured, paced);
++		// In nominal direct mode paced is codec-budget units, not physical wire
++		// capacity. Keep the measured wire filter authoritative for path sharing.
++		combine_wifi_share_bps = bitrate_ctl.nominal_bbr_enabled() ? measured : std::max(measured, paced);
+ 	}
+ 	else
+ 	{
+@@ -1002,10 +1032,10 @@ void wivrn_session::set_pacing(bool client_enabled)
+ 	bitrate_ctl.set_pacing_window(enabled ? std::min(pacing_conf.window, shard_pacer::max_window) : 0.f);
+ }
+ 
+-void wivrn_session::on_frame_sent(uint64_t frame_index, uint8_t stream_index, uint32_t bytes)
++void wivrn_session::on_frame_sent(uint64_t frame_index, uint8_t stream_index, uint32_t bytes, uint32_t nominal_bytes)
+ {
+ 	// Called from the encoder's send thread; the controller has its own mutex.
+-	bitrate_ctl.on_frame_bytes(frame_index, stream_index, bytes);
++	bitrate_ctl.on_frame_bytes(frame_index, stream_index, bytes, std::chrono::steady_clock::now(), nominal_bytes);
+ }
+ 
+ void wivrn_session::operator()(from_headset::feedback && feedback)
+diff --git a/server/driver/wivrn_session.h b/server/driver/wivrn_session.h
+--- a/server/driver/wivrn_session.h
++++ b/server/driver/wivrn_session.h
+@@ -317,7 +323,7 @@ public:
+ 	// One video frame of one stream finished going out, with the number of bytes it put on
+ 	// the wire (parity shards included). Called from the encoder's send path; only the
+ 	// bandwidth estimating bitrate control law uses it, and it takes no lock of its own.
+-	void on_frame_sent(uint64_t frame_index, uint8_t stream_index, uint32_t bytes);
++	void on_frame_sent(uint64_t frame_index, uint8_t stream_index, uint32_t bytes, uint32_t nominal_bytes = 0);
+ 
+ 	// How one frame's bytes were split between the two paths, for the Transport page.
+ 	// Called from the encoder's send path right after on_frame_sent; two atomic adds.
+diff --git a/tests/bitrate_bbr_nominal_test.cpp b/tests/bitrate_bbr_nominal_test.cpp
+new file mode 100644
+--- /dev/null
++++ b/tests/bitrate_bbr_nominal_test.cpp
+@@ -0,0 +1,198 @@
++#include "driver/bitrate_controller.h"
++
++#include <cassert>
++#include <cstdio>
++#include <cstdlib>
++#include <cstdint>
++
++#define require(condition) do { if (!(condition)) { std::fprintf(stderr, "FAIL: %s\n", #condition); std::abort(); } } while (0)
++
++
++using controller = wivrn::bitrate_controller;
++using time_point = controller::clock::time_point;
++constexpr int64_t period = 11'111'111;
++constexpr uint32_t ceiling = 500'000'000;
++
++static uint32_t run(bool nominal, uint32_t wire_bytes, int64_t wire_ns, bool loss = false,
++                    bool scene_change = false, bool duplicate_feedback = false,
++                    bool pass_nominal = true, bool late = false)
++{
++	if (nominal)
++		setenv("NX_DIRECT_NOMINAL_BBR", "1", 1);
++	else
++		unsetenv("NX_DIRECT_NOMINAL_BBR");
++	controller c;
++	c.configure({.enabled = true}, ceiling, true, false, controller::mode::bbr);
++	time_point now = time_point{} + std::chrono::hours(1);
++	for (uint64_t i = 0; i < 360; ++i)
++	{
++		const uint32_t frame_wire = scene_change ? (i & 1 ? 60'000u : 180'000u) : wire_bytes;
++		c.on_frame_bytes(i, 0, frame_wire, now, nominal && pass_nominal ? 694'444u : 0u);
++		wivrn::from_headset::feedback fb{};
++		fb.frame_index = i;
++		fb.stream_index = 0;
++		const XrTime base = 1'000'000'000 + XrTime(i) * period;
++		fb.received_first_packet = base;
++		if (!loss)
++		{
++			fb.received_last_packet = base + wire_ns;
++			fb.sent_to_decoder = base + wire_ns;
++			fb.received_from_decoder = base + wire_ns + period;
++			if (!late)
++			{
++				fb.blitted = base + wire_ns + 2 * period;
++				fb.times_displayed = 1;
++			}
++		}
++		c.on_feedback(fb, period, true, now);
++		if (duplicate_feedback && i == 0)
++			c.on_feedback(fb, period, true, now);
++		now += std::chrono::nanoseconds(period);
++	}
++	return c.current();
++}
++
++static uint32_t physical_estimate(bool nominal)
++{
++	if (nominal)
++		setenv("NX_DIRECT_NOMINAL_BBR", "1", 1);
++	else
++		unsetenv("NX_DIRECT_NOMINAL_BBR");
++	controller c;
++	c.configure({.enabled = true}, ceiling, true, false, controller::mode::bbr);
++	time_point now = time_point{} + std::chrono::hours(1);
++	for (uint64_t i = 0; i < 360; ++i)
++	{
++		c.on_frame_bytes(i, 0, 115'000, now, nominal ? 694'444u : 0u);
++		wivrn::from_headset::feedback fb{};
++		fb.frame_index = i;
++		fb.stream_index = 0;
++		const XrTime base = 1'000'000'000 + XrTime(i) * period;
++		fb.received_first_packet = base;
++		fb.received_last_packet = base + 4'000'000;
++		fb.sent_to_decoder = fb.received_last_packet;
++		fb.received_from_decoder = fb.received_last_packet + period;
++		fb.blitted = fb.received_last_packet + 2 * period;
++		fb.times_displayed = 1;
++		c.on_feedback(fb, period, true, now);
++		now += std::chrono::nanoseconds(period);
++	}
++	return c.bandwidth_estimate();
++}
++
++static void nominal_acute_clamp()
++{
++	setenv("NX_DIRECT_NOMINAL_BBR", "1", 1);
++	controller c;
++	c.configure({.enabled = true}, ceiling, true, false, controller::mode::bbr);
++	time_point now = time_point{} + std::chrono::hours(1);
++	// First establish a low operating point.
++	for (uint64_t i = 0; i < 360; ++i)
++	{
++		c.on_frame_bytes(i, 0, 115'000, now, 694'444u);
++		wivrn::from_headset::feedback fb{};
++		fb.frame_index = i;
++		fb.stream_index = 0;
++		const XrTime base = 1'000'000'000 + XrTime(i) * period;
++		fb.received_first_packet = base;
++		fb.received_last_packet = base + 20'000'000;
++		fb.sent_to_decoder = fb.received_last_packet;
++		fb.received_from_decoder = fb.received_last_packet + period;
++		fb.blitted = fb.received_last_packet + 2 * period;
++		fb.times_displayed = 1;
++		c.on_feedback(fb, period, true, now);
++		now += std::chrono::nanoseconds(period);
++	}
++	const uint32_t before = c.current();
++	now += std::chrono::seconds(3);
++	// Four late, very large nominal samples create an inflated fresh estimate while
++	// retaining an acute congestion signal. The old path could turn that into growth.
++	for (uint64_t i = 360; i < 390; ++i)
++	{
++		c.on_frame_bytes(i, 0, 115'000, now, 4'000'000u);
++		wivrn::from_headset::feedback fb{};
++		fb.frame_index = i;
++		fb.stream_index = 0;
++		const XrTime base = 2'000'000'000 + XrTime(i) * period;
++		fb.received_first_packet = base;
++		fb.received_last_packet = base + 20'000'000;
++		fb.sent_to_decoder = fb.received_last_packet;
++		fb.received_from_decoder = fb.received_last_packet + period;
++		// No blitted timestamp: this feedback is late by construction.
++		c.on_feedback(fb, period, true, now);
++		now += std::chrono::nanoseconds(period);
++	}
++	const uint32_t after = c.current();
++	std::printf("nominal acute clamp before=%u after=%u\n", before, after);
++	require(before < ceiling);
++	require(after <= before);
++}
++
++static void dynamic_replay()
++{
++	setenv("NX_DIRECT_NOMINAL_BBR", "1", 1);
++	controller c;
++	c.configure({.enabled = true}, ceiling, true, false, controller::mode::bbr);
++	time_point now = time_point{} + std::chrono::hours(1);
++	uint32_t healthy = c.current(), bottleneck = healthy;
++	for (uint64_t i = 0; i < 900; ++i)
++	{
++		const uint32_t capacity = i < 180 ? 200'000'000u : (i < 540 ? 20'000'000u : 200'000'000u);
++		const uint32_t nominal = uint32_t(double(c.current()) * double(period) / 1e9 / 8.0 / 1.25);
++		const uint32_t wire = std::max(1u, nominal / 5u);
++		const int64_t receive_ns = std::max<int64_t>(3'000'000, int64_t(double(wire) * 8e9 / capacity));
++		c.on_frame_bytes(i, 0, wire, now, nominal);
++		wivrn::from_headset::feedback fb{};
++		fb.frame_index = i;
++		fb.stream_index = 0;
++		const XrTime base = 2'000'000'000 + XrTime(i) * period;
++		fb.received_first_packet = base;
++		fb.received_last_packet = base + receive_ns;
++		fb.sent_to_decoder = base + receive_ns;
++		fb.received_from_decoder = base + receive_ns + period;
++		fb.blitted = base + receive_ns + 2 * period;
++		fb.times_displayed = 1;
++		c.on_feedback(fb, period, true, now);
++		now += std::chrono::nanoseconds(period);
++		if (i == 179) healthy = c.current();
++		if (i == 539) bottleneck = c.current();
++	}
++	const uint32_t recovered = c.current();
++	std::printf("dynamic nominal trace healthy=%u bottleneck=%u recovered=%u\n", healthy, bottleneck, recovered);
++	require(healthy > 400'000'000);
++	require(bottleneck < healthy / 2);
++	require(recovered > bottleneck);
++}
++
++int main()
++{
++	const uint32_t legacy = run(false, 115'000, 4'000'000);
++	const uint32_t nominal = run(true, 115'000, 4'000'000);
++	require(nominal > legacy);
++	require(nominal > 400'000'000);
++	// Public estimate stays physical in nominal mode: 115 kB over 4 ms is about 230 Mbps,
++	// while the internal codec-budget sample is deliberately much larger.
++	const uint32_t wire_legacy = physical_estimate(false);
++	const uint32_t wire_nominal = physical_estimate(true);
++	require(wire_legacy > 200'000'000 && wire_legacy < 260'000'000);
++	require(wire_nominal > 200'000'000 && wire_nominal < 260'000'000);
++	nominal_acute_clamp();
++
++	// Compression ratio changes do not change nominal quality budget.
++	const uint32_t scene = run(true, 120'000, 4'000'000, false, true);
++	require(scene > 400'000'000);
++	const uint32_t nominal_repeat = run(true, 115'000, 4'000'000);
++	const uint32_t nominal_duplicate = run(true, 115'000, 4'000'000, false, false, true);
++	require(nominal_repeat == nominal_duplicate);
++
++	// Real overload still backs off with nominal accounting.
++	const uint32_t overload = run(true, 115'000, 20'000'000);
++	const uint32_t loss_late = run(true, 115'000, 4'000'000, true, false, false, true, true);
++	require(overload < 400'000'000);
++	require(loss_late < 400'000'000);
++
++	// Ordinary codecs pass zero nominal bytes and retain legacy accounting.
++	const uint32_t ordinary = run(true, 115'000, 4'000'000, false, false, false, false);
++	require(ordinary == legacy);
++	dynamic_replay();
++}

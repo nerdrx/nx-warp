@@ -1,0 +1,85 @@
+{
+  "scope": "sanitized ready ABBA live comparison",
+  "settings": "fixed500, cache1, predictor1, nominal_bbr0, window0, tail64, 120 s each, dark duplicated-photo fixture",
+  "case_definition": "A=ready0 us with JIT45000 repeats 1 and 4; B=ready4000 us with JIT5000 repeats 2 and 3",
+  "runs": [
+    {
+      "run": 1,
+      "case": "A",
+      "jit_us": 45000,
+      "ready_us": 0,
+      "payload_mbps": 74.55428478571429,
+      "fresh_fps": 88.43325146618308,
+      "fresh_min_fps": 86.30670391061453,
+      "derived_delay_ms": 47.39090909090909,
+      "derived_delay_max_ms": 48.4,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 20
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "jit_us": 5000,
+      "ready_us": 4000,
+      "payload_mbps": 74.59134321428571,
+      "fresh_fps": 89.40992929292929,
+      "fresh_min_fps": 87.80444444444444,
+      "derived_delay_ms": 43.62181818181818,
+      "derived_delay_max_ms": 46.2,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 0
+    },
+    {
+      "run": 3,
+      "case": "B",
+      "jit_us": 5000,
+      "ready_us": 4000,
+      "payload_mbps": 74.59135599999999,
+      "fresh_fps": 89.66939393939394,
+      "fresh_min_fps": 88.70333333333333,
+      "derived_delay_ms": 41.61636363636364,
+      "derived_delay_max_ms": 43.8,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 0
+    },
+    {
+      "run": 4,
+      "case": "A",
+      "jit_us": 45000,
+      "ready_us": 0,
+      "payload_mbps": 74.5543635,
+      "fresh_fps": 88.60368551436149,
+      "fresh_min_fps": 86.80558659217877,
+      "derived_delay_ms": 45.874545454545455,
+      "derived_delay_max_ms": 46.9,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 16
+    }
+  ],
+  "abba_means": [
+    {
+      "case": "A",
+      "ready_us": 0,
+      "runs": 2,
+      "payload_mean_mbps": 74.55432414285714,
+      "fresh_mean_fps": 88.51846849027228,
+      "derived_delay_mean_ms": 46.63272727272727,
+      "holes_total": 0,
+      "safety_fallbacks_total": 36
+    },
+    {
+      "case": "B",
+      "ready_us": 4000,
+      "runs": 2,
+      "payload_mean_mbps": 74.59134960714286,
+      "fresh_mean_fps": 89.53966161616162,
+      "derived_delay_mean_ms": 42.61909090909091,
+      "holes_total": 0,
+      "safety_fallbacks_total": 0
+    }
+  ],
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "delay_note": "Derived software delay is not photon latency.",
+  "quality_note": "No claim is made about unique rendered content or full physical display at 90 Hz.",
+  "conclusion": "Ready4000 improves software delay but the report is bounded evidence only; interpret with freshness and fallback counts."
+}

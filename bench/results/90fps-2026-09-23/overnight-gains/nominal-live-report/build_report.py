@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import csv,matplotlib.pyplot as plt
+out=Path(__file__).resolve().parent
+runs=list(csv.DictReader((out/'runs.csv').open())); budgets=list(csv.DictReader((out/'budget_windows.csv').open()))
+for r in runs:
+ for k in ('run','holes'):r[k]=int(r[k])
+ for k in ('payload_mean_mbps','fresh_mean_fps','derived_delay_mean_ms'):r[k]=float(r[k])
+for r in budgets:r['window']=int(r['window']);r['budget_mbps']=float(r['budget_mbps']);r['run']=int(r['run'])
+fig,axs=plt.subplots(2,3,figsize=(14,7),constrained_layout=True)
+for c,col,label in (('A','#377eb8','A nominal0'),('B','#e41a1c','B nominal1')):
+ rr=[r for r in budgets if r['case']==c]
+ for run in sorted(set(r['run'] for r in rr)):
+  q=[r for r in rr if r['run']==run];axs[0,0].plot([r['window'] for r in q],[r['budget_mbps'] for r in q],color=col,alpha=.75,label=label if run==min(x['run'] for x in rr) else None)
+for ax,key,title,y in ((axs[0,1],'payload_mean_mbps','Payload mean','Mbps'),(axs[0,2],'fresh_mean_fps','Fresh mean','FPS'),(axs[1,0],'derived_delay_mean_ms','Derived software delay','ms'),(axs[1,1],'holes','Holes','count')):
+ x=list(range(len(runs)));ax.bar(x,[r[key] for r in runs],color=['#377eb8' if r['case']=='A' else '#e41a1c' for r in runs]);ax.set_xticks(x,[f"r{r['run']}" for r in runs]);ax.set_title(title);ax.set_ylabel(y);ax.grid(axis='y',alpha=.25)
+axs[0,0].set_title('Actual codec budget per window');axs[0,0].set_ylabel('Mbps');axs[0,0].set_xlabel('2 s window');axs[0,0].legend(fontsize=8);axs[1,2].axis('off');fig.suptitle('Nominal BBR live comparison');fig.savefig(out/'comparison.png',dpi=160);fig.savefig(out/'comparison.svg');plt.close(fig)

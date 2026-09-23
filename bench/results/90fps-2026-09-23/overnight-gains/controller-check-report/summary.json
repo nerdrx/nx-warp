@@ -1,0 +1,55 @@
+{
+  "scope": "sanitized controller check",
+  "settings": "requested500,90Hz,JIT5000,ready4000,cache1,predictor1,window0,tail64,120s",
+  "runs": [
+    {
+      "run": 1,
+      "case": "A",
+      "mode": "AIMD",
+      "budget_mean_mbps": 9.059642857142858,
+      "budget_min_mbps": 8.672,
+      "budget_max_mbps": 17.344,
+      "payload_mean_mbps": 4.9260049285714285,
+      "fresh_mean_fps": 45.63230303030303,
+      "fresh_min_fps": 42.40555555555555,
+      "derived_delay_mean_ms": 58.02909090909091,
+      "derived_delay_max_ms": 61.6,
+      "holes": 1,
+      "safety_fallbacks_postcutoff": 245
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "mode": "BBR",
+      "budget_mean_mbps": 9.517,
+      "budget_min_mbps": 9.517,
+      "budget_max_mbps": 9.517,
+      "payload_mean_mbps": 7.645024642857143,
+      "fresh_mean_fps": 78.21316161616161,
+      "fresh_min_fps": 73.255,
+      "derived_delay_mean_ms": 44.92545454545454,
+      "derived_delay_max_ms": 47.9,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 34
+    },
+    {
+      "run": 3,
+      "case": "A",
+      "mode": "AIMD",
+      "budget_mean_mbps": 8.788,
+      "budget_min_mbps": 8.788,
+      "budget_max_mbps": 8.788,
+      "payload_mean_mbps": 4.923397642857143,
+      "fresh_mean_fps": 45.7249595959596,
+      "fresh_min_fps": 42.904444444444444,
+      "derived_delay_mean_ms": 56.99818181818182,
+      "derived_delay_max_ms": 62.800000000000004,
+      "holes": 2,
+      "safety_fallbacks_postcutoff": 177
+    }
+  ],
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "budget_definition": "actual per-window server byte budget; startup 433.604 is excluded from means",
+  "conclusion": "AIMD collapses to single-digit codec budget and low freshness; BBR also remains far below requested500. Bad quality/default500 collapse; no quality-retention claim.",
+  "delay_note": "Derived software delay is not photon latency."
+}

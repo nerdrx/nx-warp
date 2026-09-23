@@ -1,0 +1,162 @@
+{
+  "scope": "sanitized current pointer live ABBA",
+  "implementation_label": "A=cache0 + predictor0; B=cache1 + predictor1; scalar decode",
+  "experiment": "fixed 500 Mbps requested (433.604 codec budget), 90 Hz, JIT 45000 us, window 0, tail 64, 120 s each",
+  "fixture": "dark duplicated photo with shifted8 every 4 frames",
+  "cutoff": "source+10 s",
+  "case_definition": "A=baseline (cache0,predictor0), repeats 1 and 4; B=cache+predictor (cache1,predictor1), repeats 2 and 3",
+  "payload_definition": "full-frame codec output including detail and safety; excludes transport/FEC/padding",
+  "byte_win_pct": 10.723108376308254,
+  "abba_means": [
+    {
+      "case": "A",
+      "metric": "codec_wire_mbps",
+      "runs": 2,
+      "mean_of_run_means": 83.52566924999999,
+      "min_run_mean": 83.49249414285714,
+      "max_run_mean": 83.55884435714286
+    },
+    {
+      "case": "A",
+      "metric": "server_encode_ms",
+      "runs": 2,
+      "mean_of_run_means": 4.378571428571428,
+      "min_run_mean": 4.373214285714286,
+      "max_run_mean": 4.383928571428571
+    },
+    {
+      "case": "A",
+      "metric": "decode_ms",
+      "runs": 2,
+      "mean_of_run_means": 0.5954545454545455,
+      "min_run_mean": 0.5945454545454545,
+      "max_run_mean": 0.5963636363636363
+    },
+    {
+      "case": "A",
+      "metric": "fresh_fps",
+      "runs": 2,
+      "mean_of_run_means": 87.62831827052176,
+      "min_run_mean": 87.48895192956563,
+      "max_run_mean": 87.7676846114779
+    },
+    {
+      "case": "A",
+      "metric": "derived_software_delay_ms",
+      "runs": 2,
+      "mean_of_run_means": 46.24454545454546,
+      "min_run_mean": 45.53090909090909,
+      "max_run_mean": 46.95818181818182
+    },
+    {
+      "case": "A",
+      "metric": "wire_ms",
+      "runs": 2,
+      "mean_of_run_means": 10.51909090909091,
+      "min_run_mean": 10.514545454545454,
+      "max_run_mean": 10.523636363636363
+    },
+    {
+      "case": "B",
+      "metric": "codec_wire_mbps",
+      "runs": 2,
+      "mean_of_run_means": 74.56912121428572,
+      "min_run_mean": 74.55418264285714,
+      "max_run_mean": 74.58405978571429
+    },
+    {
+      "case": "B",
+      "metric": "server_encode_ms",
+      "runs": 2,
+      "mean_of_run_means": 3.5901785714285714,
+      "min_run_mean": 3.5875,
+      "max_run_mean": 3.592857142857143
+    },
+    {
+      "case": "B",
+      "metric": "decode_ms",
+      "runs": 2,
+      "mean_of_run_means": 0.6854545454545454,
+      "min_run_mean": 0.6818181818181818,
+      "max_run_mean": 0.6890909090909091
+    },
+    {
+      "case": "B",
+      "metric": "fresh_fps",
+      "runs": 2,
+      "mean_of_run_means": 87.48388327752681,
+      "min_run_mean": 86.24071880819366,
+      "max_run_mean": 88.72704774685997
+    },
+    {
+      "case": "B",
+      "metric": "derived_software_delay_ms",
+      "runs": 2,
+      "mean_of_run_means": 46.013636363636365,
+      "min_run_mean": 45.96545454545454,
+      "max_run_mean": 46.06181818181818
+    },
+    {
+      "case": "B",
+      "metric": "wire_ms",
+      "runs": 2,
+      "mean_of_run_means": 10.380909090909089,
+      "min_run_mean": 10.116363636363635,
+      "max_run_mean": 10.645454545454545
+    }
+  ],
+  "windows": [
+    {
+      "run": 1,
+      "case": "A",
+      "cache": "0",
+      "payload_mbps": 83.55884435714286,
+      "fresh_fps": 87.7676846114779,
+      "decode_ms": 0.5963636363636363,
+      "derived_software_delay_ms": 46.95818181818182,
+      "holes": 87,
+      "safety_fallbacks_postcutoff": "10",
+      "wire_ms_min": 8.1
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "cache": "1",
+      "payload_mbps": 74.55418264285714,
+      "fresh_fps": 88.72704774685997,
+      "decode_ms": 0.6890909090909091,
+      "derived_software_delay_ms": 46.06181818181818,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": "11",
+      "wire_ms_min": 10.4
+    },
+    {
+      "run": 3,
+      "case": "B",
+      "cache": "1",
+      "payload_mbps": 74.58405978571429,
+      "fresh_fps": 86.24071880819366,
+      "decode_ms": 0.6818181818181818,
+      "derived_software_delay_ms": 45.96545454545454,
+      "holes": 37,
+      "safety_fallbacks_postcutoff": "16",
+      "wire_ms_min": 3.3
+    },
+    {
+      "run": 4,
+      "case": "A",
+      "cache": "0",
+      "payload_mbps": 83.49249414285714,
+      "fresh_fps": 87.48895192956563,
+      "decode_ms": 0.5945454545454545,
+      "derived_software_delay_ms": 45.53090909090909,
+      "holes": 82,
+      "safety_fallbacks_postcutoff": "20",
+      "wire_ms_min": 8.8
+    }
+  ],
+  "baseline_comparison": "Old scalar results are a distinct earlier experiment and are not a direct paired baseline here.",
+  "quality_note": "No quality change is inferred; byte exactness is covered by separate GPU fixture evidence. See ../compression-report/README.md.",
+  "promotion_note": "Predictor remains opt-in; this report does not promote a default.",
+  "network_note": "Both A and B contain network dips; inspect minimum-window wire/fresh values, not means alone."
+}

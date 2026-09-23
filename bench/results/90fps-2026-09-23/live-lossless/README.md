@@ -4,6 +4,8 @@ This is a paired server/Pico throughput smoke test using synthetic photo scenes 
 
 The run used native RGB888 capture, fixed 500 Mbps probing, compression credit disabled, and 64 tail packets in both codec modes. Each row is a full-frame lossless envelope, so the codec comparison does not introduce a quality tradeoff. Fixture byte identity is a separate proof and is intentionally not inferred from these throughput logs.
 
+`Payload Mbit/s` is encoded codec payload arithmetic and excludes transport, FEC, and optional tail padding; it is not link capacity.
+
 ## Results
 
 | Scene | Codec | Encoder fps | Payload Mbit/s | Encode ms | Source fps | Pico app-loop fps | Pico decode ms | Windows |

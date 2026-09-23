@@ -1,0 +1,49 @@
+{
+  "scope": "sanitized provisional benchmark",
+  "predictor_pairs": [
+    {
+      "scene": "forest",
+      "shift": "0",
+      "baseline_wire_bytes": 72856,
+      "predictor_wire_bytes": 66883,
+      "wire_saving_pct": 8.198363895904249,
+      "baseline_encode_ms": 3.682117,
+      "predictor_encode_ms": 4.171505,
+      "encode_delta_ms": 0.48938799999999993
+    },
+    {
+      "scene": "forest",
+      "shift": "8",
+      "baseline_wire_bytes": 71998,
+      "predictor_wire_bytes": 66332,
+      "wire_saving_pct": 7.869663046195727,
+      "baseline_encode_ms": 3.749288,
+      "predictor_encode_ms": 4.164876,
+      "encode_delta_ms": 0.4155879999999996
+    },
+    {
+      "scene": "dark",
+      "shift": "0",
+      "baseline_wire_bytes": 110545,
+      "predictor_wire_bytes": 99365,
+      "wire_saving_pct": 10.113528427337284,
+      "baseline_encode_ms": 4.226076,
+      "predictor_encode_ms": 4.766736,
+      "encode_delta_ms": 0.5406599999999999
+    },
+    {
+      "scene": "dark",
+      "shift": "8",
+      "baseline_wire_bytes": 110550,
+      "predictor_wire_bytes": 98874,
+      "wire_saving_pct": 10.561736770691995,
+      "baseline_encode_ms": 4.130635,
+      "predictor_encode_ms": 4.721956,
+      "encode_delta_ms": 0.5913209999999998
+    }
+  ],
+  "raw_exact_hashes_verified": 4,
+  "details": "full-frame NXDF codec payload including detail+safety; excludes transport/FEC/padding",
+  "pico_decoder": "production-zstd-bench-pico.csv: pointer-local-v2 versus ordinary-zstd-v1; exact roundtrip field retained; NEON excluded",
+  "fixture_scope": "CPU NV12 conversion, two identical photo eyes; not real game or physical motion"
+}

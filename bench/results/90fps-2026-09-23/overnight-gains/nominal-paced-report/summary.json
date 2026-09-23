@@ -1,0 +1,99 @@
+{
+  "scope": "sanitized rejected nominal-paced matrix",
+  "settings": "auto true, requested500, 90Hz, JIT45000, cache1, predictor1, nominal_bbr ABBA, window0.3, tail0, 120s each",
+  "runs": [
+    {
+      "run": 1,
+      "case": "A",
+      "nominal_bbr": "0",
+      "window": 0.3,
+      "tail": 0,
+      "budget_mean_mbps": 9.724,
+      "budget_min_mbps": 9.724,
+      "budget_max_mbps": 9.724,
+      "payload_mean_mbps": 7.823716142857143,
+      "fresh_mean_fps": 75.9386569042379,
+      "fresh_min_fps": 69.76666666666667,
+      "derived_delay_mean_ms": 46.33090909090909,
+      "derived_delay_max_ms": 49.2,
+      "holes": 5,
+      "safety_fallbacks_postcutoff": 63
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "nominal_bbr": "1",
+      "window": 0.3,
+      "tail": 0,
+      "budget_mean_mbps": 21.192357142857144,
+      "budget_min_mbps": 20.161,
+      "budget_max_mbps": 57.855,
+      "payload_mean_mbps": 10.151342142857143,
+      "fresh_mean_fps": 88.17770640166088,
+      "fresh_min_fps": 77.24166666666667,
+      "derived_delay_mean_ms": 43.583636363636366,
+      "derived_delay_max_ms": 46.9,
+      "holes": 5,
+      "safety_fallbacks_postcutoff": 20
+    },
+    {
+      "run": 3,
+      "case": "B",
+      "nominal_bbr": "1",
+      "window": 0.3,
+      "tail": 0,
+      "budget_mean_mbps": 25.257624999999997,
+      "budget_min_mbps": 20.798,
+      "budget_max_mbps": 86.816,
+      "payload_mean_mbps": 11.034379071428571,
+      "fresh_mean_fps": 80.23397196471225,
+      "fresh_min_fps": 67.92359550561798,
+      "derived_delay_mean_ms": 41.71272727272727,
+      "derived_delay_max_ms": 50.5,
+      "holes": 16,
+      "safety_fallbacks_postcutoff": 82
+    },
+    {
+      "run": 4,
+      "case": "A",
+      "nominal_bbr": "0",
+      "window": 0.3,
+      "tail": 0,
+      "budget_mean_mbps": 10.451,
+      "budget_min_mbps": 10.451,
+      "budget_max_mbps": 10.451,
+      "payload_mean_mbps": 8.399652928571427,
+      "fresh_mean_fps": 82.27784792054625,
+      "fresh_min_fps": 72.75530726256984,
+      "derived_delay_mean_ms": 42.63090909090909,
+      "derived_delay_max_ms": 46.0,
+      "holes": 4,
+      "safety_fallbacks_postcutoff": 31
+    }
+  ],
+  "abba_means": [
+    {
+      "case": "A",
+      "runs": 2,
+      "budget_mean_mbps": 10.0875,
+      "payload_mean_mbps": 8.111684535714286,
+      "fresh_mean_fps": 79.10825241239208,
+      "derived_delay_mean_ms": 44.480909090909094,
+      "holes_total": 9,
+      "fallbacks_total": 94
+    },
+    {
+      "case": "B",
+      "runs": 2,
+      "budget_mean_mbps": 23.22499107142857,
+      "payload_mean_mbps": 10.592860607142857,
+      "fresh_mean_fps": 84.20583918318657,
+      "derived_delay_mean_ms": 42.64818181818182,
+      "holes_total": 21,
+      "fallbacks_total": 102
+    }
+  ],
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "rejection": "Auto mode still collapses far below requested500; this does not demonstrate quality retention and was removed from production.",
+  "delay_note": "Derived software delay is not photon latency."
+}

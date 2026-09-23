@@ -1,0 +1,140 @@
+{
+  "scope": "live-predictor-report",
+  "implementation_label": "old scalar pre-pointer-fix",
+  "abba_means": [
+    {
+      "case": "A",
+      "metric": "codec_wire_mbps",
+      "runs": 2,
+      "mean_of_run_means": 83.5891995609756,
+      "min_run_mean": 83.56092107317073,
+      "max_run_mean": 83.61747804878048
+    },
+    {
+      "case": "A",
+      "metric": "server_encode_ms",
+      "runs": 2,
+      "mean_of_run_means": 4.337804878048781,
+      "min_run_mean": 4.336585365853659,
+      "max_run_mean": 4.339024390243902
+    },
+    {
+      "case": "A",
+      "metric": "decode_ms",
+      "runs": 2,
+      "mean_of_run_means": 0.6,
+      "min_run_mean": 0.6,
+      "max_run_mean": 0.6
+    },
+    {
+      "case": "A",
+      "metric": "fresh_fps",
+      "runs": 2,
+      "mean_of_run_means": 88.39867008069521,
+      "min_run_mean": 88.24273355058969,
+      "max_run_mean": 88.55460661080075
+    },
+    {
+      "case": "A",
+      "metric": "derived_software_delay_ms",
+      "runs": 2,
+      "mean_of_run_means": 45.35875,
+      "min_run_mean": 44.505,
+      "max_run_mean": 46.2125
+    },
+    {
+      "case": "B",
+      "metric": "codec_wire_mbps",
+      "runs": 2,
+      "mean_of_run_means": 74.54633785365854,
+      "min_run_mean": 74.52642926829269,
+      "max_run_mean": 74.5662464390244
+    },
+    {
+      "case": "B",
+      "metric": "server_encode_ms",
+      "runs": 2,
+      "mean_of_run_means": 3.678048780487805,
+      "min_run_mean": 3.624390243902439,
+      "max_run_mean": 3.731707317073171
+    },
+    {
+      "case": "B",
+      "metric": "decode_ms",
+      "runs": 2,
+      "mean_of_run_means": 1.1075,
+      "min_run_mean": 1.0825,
+      "max_run_mean": 1.1325
+    },
+    {
+      "case": "B",
+      "metric": "fresh_fps",
+      "runs": 2,
+      "mean_of_run_means": 83.23156040502793,
+      "min_run_mean": 82.47620282433272,
+      "max_run_mean": 83.98691798572315
+    },
+    {
+      "case": "B",
+      "metric": "derived_software_delay_ms",
+      "runs": 2,
+      "mean_of_run_means": 47.01375,
+      "min_run_mean": 47.0025,
+      "max_run_mean": 47.025
+    }
+  ],
+  "windows": [
+    {
+      "run": 1,
+      "case": "A",
+      "cache": "0",
+      "payload_mbps": 83.61747804878048,
+      "fresh_fps": 88.55460661080075,
+      "decode_ms": 0.6,
+      "derived_software_delay_ms": 44.505,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 3,
+      "wire_ms_min": 10.3
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "cache": "1",
+      "payload_mbps": 74.5662464390244,
+      "fresh_fps": 82.47620282433272,
+      "decode_ms": 1.0825,
+      "derived_software_delay_ms": 47.0025,
+      "holes": 160,
+      "safety_fallbacks_postcutoff": 52,
+      "wire_ms_min": 8.8
+    },
+    {
+      "run": 3,
+      "case": "B",
+      "cache": "1",
+      "payload_mbps": 74.52642926829269,
+      "fresh_fps": 83.98691798572315,
+      "decode_ms": 1.1325,
+      "derived_software_delay_ms": 47.025,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 19,
+      "wire_ms_min": 9.6
+    },
+    {
+      "run": 4,
+      "case": "A",
+      "cache": "0",
+      "payload_mbps": 83.56092107317073,
+      "fresh_fps": 88.24273355058969,
+      "decode_ms": 0.6,
+      "derived_software_delay_ms": 46.2125,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 7,
+      "wire_ms_min": 6.8
+    }
+  ],
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "p95_note": "p95 is across 2 s summary windows, not per-frame",
+  "derived_note": "derived software delay is not photon latency",
+  "safety_note": "fallback counts are post source+10 s cutoff"
+}
