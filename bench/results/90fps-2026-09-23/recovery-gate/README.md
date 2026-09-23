@@ -35,3 +35,13 @@ passes. These numbers are **simulated controller time, not live Pico timings**.
 The user requested no restart, so the new policy has not been live-tested or
 activated in their existing session. Faster probing may overshoot a variable
 link more often; a paired device check remains necessary.
+
+### Stronger clean probes
+
+The next opt-in variant raises proportional recovery steps from 15% to 35%,
+keeping the same clean-feedback gates, 250 ms hold, radio checks and ceiling.
+The identical simulated 327.68 → 1000 Mbit/s recovery takes **4.01 s**
+(15%: 7.90 s; original gate: 55.21 s). Normal and NDEBUG tests pass, including
+continued-loss backoff and blocked recovery with late/slow feedback.
+Larger steps increase overshoot risk on real Wi-Fi. No restart or live test
+was performed; this remains a candidate for the next user test.
