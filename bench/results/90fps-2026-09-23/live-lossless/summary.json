@@ -1,0 +1,70 @@
+{
+  "source": "windows.json",
+  "window_policy": {
+    "server_warmup_discarded": 5,
+    "retained_complete_windows": 20,
+    "p95": "nearest-rank p95 of retained window means"
+  },
+  "rows": [
+    {
+      "scene": "crowd",
+      "codec": "LZ4",
+      "fps": 90.0,
+      "fps_p95": 90.5,
+      "payload": 152.634962,
+      "payload_p95": 153.485828,
+      "encode": 4.195,
+      "decode": 0.2,
+      "decode_p95": 0.2,
+      "render": 89.445,
+      "source": 85.275,
+      "windows": 20
+    },
+    {
+      "scene": "crowd",
+      "codec": "Zstd",
+      "fps": 90.075,
+      "fps_p95": 90.5,
+      "payload": 103.5417856,
+      "payload_p95": 104.025044,
+      "encode": 5.075,
+      "decode": 0.6,
+      "decode_p95": 0.6,
+      "render": 89.45,
+      "source": 85.4,
+      "windows": 20
+    },
+    {
+      "scene": "forest",
+      "codec": "LZ4",
+      "fps": 90.0,
+      "fps_p95": 90.0,
+      "payload": 76.51296,
+      "payload_p95": 76.51656,
+      "encode": 3.405,
+      "decode": 0.2,
+      "decode_p95": 0.2,
+      "render": 89.455,
+      "source": 87.275,
+      "windows": 20
+    },
+    {
+      "scene": "forest",
+      "codec": "Zstd",
+      "fps": 90.0,
+      "fps_p95": 90.0,
+      "payload": 52.8336708,
+      "payload_p95": 52.84224,
+      "encode": 3.75,
+      "decode": 0.4,
+      "decode_p95": 0.4,
+      "render": 89.44,
+      "source": 88.4,
+      "windows": 20
+    }
+  ],
+  "reductions_percent": {
+    "crowd": 32.163781978076564,
+    "forest": 30.948076247474944
+  }
+}

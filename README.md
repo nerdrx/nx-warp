@@ -32,6 +32,14 @@ The practical starting point is **100% stream scale, 90 Hz and a 160 Mbit/s ceil
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### Live Pico check: fewer bytes, same encoded detail
+
+Matched 500 Mbit/s quality-budget photo workloads now send **103.5 instead of 152.6 Mbit/s** for the crowded scene and **52.8 instead of 76.5 Mbit/s** for the forest: **31–32% less complete-frame payload** with lossless Zstd selection. Both remain approximately 90 encoded FPS; client fresh-source selection was 85–88 FPS, not a claim of 90 unique displayed frames. Pico decode telemetry increased by roughly 0.2–0.4 ms.
+
+[Paired live measurements and reproduction](bench/results/90fps-2026-09-23/live-lossless/README.md) · [Optional transport-tail tradeoffs](bench/results/90fps-2026-09-23/photo-tail/README.md) · [Automatic-bitrate comparison](bench/results/90fps-2026-09-23/photo-auto/README.md)
+
+![Live lossless compression comparison](bench/results/90fps-2026-09-23/live-lossless/comparison.png)
+
 ### 23 September: stronger lossless compression, same decoded detail
 
 The native path can now choose **Zstd level 3 or LZ4 per detail image**. On three supplied VRChat screenshots, Zstd reduced detail bytes by **28–41% relative to LZ4**, with exactly the same decoded RGB888 representation. Pico production decode helpers measured **0.31–0.35 ms median**, around **0.20–0.23 ms more than LZ4**. The safety image stays independent.
