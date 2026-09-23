@@ -1,0 +1,68 @@
+{
+  "source": "photo-saved-settings",
+  "runner_complete": true,
+  "validation": "saved SERVER auto configuration; native RGB888, Zstd3, compression credit off, tail padding 64, newest selection, ready 0; headset saved presets were 500/90 from prior runs, with no debug bitrate or refresh override",
+  "fixture": "10-minute crowd-shift photo sequence; this is not a game or photon-latency measurement",
+  "server": {
+    "retained_windows": 295,
+    "encoder_fps": {
+      "count": 295,
+      "mean": 90.19491525423729,
+      "median": 90.0,
+      "p95": 90.5,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "encode_ms": {
+      "count": 295,
+      "mean": 4.456271186440678,
+      "median": 4.5,
+      "p95": 5.1,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "payload_mbps": {
+      "count": 295,
+      "mean": 83.4999196338983,
+      "median": 86.925612,
+      "p95": 103.472632,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    }
+  },
+  "client": {
+    "retained_windows": 294,
+    "renderloop_fps": {
+      "count": 294,
+      "mean": 89.43469387755103,
+      "median": 89.3,
+      "p95": 89.8,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "new_source_fps": {
+      "count": 294,
+      "mean": 85.19727891156462,
+      "median": 85.5,
+      "p95": 89.0,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "own_gpu_ms": {
+      "count": 294,
+      "mean": 3.5877551020408163,
+      "median": 3.7,
+      "p95": 4.2,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "network_holes_total": 57,
+    "predicted_runtime_first_arrival_to_prediction_ms": {
+      "count": 294,
+      "mean": 39.094897959183676,
+      "median": 39.0,
+      "p95": 42.7,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    }
+  },
+  "fresh_source_fps_mean": 85.19727891156462,
+  "fresh_source_fps_min": 56.5,
+  "notes": [
+    "Metrics are sanitized numeric windows from the paired analyzer.",
+    "Predicted runtime is same-client-clock telemetry and is not photon or physical end-to-end latency."
+  ]
+}
