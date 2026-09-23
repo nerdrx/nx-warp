@@ -40,6 +40,13 @@ Matched 500 Mbit/s quality-budget photo workloads now send **103.5 instead of 15
 
 ![Live lossless compression comparison](bench/results/90fps-2026-09-23/live-lossless/comparison.png)
 
+A completed **20-minute changing-photo soak** at automatic 500 Mbit/s quality budget averaged **89.96 encoded FPS / 84.71 fresh-source selections/s**. Its worst two-second fresh-source window was **51 FPS**; 141 incomplete units were recorded among 106,884 closures. The loss burst happened before shutdown and remains in the evidence. This is useful compression progress, **not a solved smoothness claim**. [Full timeline and limitations](bench/results/90fps-2026-09-23/scene-change-soak/README.md).
+
+![Twenty-minute cadence and payload timeline](bench/results/90fps-2026-09-23/scene-change-soak/overview.png)
+
+A short fixed-bitrate sweep also checked 25, 100, 200, 350 and 500 Mbit/s settings: actual crowded-scene payload ranged from **11.6 to 103.6 Mbit/s**. Requested quality budget and transmitted payload are intentionally distinct; these isolated settings do not prove rapid automatic recovery. [Bitrate sweep](bench/results/90fps-2026-09-23/photo-rate/README.md).
+
+
 ### 23 September: stronger lossless compression, same decoded detail
 
 The native path can now choose **Zstd level 3 or LZ4 per detail image**. On three supplied VRChat screenshots, Zstd reduced detail bytes by **28–41% relative to LZ4**, with exactly the same decoded RGB888 representation. Pico production decode helpers measured **0.31–0.35 ms median**, around **0.20–0.23 ms more than LZ4**. The safety image stays independent.

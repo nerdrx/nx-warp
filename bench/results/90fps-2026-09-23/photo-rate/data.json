@@ -1,0 +1,266 @@
+{
+  "generated_utc": "2026-09-23T01:08:49.686018+00:00",
+  "complete": true,
+  "cases": {
+    "crowd-mbps25": {
+      "requested_mbps": 25,
+      "server": {
+        "retained_windows": 20,
+        "encoder_fps": {
+          "count": 20,
+          "mean": 90.0,
+          "median": 90.0,
+          "p95": 90.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "encode_ms": {
+          "count": 20,
+          "mean": 1.7,
+          "median": 1.7,
+          "p95": 1.7,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "payload_mbps": {
+          "count": 20,
+          "mean": 11.638296,
+          "median": 11.63808,
+          "p95": 11.6388,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "client": {
+        "retained_windows": 19,
+        "new_source_fps": {
+          "count": 19,
+          "mean": 88.26315789473684,
+          "median": 88.5,
+          "p95": 90.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "renderloop_fps": {
+          "count": 19,
+          "mean": 89.41578947368421,
+          "median": 89.3,
+          "p95": 89.8,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "decode_ms": {
+          "count": 19,
+          "mean": 0.1,
+          "median": 0.1,
+          "p95": 0.1,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "network_holes": 0
+    },
+    "crowd-mbps100": {
+      "requested_mbps": 100,
+      "server": {
+        "retained_windows": 20,
+        "encoder_fps": {
+          "count": 20,
+          "mean": 89.8,
+          "median": 90.0,
+          "p95": 90.5,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "encode_ms": {
+          "count": 20,
+          "mean": 2.24,
+          "median": 2.2,
+          "p95": 2.3,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "payload_mbps": {
+          "count": 20,
+          "mean": 28.760102,
+          "median": 28.82412,
+          "p95": 28.984616,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "client": {
+        "retained_windows": 19,
+        "new_source_fps": {
+          "count": 19,
+          "mean": 81.86842105263158,
+          "median": 82.0,
+          "p95": 86.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "renderloop_fps": {
+          "count": 19,
+          "mean": 89.4421052631579,
+          "median": 89.3,
+          "p95": 90.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "decode_ms": {
+          "count": 19,
+          "mean": 0.1,
+          "median": 0.1,
+          "p95": 0.1,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "network_holes": 5
+    },
+    "crowd-mbps200": {
+      "requested_mbps": 200,
+      "server": {
+        "retained_windows": 20,
+        "encoder_fps": {
+          "count": 20,
+          "mean": 89.95,
+          "median": 90.0,
+          "p95": 90.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "encode_ms": {
+          "count": 20,
+          "mean": 2.72,
+          "median": 2.7,
+          "p95": 2.9,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "payload_mbps": {
+          "count": 20,
+          "mean": 41.5176092,
+          "median": 41.53968,
+          "p95": 41.54472,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "client": {
+        "retained_windows": 20,
+        "new_source_fps": {
+          "count": 20,
+          "mean": 88.475,
+          "median": 88.5,
+          "p95": 90.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "renderloop_fps": {
+          "count": 20,
+          "mean": 89.44,
+          "median": 89.3,
+          "p95": 89.8,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "decode_ms": {
+          "count": 20,
+          "mean": 0.2,
+          "median": 0.2,
+          "p95": 0.2,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "network_holes": 0
+    },
+    "crowd-mbps350": {
+      "requested_mbps": 350,
+      "server": {
+        "retained_windows": 20,
+        "encoder_fps": {
+          "count": 20,
+          "mean": 89.85,
+          "median": 90.0,
+          "p95": 90.5,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "encode_ms": {
+          "count": 20,
+          "mean": 3.73,
+          "median": 3.7,
+          "p95": 3.9,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "payload_mbps": {
+          "count": 20,
+          "mean": 55.8235484,
+          "median": 55.904039999999995,
+          "p95": 56.21498,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "client": {
+        "retained_windows": 20,
+        "new_source_fps": {
+          "count": 20,
+          "mean": 85.725,
+          "median": 85.75,
+          "p95": 89.0,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "renderloop_fps": {
+          "count": 20,
+          "mean": 89.43,
+          "median": 89.3,
+          "p95": 89.7,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "decode_ms": {
+          "count": 20,
+          "mean": 0.3,
+          "median": 0.3,
+          "p95": 0.3,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "network_holes": 0
+    },
+    "crowd-mbps500": {
+      "requested_mbps": 500,
+      "server": {
+        "retained_windows": 21,
+        "encoder_fps": {
+          "count": 21,
+          "mean": 90.11904761904762,
+          "median": 90.0,
+          "p95": 90.5,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "encode_ms": {
+          "count": 21,
+          "mean": 4.89047619047619,
+          "median": 4.8,
+          "p95": 5.1,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "payload_mbps": {
+          "count": 21,
+          "mean": 103.59261542857143,
+          "median": 103.45896,
+          "p95": 104.035904,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "client": {
+        "retained_windows": 20,
+        "new_source_fps": {
+          "count": 20,
+          "mean": 85.325,
+          "median": 86.25,
+          "p95": 88.5,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "renderloop_fps": {
+          "count": 20,
+          "mean": 89.42999999999999,
+          "median": 89.3,
+          "p95": 89.8,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        },
+        "decode_ms": {
+          "count": 20,
+          "mean": 0.595,
+          "median": 0.6,
+          "p95": 0.6,
+          "p95_definition": "nearest-rank ceil(0.95*n)-1"
+        }
+      },
+      "network_holes": 20
+    }
+  }
+}

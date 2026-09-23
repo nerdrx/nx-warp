@@ -1,0 +1,412 @@
+{
+  "run_guard": {
+    "final_host_guard": "REVERTED 29f74462",
+    "shutdown_validation": "shutdown markers occur after retained measurement windows; final server exit status 0; shutdown behavior excluded from metrics"
+  },
+  "workload": {
+    "scenes": [
+      "forest",
+      "crowd",
+      "dark"
+    ],
+    "switch_every_stereo_frames": 1800,
+    "switch_period_approx_s": 20,
+    "codec": "auto500 tail64 Zstd native RGB888 credit off newest-direct ready-wait 0"
+  },
+  "series": {
+    "encoder_fps": {
+      "count": 594,
+      "mean": 89.95707070707071,
+      "median": 90.0,
+      "p95": 90.0,
+      "min": 89.0,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "new_source_fps": {
+      "count": 594,
+      "mean": 84.70959595959596,
+      "median": 85.5,
+      "p95": 89.5,
+      "min": 51.0,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "app_renderloop_fps": {
+      "count": 594,
+      "mean": 89.43703703703703,
+      "median": 89.3,
+      "p95": 89.8,
+      "min": 88.8,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "bytes_payload_mbps": {
+      "count": 594,
+      "mean": 71.5777502020202,
+      "median": 74.48148,
+      "p95": 103.37688,
+      "min": 19.81008,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "wire_ms": {
+      "count": 594,
+      "mean": 2.578619528619529,
+      "median": 2.6,
+      "p95": 3.8,
+      "min": 0.6,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "own_gpu_ms": {
+      "count": 594,
+      "mean": 3.9291245791245792,
+      "median": 4.1,
+      "p95": 4.2,
+      "min": 1.8,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "predicted_runtime_first_arrival_to_prediction_ms": {
+      "count": 594,
+      "mean": 38.6037037037037,
+      "median": 38.800000000000004,
+      "p95": 41.9,
+      "min": 30.8,
+      "p95_definition": "nearest-rank ceil(0.95*n)-1"
+    },
+    "network_holes_total": 141,
+    "network_frames_closed": 106884,
+    "min_window_new_source_fps": 51.0,
+    "window_count": 594
+  },
+  "late_regression": {
+    "window_indices": [
+      557,
+      558,
+      571,
+      576
+    ],
+    "min_fresh_window_index": 557,
+    "observed_holes": [
+      61,
+      76,
+      2,
+      1
+    ],
+    "citations": [
+      "client log line 25127",
+      "client log line 25172",
+      "client log line 25902",
+      "client log line 26175"
+    ],
+    "note": "late-run burst with sharp cadence/loss regression; retained as valid evidence, no cause inferred"
+  },
+  "runtime_reported_gpu_temp_c": {
+    "min_positive": 55.8,
+    "max": 79.9,
+    "note": "PxrMetric runtime-reported field only; not thermal proof"
+  },
+  "scene_switches": [
+    {
+      "scene": "forest",
+      "stereo_frame": 0,
+      "citation": "scene log line 308"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 1800,
+      "citation": "scene log line 320"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 3600,
+      "citation": "scene log line 331"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 5400,
+      "citation": "scene log line 342"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 7200,
+      "citation": "scene log line 353"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 9000,
+      "citation": "scene log line 364"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 10800,
+      "citation": "scene log line 375"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 12600,
+      "citation": "scene log line 386"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 14400,
+      "citation": "scene log line 397"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 16200,
+      "citation": "scene log line 408"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 18000,
+      "citation": "scene log line 419"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 19800,
+      "citation": "scene log line 430"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 21600,
+      "citation": "scene log line 441"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 23400,
+      "citation": "scene log line 452"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 25200,
+      "citation": "scene log line 463"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 27000,
+      "citation": "scene log line 474"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 28800,
+      "citation": "scene log line 485"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 30600,
+      "citation": "scene log line 496"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 32400,
+      "citation": "scene log line 507"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 34200,
+      "citation": "scene log line 518"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 36000,
+      "citation": "scene log line 529"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 37800,
+      "citation": "scene log line 540"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 39600,
+      "citation": "scene log line 551"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 41400,
+      "citation": "scene log line 562"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 43200,
+      "citation": "scene log line 573"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 45000,
+      "citation": "scene log line 584"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 46800,
+      "citation": "scene log line 595"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 48600,
+      "citation": "scene log line 606"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 50400,
+      "citation": "scene log line 617"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 52200,
+      "citation": "scene log line 628"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 54000,
+      "citation": "scene log line 639"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 55800,
+      "citation": "scene log line 650"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 57600,
+      "citation": "scene log line 661"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 59400,
+      "citation": "scene log line 672"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 61200,
+      "citation": "scene log line 683"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 63000,
+      "citation": "scene log line 694"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 64800,
+      "citation": "scene log line 705"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 66600,
+      "citation": "scene log line 716"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 68400,
+      "citation": "scene log line 727"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 70200,
+      "citation": "scene log line 738"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 72000,
+      "citation": "scene log line 749"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 73800,
+      "citation": "scene log line 760"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 75600,
+      "citation": "scene log line 771"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 77400,
+      "citation": "scene log line 782"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 79200,
+      "citation": "scene log line 793"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 81000,
+      "citation": "scene log line 804"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 82800,
+      "citation": "scene log line 815"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 84600,
+      "citation": "scene log line 826"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 86400,
+      "citation": "scene log line 837"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 88200,
+      "citation": "scene log line 848"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 90000,
+      "citation": "scene log line 859"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 91800,
+      "citation": "scene log line 870"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 93600,
+      "citation": "scene log line 881"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 95400,
+      "citation": "scene log line 892"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 97200,
+      "citation": "scene log line 903"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 99000,
+      "citation": "scene log line 914"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 100800,
+      "citation": "scene log line 925"
+    },
+    {
+      "scene": "forest",
+      "stereo_frame": 102600,
+      "citation": "scene log line 936"
+    },
+    {
+      "scene": "crowd",
+      "stereo_frame": 104400,
+      "citation": "scene log line 947"
+    },
+    {
+      "scene": "dark",
+      "stereo_frame": 106200,
+      "citation": "scene log line 958"
+    }
+  ],
+  "_method": {
+    "windowing": "bundled independent complete 2-second windows",
+    "p95": "nearest-rank ceil(0.95*n)-1",
+    "predicted_runtime": "wire + queue + decode + decode-to-selection + selection-to-predicted; approximate same-client-clock estimate, no photon claim"
+  }
+}
