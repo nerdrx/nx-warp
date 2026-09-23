@@ -38,6 +38,10 @@ An optional lossless byte predictor saves **another 8–11% of complete codec pa
 
 Separately, a matched timing comparison moved the derived software delay **46.63 → 42.62 ms** and fresh-source selections **88.52 → 89.54/s**, with zero incomplete units in both arms. The candidate caps JIT sleeping at 5 ms and permits up to 4 ms of waiting for a fresh stereo image when the current one would repeat. These are bounded duplicated-photo measurements, not physical photon latency or proof of sustained 90 unique displayed frames/s. No global timing defaults changed.
 
+With the whole source picture changing every stereo frame, four usable runs measured **71.24 → 63.74 Mbit/s (10.5% less)** at unchanged planning budget, with both configurations near 90 fresh-source selections/s and no incomplete units. Host encode time rose **4.21 → 4.86 ms** and Pico decode telemetry **0.5 → 0.6 ms**. One control was repeated after an interrupted longer capture, so this is not contiguous ABBA. [Changing-picture results](bench/results/90fps-2026-09-23/overnight-gains/churn-pointer-report/README.md).
+
+The separate automatic-controller diagnostic avoids timing-only quality cuts, but upward recovery remains unresolved. Its interrupted long capture averaged 89.55 fresh selections/s while the quality request dropped from 500 to 295.2 Mbit/s; that is **not retained-quality proof**. [Quality and cadence timeline](bench/results/90fps-2026-09-23/overnight-gains/changing-soak-report/README.md).
+
 [Evidence, reproduction and rejected experiments](bench/results/90fps-2026-09-23/overnight-gains/README.md) · [Compression ABBA](bench/results/90fps-2026-09-23/overnight-gains/pointer-live-report/README.md) · [Timing ABBA](bench/results/90fps-2026-09-23/overnight-gains/ready-abba-report/README.md)
 
 ![Paired live timing comparison](bench/results/90fps-2026-09-23/overnight-gains/ready-abba-report/comparison.png)

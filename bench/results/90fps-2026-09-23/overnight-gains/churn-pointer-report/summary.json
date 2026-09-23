@@ -1,0 +1,54 @@
+{
+  "scope": "sanitized final churn pointer matrix",
+  "status": "four usable runs with a long gap before A4 replacement",
+  "runs": [
+    {
+      "run": 1,
+      "label": "A1 baseline",
+      "payload_mbps": 71.2165355,
+      "encode_ms": 4.367857142857143,
+      "decode_ms": 0.5,
+      "fresh_fps": 89.40794949494949,
+      "derived_delay_ms": 43.14181818181818,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 1
+    },
+    {
+      "run": 2,
+      "label": "B2 candidate",
+      "payload_mbps": 63.74494414285714,
+      "encode_ms": 4.858928571428572,
+      "decode_ms": 0.6,
+      "fresh_fps": 89.68933333333334,
+      "derived_delay_ms": 41.46,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 0
+    },
+    {
+      "run": 3,
+      "label": "B3 candidate",
+      "payload_mbps": 63.7395795,
+      "encode_ms": 4.860714285714286,
+      "decode_ms": 0.6,
+      "fresh_fps": 89.70383838383839,
+      "derived_delay_ms": 40.70363636363636,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 0
+    },
+    {
+      "run": 4,
+      "label": "A4 replacement baseline",
+      "payload_mbps": 71.2609745,
+      "encode_ms": 4.058928571428571,
+      "decode_ms": 0.5,
+      "fresh_fps": 89.3157356995368,
+      "derived_delay_ms": 42.945454545454545,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 2
+    }
+  ],
+  "invalid_run": "Original A4 disconnected immediately after source upload and remains excluded as invalid.",
+  "gap_note": "A4 replacement ran only after the 15-minute changing-loss-only soak; A1/B2/B3/A4 are labeled runs, not a contiguous ABBA sequence.",
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "delay_note": "Derived software delay is not photon latency."
+}

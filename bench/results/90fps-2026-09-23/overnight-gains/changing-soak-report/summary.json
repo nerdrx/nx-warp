@@ -1,0 +1,47 @@
+{
+  "scope": "sanitized interrupted changing-loss-only soak",
+  "status": "INTERRUPTED by supervisor at approximately 900 seconds; no normal completion marker",
+  "settings": "AIMD loss-only, requested500, 90Hz, JIT5000, ready4000, cache1, predictor1, window0, tail64",
+  "window_count": 444,
+  "budget_mbps_mean": 304.3049527027027,
+  "budget_mbps_min": 256.039,
+  "payload_mbps_mean": 41.19628706306306,
+  "fresh_fps_mean": 89.54850096643605,
+  "fresh_fps_min": 79.41166666666668,
+  "holes": 5,
+  "transitions": [
+    {
+      "step": 1,
+      "user_ceiling_from_mbps": 500.0,
+      "user_ceiling_to_mbps": 450.0,
+      "cause": "congestion"
+    },
+    {
+      "step": 2,
+      "user_ceiling_from_mbps": 450.0,
+      "user_ceiling_to_mbps": 405.0,
+      "cause": "congestion"
+    },
+    {
+      "step": 3,
+      "user_ceiling_from_mbps": 405.0,
+      "user_ceiling_to_mbps": 364.5,
+      "cause": "radio degrading"
+    },
+    {
+      "step": 4,
+      "user_ceiling_from_mbps": 364.5,
+      "user_ceiling_to_mbps": 328.1,
+      "cause": "congestion"
+    },
+    {
+      "step": 5,
+      "user_ceiling_from_mbps": 328.1,
+      "user_ceiling_to_mbps": 295.2,
+      "cause": "radio degrading"
+    }
+  ],
+  "interpretation": "Budget descends through the listed controller transitions and does not recover before interruption; this is descriptive telemetry, not a successful soak or quality-retention proof.",
+  "delay_note": "Derived software delay is not photon latency.",
+  "budget_definition": "Controller ceiling transitions are 500\u2192450\u2192405\u2192364.5\u2192328.1\u2192295.2 Mbps; actual direct planning budget is 433.604\u2192256.039 Mbit/s, with mean 304.3 Mbit/s."
+}

@@ -1,0 +1,93 @@
+{
+  "scope": "sanitized AIMD span-only ABBA",
+  "settings": "requested500,90Hz,JIT5000,ready4000,cache1,predictor1,window0,tail64,120s",
+  "case_definition": "A AIMD loss_only0 repeats 1 and 4; B AIMD loss_only1 repeats 2 and 3",
+  "runs": [
+    {
+      "run": 1,
+      "case": "A",
+      "aimd_loss_only": "0",
+      "budget_mean_mbps": 8.672,
+      "budget_min_mbps": 8.672,
+      "budget_final_mbps": 8.672,
+      "payload_mean_mbps": 4.911274428571429,
+      "fresh_mean_fps": 45.710878787878784,
+      "fresh_min_fps": 43.90222222222222,
+      "derived_delay_mean_ms": 58.64181818181818,
+      "derived_delay_max_ms": 61.9,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 193
+    },
+    {
+      "run": 2,
+      "case": "B",
+      "aimd_loss_only": "1",
+      "budget_mean_mbps": 422.4542142857143,
+      "budget_min_mbps": 277.507,
+      "budget_final_mbps": 277.507,
+      "payload_mean_mbps": 72.89939985714285,
+      "fresh_mean_fps": 89.1408981527987,
+      "fresh_min_fps": 59.93333333333334,
+      "derived_delay_mean_ms": 42.89818181818182,
+      "derived_delay_max_ms": 61.9,
+      "holes": 25,
+      "safety_fallbacks_postcutoff": 12
+    },
+    {
+      "run": 3,
+      "case": "B",
+      "aimd_loss_only": "1",
+      "budget_mean_mbps": 433.604,
+      "budget_min_mbps": 433.604,
+      "budget_final_mbps": 433.604,
+      "payload_mean_mbps": 74.58393164285714,
+      "fresh_mean_fps": 89.66030303030303,
+      "fresh_min_fps": 88.80222222222223,
+      "derived_delay_mean_ms": 41.32545454545454,
+      "derived_delay_max_ms": 45.0,
+      "holes": 0,
+      "safety_fallbacks_postcutoff": 0
+    },
+    {
+      "run": 4,
+      "case": "A",
+      "aimd_loss_only": "0",
+      "budget_mean_mbps": 8.672,
+      "budget_min_mbps": 8.672,
+      "budget_final_mbps": 8.672,
+      "payload_mean_mbps": 4.927723714285714,
+      "fresh_mean_fps": 45.783343434343436,
+      "fresh_min_fps": 43.40333333333333,
+      "derived_delay_mean_ms": 57.06363636363636,
+      "derived_delay_max_ms": 61.3,
+      "holes": 1,
+      "safety_fallbacks_postcutoff": 162
+    }
+  ],
+  "abba_means": [
+    {
+      "case": "A",
+      "runs": 2,
+      "budget_mean_mbps": 8.672,
+      "budget_min_mbps": 8.672,
+      "budget_final_mbps": 8.672,
+      "fresh_mean_fps": 45.74711111111111,
+      "derived_delay_mean_ms": 57.85272727272727,
+      "holes_total": 1
+    },
+    {
+      "case": "B",
+      "runs": 2,
+      "budget_mean_mbps": 428.02910714285713,
+      "budget_min_mbps": 277.507,
+      "budget_final_mbps": 355.5555,
+      "fresh_mean_fps": 89.40060059155087,
+      "derived_delay_mean_ms": 42.11181818181818,
+      "holes_total": 25
+    }
+  ],
+  "fresh_definition": "fresh_count / render_iterations * reported render_fps",
+  "budget_definition": "actual per-window server budget; startup value excluded from means",
+  "interpretation": "A remains at low budget and low freshness. B2 preserves initial quality, then a real 25-hole burst cuts budget 500\u2192400\u2192320; B3 holds healthy budget/freshness. This is opt-in AIMD span-gate evidence, not a claim of maintaining 500 throughout or unique physical display quality.",
+  "delay_note": "Derived software delay is not photon latency."
+}

@@ -1,31 +1,82 @@
-# Overnight gains evidence
+# Overnight: less traffic, measured tradeoffs
 
-This directory contains sanitized numeric reports only. It records bounded codec and live-repeat evidence; it does not contain private photos, raw logs, source paths, addresses, or run identifiers.
+The native Vulkan path now has exact-repeat compression reuse and an optional
+lossless byte predictor. The strongest result is fewer transmitted codec bytes
+at the **same encoded representation**, rather than lowering image quality to
+make a bandwidth graph look better.
 
-## Measured wins
+[Method and measurement limits](METHOD.md) · [Final build hashes](build-manifest.json) · [Next experiments](NEXT.md)
 
-- The compression matrix shows an 8–11% reduction in complete full-frame codec payload (detail+safety), excluding transport/FEC/padding, with raw byte-exact fixture checks.
-- Reusable encode cache samples save roughly 0.6–1.0 ms.
-- The current pointer ABBA matrix shows about a 10.7% payload reduction and lower server encode time in the bounded 120-second repeats.
+## Results that held up
 
-## Rejected or limited evidence
+| Experiment | Measured result | Qualification |
+|---|---|---|
+| Lossless predictor, actual GPU codec fixtures | 8–11% less complete codec payload than ordinary Zstd | Same restored encoded bytes; excludes transport/FEC/padding |
+| Exact-repeat cache | About 0.6–1.0 ms less host encode work on repeated fixtures | Changing content still needs compression |
+| Paired live repeats | 83.53 → 74.57 Mbit/s; encode 4.38 → 3.59 ms | Pico decode 0.595 → 0.685 ms; bounded photo workload |
+| Timing pair | 46.63 → 42.62 ms derived software delay; 88.52 → 89.54 fresh selections/s | Combined 5 ms JIT cap + 4 ms ready wait; not photon latency |
+| Whole-picture changes | 71.24 → 63.74 Mbit/s (10.5% less) across four usable runs | Control replacement followed a longer capture; not contiguous ABBA |
 
-- Contended NEON timings are excluded; the Pico table reports production pointer-local versus old scalar decoder measurements.
-- Copy-bypass and pretransform experiments were negative or too costly and are not promoted.
-- Pointer live repeats still show network dips and fresh-frame variability; these results do not justify a default enablement.
-- The old scalar live comparison is retained as a distinct earlier experiment, not a direct paired baseline.
+[Compression and exact-byte checks](compression-report/README.md) ·
+[Live compression repeats](pointer-live-report/README.md) ·
+[Timing comparison](ready-abba-report/README.md) ·
+[Changing-picture measurements](churn-pointer-report/README.md)
 
-## Pending
+![Live compression comparison](pointer-live-report/comparison.png)
 
-- Nominal BBR remains rejected in `nominal-live-report/`: nominal1 is faster on fresh FPS in this bounded fixture, but actual codec budget oscillation/collapse and holes make it unsuitable for promotion; the experiment was removed from production.
-- The fixed-JIT matrix is included in `jit-clean-report/`: the 5000 us cap is inconsistent on fresh FPS and does not justify default promotion.
+The predictor remains opt-in. Its extra PC work is visible on constantly changing
+content: the changing-picture means were roughly 4.21 → 4.86 ms encode time
+and 0.5 → 0.6 ms Pico decode telemetry, while fresh-source selection remained near
+90/s. This is not a claim that every workload gets both faster and smaller.
 
-Each subdirectory contains its own README and, where applicable, a graph rebuild script that reads only its bundled numeric data.
+## Automatic quality control is a separate problem
 
-- The ready ABBA matrix is included in `ready-abba-report/`; it reports a bounded software-delay change with corrected freshness accounting and no physical-display claim.
+Ordinary AIMD and BBR both collapsed the planning budget on this fixture. The
+opt-in loss-only AIMD diagnostic stops receive-span-only downward cuts while
+retaining existing loss, late-frame, radio and ceiling rules. Two short candidate
+runs selected 89.14 and 89.66 fresh sources/s versus about 45.7 for ordinary AIMD.
+The first candidate encountered 25 incomplete units and lowered its requested
+budget 500 → 400 → 320 Mbit/s; the second held its initial budget with none.
 
-- `nominal-paced-report/` is an explicit rejection: auto mode collapses far below requested 500 Mbps and does not demonstrate quality retention.
+Receive timestamps are userspace handler timestamps. No next-frame completion
+deferral was found, but scheduling/batching can contribute to the measured span.
+That mechanism is not yet established. The unchanged healthy threshold can also
+delay upward recovery after a real cut, so this is **not a finished automatic
+controller or a new global default**.
 
-- `controller-check-report/` shows actual AIMD/BBR budget collapse far below requested 500; it is a rejection report with no quality-retention claim.
+[Controller baseline](controller-check-report/README.md) ·
+[Loss-only diagnostic and loss-burst timeline](aimd-span-report/README.md)
 
-- `aimd-span-report/` documents opt-in span-only AIMD: B2 keeps the initial budget until a 25-hole burst cuts 500→400→320, while B3 stays healthy; this is not a claim of maintaining 500 throughout.
+![Controller diagnostic and its real loss burst](aimd-span-report/comparison.png)
+
+## Longer capture and recovery limitation
+
+An interrupted roughly 900-second changing-picture capture retained 444 telemetry
+windows: mean fresh-source selection 89.55/s, minimum 79.41/s, and five incomplete
+units. The controller request descended from 500 to 295.2 Mbit/s and did not
+recover; therefore its lower mean payload does not prove retained quality. The
+supervisor exited 143 without a normal completion marker, so this is descriptive
+evidence, not a successfully completed soak.
+
+[Timeline and interruption details](changing-soak-report/README.md).
+
+![Changing-picture delivery and quality budget](changing-soak-report/timeline.png)
+
+## Experiments kept as evidence, not promoted
+
+- [Earlier scalar predictor](live-predictor-report/README.md): greater decoder cost; distinct from the current pointer-local implementation. The production microbenchmark baseline is **ordinary Zstd v1**, not this scalar predictor.
+- [Packet pacing](pacing-report/README.md): cadence/latency tradeoffs vary between repeats.
+- [JIT cap alone](jit-clean-report/README.md): inconsistent; the combined ready-wait result must not be attributed to the cap alone.
+- [Nominal BBR](nominal-live-report/README.md) and [guarded nominal BBR](nominal-paced-report/README.md): quality still collapsed; removed from production. The latter includes the archived rejected patch.
+- [Copy bypass and pretransforms](compression-report/README.md): negative or too costly; not enabled. Contended NEON timings are excluded.
+
+## Reproduction and privacy
+
+Each report includes numeric CSV/JSON and a chart rebuild script. Private source
+photos, raw device logs, addresses and device identifiers are not published.
+An original changing-picture control disconnected before usable measurements;
+it is marked invalid rather than treated as a successful idle-server run.
+
+These results establish neither physical panel cadence nor physical photon
+latency. Fresh source identifiers are not unique image content. The private-photo
+fixtures duplicate views and do not replace a real game or wearer assessment.
