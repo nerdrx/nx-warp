@@ -17,3 +17,21 @@ Two private pictures alternated every stereo frame. Native RGB888, compression c
 Focused virtual-clock tests pass in normal and NDEBUG builds. They fail against the old controller at the expected recovery assertion. Clean 0.96-period delivery recovers only in the opt-in mode; spans above 1.10, loss, and late feedback prevent increases. Persistent loss still cuts. Host server build passed; the tested binary hash is in run.json. The local build also contains unrelated NXFuse working-tree changes, so it is not a byte-identical build of the published integration commit.
 
 Server and headset app were stopped after testing. No new APK was required. The fix remains opt-in through `WIVRN_BITRATE_AIMD_LOSS_ONLY=1`.
+
+## Follow-up: stronger recovery (local simulation only)
+
+Integration commit `ce7f9421` shortens the loss-only clean hold to 250 ms and
+uses steady upward probes of at least 15% of the current budget. Fresh feedback
+collection and evaluation intervals still add time between steps. Ordinary
+AIMD, ceilings, loss/late/span gates, and radio holds are preserved.
+
+A deterministic 90 Hz trace first supplies three seconds of missing frames,
+then clean 0.96-period receive spans. Both controllers fall to 327.68 Mbit/s.
+The previous `4435f051` controller reaches the full 1000 Mbit/s ceiling 55.21
+seconds after the loss phase ends; the new controller takes 7.90 seconds.
+Normal and NDEBUG regression checks pass, including loss/late/span guards;
+the previous controller fails the new ten-second recovery bound. Host build
+passes. These numbers are **simulated controller time, not live Pico timings**.
+The user requested no restart, so the new policy has not been live-tested or
+activated in their existing session. Faster probing may overshoot a variable
+link more often; a paired device check remains necessary.
