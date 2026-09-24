@@ -1,0 +1,21 @@
+{
+  "baseline_commit": "66a5e6e6",
+  "validation": "Offline controller tests and host build only; no server or headset started. Host build includes unrelated local NXFuse changes.",
+  "budget_checks": 4346,
+  "budget_checks_ndebug": 4346,
+  "legacy_bbr_checks": 70,
+  "radio_checks": 50,
+  "aimd_regression": "passed",
+  "v2_model_cases": 9,
+  "aimd_model_cases": 9,
+  "host_build": "wivrn-server target passed",
+  "source_sha256": {
+    "server/driver/bitrate_controller.cpp": "5b446c37ca9ce368faba56a9296e6fe4900bf0fa23a0bf3bdef004e2ba272ab9",
+    "server/driver/bitrate_controller.h": "04c9153e53bbe70249c38b7500162216895ddf7ee8a74376be139ed4a01f793c",
+    "server/encoder/video_encoder_nxwarp.cpp": "76d9fec5eb68449073f1feb2f2eb8c8ec556da68bfb9d055ecb962dae3e9070d",
+    "tests/bitrate_bbr_budget_test.cpp": "e9f1fb3799149faceccbc60b418bce8c6b3b7f5591dc3842d71f098abf588de1",
+    "tests/bitrate_recovery_link_test.cpp": "5db323f69324bfc29792f2e4223db52714040775e601eb43a123c5f78f6879fe",
+    "tests/run_bitrate_recovery_link.py": "b5640d4d46bcf42a74ee37a119db691b50c62eb39d941f2e591c754388dc6a9b"
+  },
+  "implementation_commit": "186322abc0c653ac6c8e7508f294e4161d7ffbae"
+}
