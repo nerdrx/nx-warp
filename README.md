@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 25 September: motion prediction for compression, with exact corrections
+
+A new **offline prototype** predicts native centre pixels from an earlier frame, then sends lossless corrections. It restores the exact encoded NXDF bytes; it does not extrapolate the displayed image. Automatic matching of two photographic 8-pixel shifts reduced changed-frame detail from **55,787 to 47,499 bytes** and **87,477 to 62,875 bytes**: **14.9–28.1% less**. A vectorized restore added about **0.03–0.05 ms** to isolated Pico CPU decode with cached reference metadata.
+
+**This is not enabled in the live streamer.** Rotations, scene cuts and larger shifts failed the compression gate. The tests use duplicated photo eyes; totals exclude reference frames, safety, FEC and padding. Comparing both encoding candidates adds PC work, and confirmed-reference handling under packet loss still needs integration and validation.
+
+[Measurements, rejected approaches, reproducible harness and limitations](bench/results/90fps-2026-09-25/motion-compression/README.md)
+
+![Motion compression prototype: detail bytes and isolated Pico CPU cost](bench/results/90fps-2026-09-25/motion-compression/comparison.png)
+
 ### 25 September: fewer recovery drops and cheaper CPU merging
 
 Adaptive v2 now retries gently after congestion, then grows its probe gain when delivery clears. Across nine offline link cases, restricted-link losses fell **114-116 → 28-29 frames per 30 seconds**, retaining about **96.8%** of the previous quality budget. Full-budget recovery takes **3.4-8.2 seconds**, roughly one second longer. This trades a slightly slower quality climb for fewer interrupted updates.

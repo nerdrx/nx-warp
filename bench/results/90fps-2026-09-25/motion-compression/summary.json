@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "title": "NX Warp motion-residual compression: offline evidence",
+  "evidence_status": {
+    "implementation": "scratch-only global integer-translation prototype",
+    "live_vr_tested": false,
+    "inputs": "duplicate-eye photographic captures with controlled transforms; not headset video",
+    "reconstruction": "byte-exact for all reported prototype samples",
+    "detail_size_excludes": [
+      "independent reference frame",
+      "safety margin",
+      "FEC",
+      "packet padding",
+      "transport headers"
+    ],
+    "production_integration": false,
+    "displayed_pixels_motion_warped": false
+  },
+  "selection": {
+    "baseline": "existing independent raw/LZ4/Zstd/predictor selector",
+    "proposal_gate_savings_percent_minimum": 10,
+    "gate_policy": "retain the independent baseline when the candidate is under threshold or larger"
+  },
+  "global_translation_results": [
+    {
+      "capture": "A",
+      "case": "+8 px controlled translation",
+      "baseline_bytes": 55787,
+      "proposal_bytes": 47499,
+      "saved_percent": 14.8565,
+      "selected": "proposal"
+    },
+    {
+      "capture": "B",
+      "case": "+8 px controlled translation",
+      "baseline_bytes": 87477,
+      "proposal_bytes": 62875,
+      "saved_percent": 28.124,
+      "selected": "proposal"
+    },
+    {
+      "capture": "A\u2192B",
+      "case": "scene cut",
+      "baseline_bytes": 88057,
+      "proposal_bytes": 97961,
+      "saved_percent": -11.25,
+      "selected": "baseline"
+    },
+    {
+      "capture": "A",
+      "case": "rotation 1 degree",
+      "baseline_bytes": 66178,
+      "proposal_bytes": 70622,
+      "saved_percent": -6.72,
+      "selected": "baseline"
+    },
+    {
+      "capture": "A",
+      "case": "rotation 3 degrees",
+      "baseline_bytes": 66098,
+      "proposal_bytes": 73499,
+      "saved_percent": -11.2,
+      "selected": "baseline"
+    },
+    {
+      "capture": "B",
+      "case": "rotation 1 degree",
+      "baseline_bytes": 90211,
+      "proposal_bytes": 94021,
+      "saved_percent": -4.22,
+      "selected": "baseline"
+    },
+    {
+      "capture": "B",
+      "case": "rotation 3 degrees",
+      "baseline_bytes": 90253,
+      "proposal_bytes": 99135,
+      "saved_percent": -9.84,
+      "selected": "baseline"
+    },
+    {
+      "capture": "A",
+      "case": "translation 32 px",
+      "baseline_bytes": 54597,
+      "proposal_bytes": 72587,
+      "saved_percent": -32.95,
+      "selected": "baseline",
+      "note": "search reached edge of plus/minus 16 px range"
+    },
+    {
+      "capture": "A",
+      "case": "translation 64 px",
+      "baseline_bytes": 55124,
+      "proposal_bytes": 68197,
+      "saved_percent": -23.72,
+      "selected": "baseline",
+      "note": "search reached edge of plus/minus 16 px range"
+    },
+    {
+      "capture": "B",
+      "case": "translation 32 px",
+      "baseline_bytes": 85978,
+      "proposal_bytes": 104460,
+      "saved_percent": -21.5,
+      "selected": "baseline",
+      "note": "search reached edge of plus/minus 16 px range"
+    },
+    {
+      "capture": "B",
+      "case": "translation 64 px",
+      "baseline_bytes": 82594,
+      "proposal_bytes": 104440,
+      "saved_percent": -26.45,
+      "selected": "baseline",
+      "note": "search reached edge of plus/minus 16 px range"
+    }
+  ],
+  "local_tile_results": [
+    {
+      "capture": "A",
+      "case": "+8 px controlled translation",
+      "baseline_bytes": 55787,
+      "proposal_bytes": 51199,
+      "saved_percent": 8.22,
+      "selected": "baseline"
+    },
+    {
+      "capture": "B",
+      "case": "+8 px controlled translation",
+      "baseline_bytes": 87477,
+      "proposal_bytes": 67862,
+      "saved_percent": 22.42,
+      "selected": "proposal"
+    },
+    {
+      "capture": "A",
+      "case": "rotation 1 degree",
+      "saved_percent": -3.86,
+      "selected": "baseline"
+    },
+    {
+      "capture": "A",
+      "case": "rotation 3 degrees",
+      "saved_percent": -6.83,
+      "selected": "baseline"
+    },
+    {
+      "capture": "B",
+      "case": "rotation 1 degree",
+      "saved_percent": -3.47,
+      "selected": "baseline"
+    },
+    {
+      "capture": "B",
+      "case": "rotation 3 degrees",
+      "saved_percent": -5.15,
+      "selected": "baseline"
+    },
+    {
+      "capture": "A\u2192B",
+      "case": "scene cut",
+      "saved_percent": -9.73,
+      "selected": "baseline"
+    }
+  ],
+  "pico_decode": {
+    "device_class": "Pico Android decoder CPU test",
+    "candidate": "AArch64 NEON byte-add inverse; explicit scalar fallback remains",
+    "latest_runs": [
+      "final-forest.csv: Capture A",
+      "final-dark.csv: Capture B"
+    ],
+    "samples_per_mode_per_pair": 160,
+    "timed_modes": [
+      "baseline",
+      "candidate cached reference",
+      "candidate uncached reference"
+    ],
+    "timed_samples_per_pair": 480,
+    "timed_samples_total": 960,
+    "exactness_check": "every sample, after the timed region",
+    "measurements": [
+      {
+        "capture": "A",
+        "mode": "baseline",
+        "p50_ms": 0.441667,
+        "p95_ms": 0.468021,
+        "p99_ms": 0.530833
+      },
+      {
+        "capture": "A",
+        "mode": "candidate cached reference",
+        "p50_ms": 0.488021,
+        "p95_ms": 0.514532,
+        "p99_ms": 0.57849
+      },
+      {
+        "capture": "A",
+        "mode": "candidate uncached reference",
+        "p50_ms": 0.507396,
+        "p95_ms": 0.537031,
+        "p99_ms": 0.586615
+      },
+      {
+        "capture": "B",
+        "mode": "baseline",
+        "p50_ms": 0.4825,
+        "p95_ms": 0.513021,
+        "p99_ms": 0.550989
+      },
+      {
+        "capture": "B",
+        "mode": "candidate cached reference",
+        "p50_ms": 0.5125,
+        "p95_ms": 0.538125,
+        "p99_ms": 0.555157
+      },
+      {
+        "capture": "B",
+        "mode": "candidate uncached reference",
+        "p50_ms": 0.533125,
+        "p95_ms": 0.554011,
+        "p99_ms": 0.588698
+      }
+    ],
+    "cached_p50_added_ms": {
+      "capture_A": 0.046354,
+      "capture_B": 0.03
+    },
+    "non_neon_prototype_cached_p50_added_ms_range": {
+      "capture_A": [
+        0.308438,
+        0.309427
+      ],
+      "capture_B": [
+        0.287761,
+        0.290156
+      ]
+    },
+    "scope": "decode only; excludes motion estimation and encoding; not live presentation"
+  },
+  "host_encode_ms": {
+    "capture_A": {
+      "baseline_p50": 1.17543,
+      "baseline_p95": 1.33527,
+      "candidate_p50": 1.51029,
+      "candidate_p95": 1.7077
+    },
+    "capture_B": {
+      "baseline_p50": 1.67161,
+      "baseline_p95": 1.92662,
+      "candidate_p50": 1.63698,
+      "candidate_p95": 1.82664
+    },
+    "warning": "A gated sender must run both encoders. The sums of separate p50 values (2.686 ms and 3.309 ms) are estimates, not measured paired end-to-end timings."
+  },
+  "rejected_or_deferred": [
+    {
+      "method": "Zstd level-3 minMatch=3",
+      "result": "7 to 585 bytes larger on three of four frames; 7 bytes smaller on one; host encode p50 slower"
+    },
+    {
+      "method": "Zstd level-3 lazy2 plus minMatch=3",
+      "result": "675 to 1583 bytes saved (about 1 to 4.8 percent), with about 3 to 6 times host encode p50"
+    },
+    {
+      "method": "prior-frame raw/predicted Zstd dictionary",
+      "result": "production gains 1.06 to 12.03 percent; tested scene cut grows 0.55 to 1.07 percent; needs wire-reference and recovery protocol"
+    },
+    {
+      "method": "per-tile block-neighborhood residual",
+      "result": "28.9 to 112.7 percent larger; 5.7 to 13.9 ms host encode"
+    },
+    {
+      "method": "byte/word XOR, wider-stride deltas, byte-plane shuffles, grouped block deltas",
+      "result": "no transform beat the existing selector; grouped results 8.1 to 27.3 percent larger"
+    },
+    {
+      "method": "repeated-tile aliasing",
+      "result": "deprioritized; excluded from this report"
+    }
+  ],
+  "integration_requirements": [
+    "Receiver-confirmed wire frame ID must map to exact raw NXDF in a bounded reference ring.",
+    "Signal each reference ID and fall back to the independent representation if the ACK/cache slot is absent or stale.",
+    "Do not reference displayed or reprojected pixels.",
+    "Test loss, reordering, reference eviction, scene cuts, packet size including FEC/padding, sustained Pico load, and live presentation before production use."
+  ]
+}

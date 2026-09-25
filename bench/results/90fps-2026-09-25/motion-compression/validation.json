@@ -1,0 +1,26 @@
+{
+  "negative_cases": [
+    {
+      "case": "truncated_header",
+      "exit_code": 2,
+      "result": "rejected"
+    },
+    {
+      "case": "truncated_payload",
+      "exit_code": 2,
+      "result": "rejected"
+    },
+    {
+      "case": "wrong_reference",
+      "exit_code": 2,
+      "result": "rejected"
+    },
+    {
+      "case": "wrong_magic",
+      "exit_code": 2,
+      "result": "rejected"
+    }
+  ],
+  "positive_cases": "11 host frame pairs, 40 exact reconstructions per pair; Pico comparisons check every measured and warmup decode outside timing",
+  "scope": "Prototype file-format arithmetic and helper validation. No loss/reordering/ACK integration tests."
+}
