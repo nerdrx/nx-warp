@@ -32,6 +32,14 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 25 September: optional checkerboard half-refresh
+
+WiVRn NX now has a **Checkerboard half-refresh** toggle under Streaming → Advanced, off by default and applied after reconnecting. It sends alternating encoded samples and reads the other half from the preceding image in the existing presentation pass. In short Pico runs, complete codec payload fell **63.7 → 46.7 Mbit/s (about 27%)**, with roughly **90 new-source selections/s**. Alternate non-flat samples refresh at about **45 Hz**, and moving edges can shimmer. The on-run GPU pass measured **6.2 ms**, versus **3.2–4.1 ms** in off controls; headset placement changed, so this is a bandwidth tradeoff with extra GPU work, not an isolated latency win. A later settled capture verified the static image in both eyes.
+
+[Method, graphs and limits](bench/results/90fps-2026-09-25/checkerboard/README.md) · [10× slow-motion comparison](bench/results/90fps-2026-09-25/checkerboard/motion/synthetic-motion-10x-slow-90fps.mp4)
+
+![Checkerboard payload, image-update cadence and GPU observations](bench/results/90fps-2026-09-25/checkerboard/pico-comparison.png)
+
 ### Overnight follow-up: fewer bytes and shorter software delay
 
 An optional lossless byte predictor saves **another 8–11% of complete codec payload** on two photo fixtures, beyond ordinary Zstd, with exactly the same decoded representation. Exact-repeat caching skips redundant compression on the PC. In paired 120-second Pico captures, the combined candidate reduced payload **83.53 → 74.57 Mbit/s** and encode time **4.38 → 3.59 ms**; decoder telemetry increased **0.595 → 0.685 ms**. Prediction remains opt-in, and both endpoints require the updated protocol.

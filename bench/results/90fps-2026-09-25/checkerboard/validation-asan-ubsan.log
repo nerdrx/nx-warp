@@ -1,0 +1,9 @@
+Run from the report directory after packaging the public replay sources:
+g++ -std=c++20 -fsanitize=address,undefined -fno-omit-frame-pointer -Itestsrc testsrc/direct_checkerboard_test.cpp -o /tmp/nx-checkerboard-san
+/tmp/nx-checkerboard-san
+
+Output:
+direct checkerboard: ok
+
+The archive replay source also compiled successfully and decoded two consecutive
+recorded synthetic phases from synthetic-nxdf.tar.gz.
