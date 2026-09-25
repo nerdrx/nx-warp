@@ -1,0 +1,81 @@
+{
+  "date": "2026-09-25",
+  "experiment": "opt-in motion residual vs independent-frame baseline",
+  "scope": {
+    "scene": "controlled four-position photographic sequence",
+    "duration_seconds": 25,
+    "resolution_per_eye": "2176x2176",
+    "refresh_hz": 90,
+    "requested_bitrate_mbps": 500,
+    "windows": 9,
+    "window_seconds": 2,
+    "frames_per_arm": 1620,
+    "warmup": "discard first 2 seconds after scene upload; retain complete aligned 2-second reports only"
+  },
+  "matched_settings": {
+    "backend": "NX direct",
+    "motion_arm": "enabled; native RGB888, Zstd byte predictor, LZ4 safety stream",
+    "baseline_arm": "independent frames; otherwise same configuration",
+    "checkerboard": "off in both runs",
+    "decoder_apk_sha256": "1b2d17d87215ff75af2c5773ee86278762a80a25be57e8748cef87f86104cfe5",
+    "server_sha256": "29d623b98993b1d1839c8bcdf46c6f2571da61b2a14880e078a0f5f644599cae"
+  },
+  "results": {
+    "encoder_frame_bytes": {
+      "meaning": "encoder-reported frame size including the independent safety/detail envelope; before FEC, packet padding, or retries",
+      "motion_mean": 90938.1,
+      "baseline_mean": 103419.1,
+      "change_percent": -12.1,
+      "motion_samples": [90364, 89928, 90341, 91015, 90369, 90006, 90212, 90677, 95531],
+      "baseline_samples": [103420, 103416, 103423, 103416, 103423, 103416, 103422, 103416, 103420]
+    },
+    "server_encode_ms_per_frame": {
+      "motion_mean": 7.12,
+      "baseline_mean": 5.34,
+      "motion_samples": [7.5, 7.3, 7.0, 7.0, 7.2, 7.0, 7.3, 7.5, 6.3],
+      "baseline_samples": [5.3, 5.3, 5.4, 5.3, 5.5, 5.4, 5.3, 5.3, 5.3]
+    },
+    "pico_render_hz": {
+      "motion_mean": 89.79,
+      "baseline_mean": 89.76,
+      "motion_samples": [89.8, 89.7, 89.8, 89.8, 89.8, 89.8, 89.8, 89.8, 89.8],
+      "baseline_samples": [89.8, 89.7, 89.8, 89.7, 89.7, 89.7, 89.7, 90.0, 89.7]
+    },
+    "pico_new_source_iterations_per_window": {
+      "motion_mean": 172.7,
+      "baseline_mean": 178.0,
+      "motion_samples": [175, 178, 175, 161, 174, 176, 176, 177, 162],
+      "baseline_samples": [179, 177, 173, 179, 178, 178, 180, 179, 179]
+    }
+  },
+  "motion_run_counters": {
+    "last_sender_checkpoint": {
+      "selected": 1264,
+      "attempts": 1792,
+      "saved_bytes": 26761305
+    },
+    "client_exact_motion_details_decoded_at_last_report": 1261,
+    "client_missing_references_at_last_report": 0,
+    "incomplete_transport_frames_in_matched_windows": 1,
+    "incomplete_frame_reason": "one frame had a transport hole and was dropped; this was not a missing-reference report",
+    "explicit_rejected_motion_frame_counter": "not exposed in these logs"
+  },
+  "protocol": {
+    "motion_feature_bit": 64,
+    "expected_stream_flags": 82,
+    "flags_provenance": "derived from the enabled trusted-LAN predictor stream version plus motion feature bit; no packet-header capture was retained",
+    "runtime_evidence": "client logged exact motion compression enabled and decoded exact motion details"
+  },
+  "validation": [
+    "production Vulkan codec test passed no-ACK fallback, ACKed exact reconstruction, forgotten-reference fallback, periodic anchor, and reset cases",
+    "host and Pico pure protocol tests passed",
+    "matched 25-second run logs completed successfully"
+  ],
+  "limitations": [
+    "This was a controlled photographic four-position sequence, not head movement, a game, or a general live-VR benchmark.",
+    "Only nine complete two-second windows with available matched logs are summarized; the window samples are not independent randomized trials.",
+    "Encoder frame bytes exclude later FEC, transport padding, and retries; this is not end-to-end network bandwidth.",
+    "The motion sender checkpoint is cumulative and logged periodically, so it is not an exact end-of-run total.",
+    "One incomplete frame occurred during the motion run; client reference-miss count remained zero."
+  ]
+}

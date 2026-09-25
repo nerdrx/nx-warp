@@ -1,6 +1,8 @@
 # Motion-residual compression: offline evidence
 
-An experimental global integer-translation residual reduced changed-frame detail size by 14.86% and 28.12% on two controlled +8 px pairs, with byte-exact reconstruction. A local per-tile variant saved 22.42% on one pair but only 8.22% on the other, below its 10% gate. This is an offline lead, not a live-VR result or production integration.
+**Integration update:** the later [WiVRn NX integration check](INTEGRATION.md) covers the opt-in live path. The measurements below remain the original isolated experiment.
+
+An experimental global integer-translation residual reduced changed-frame detail size by 14.86% and 28.12% on two controlled +8 px pairs, with byte-exact reconstruction. A local per-tile variant saved 22.42% on one pair but only 8.22% on the other, below its 10% gate. These are isolated prototype measurements; later integration results are reported separately above.
 
 Inputs are duplicate-eye photographic captures and controlled transforms, not headset video; no source photographs are included. The test changes encoded native RGB tile payloads, not displayed pixels. Sizes include each proposal's 24-byte motion/reference header, but exclude the already-held reference frame, safety margin, FEC, packet padding, and transport headers. Thus they assume a valid prior reference and do not charge its acquisition/refresh.
 
@@ -59,9 +61,9 @@ The 11 host pairs each ran 8 warmups and 32 measured trials. Host order was fixe
 | Per-tile block-neighborhood residual | Exact offline decode, but 28.9–112.7% larger; host encode 5.7–13.9 ms | Reject |
 | XOR, wider-stride deltas, shuffles, grouped deltas | No transform beat selector; grouped candidates 8.1–27.3% larger | Reject |
 
-## Integration boundary
+## Original prototype integration boundary
 
-The prototype carries a reference ID but exercises one supplied prior frame; it does not validate wire-ID binding, ACK/cache lifetime, loss/reordering, or missing-reference handling. Production needs a bounded ring of exact raw NXDF frames keyed by receiver-held wire ID, per-frame reference signaling, and independent fallback for absent/stale entries. Never reference displayed/reprojected output. Transport, FEC-aware sizing, sustained Pico load, and live presentation remain untested.
+The archived prototype carries a reference ID but exercises one supplied prior frame; it does not validate wire-ID binding, ACK/cache lifetime, loss/reordering, or missing-reference handling. Production needs a bounded ring of exact raw NXDF frames keyed by receiver-held wire ID, per-frame reference signaling, and independent fallback for absent/stale entries. Never reference displayed/reprojected output. Transport, FEC-aware sizing, sustained Pico load, and live presentation remain untested.
 
 ## Reproduction and plot
 

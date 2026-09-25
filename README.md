@@ -36,9 +36,11 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 A new **offline prototype** predicts native centre pixels from an earlier frame, then sends lossless corrections. It restores the exact encoded NXDF bytes; it does not extrapolate the displayed image. Automatic matching of two photographic 8-pixel shifts reduced changed-frame detail from **55,787 to 47,499 bytes** and **87,477 to 62,875 bytes**: **14.9–28.1% less**. A vectorized restore added about **0.03–0.05 ms** to isolated Pico CPU decode with cached reference metadata.
 
-**This is not enabled in the live streamer.** Rotations, scene cuts and larger shifts failed the compression gate. The tests use duplicated photo eyes; totals exclude reference frames, safety, FEC and padding. Comparing both encoding candidates adds PC work, and confirmed-reference handling under packet loss still needs integration and validation.
+**Now available as an opt-in in WiVRn NX:** `NX_DIRECT_MOTION=1` uses receiver-confirmed references and a 10% saving gate, with periodic independent frames and an independent safety image. The matching Pico client is required; this mode uses full native samples and does not combine with checkerboard coding. Rotations, scene cuts and larger shifts usually fall back to independent detail. The figures above remain isolated photo-fixture measurements; they exclude reference frames, safety, FEC and padding.
 
-[Measurements, rejected approaches, reproducible harness and limitations](bench/results/90fps-2026-09-25/motion-compression/README.md)
+**Short Pico integration check:** 12.1% fewer encoder bytes, with 1.78 ms more PC encode time. Rendering stayed near 89.8 Hz; new-source iterations fell from 89.0 to 86.3 per second. This is a controlled photographic sequence, not a general game benchmark.
+
+[Short live integration check](bench/results/90fps-2026-09-25/motion-compression/INTEGRATION.md) · [Offline measurements and harness](bench/results/90fps-2026-09-25/motion-compression/README.md)
 
 ![Motion compression prototype: detail bytes and isolated Pico CPU cost](bench/results/90fps-2026-09-25/motion-compression/comparison.png)
 
