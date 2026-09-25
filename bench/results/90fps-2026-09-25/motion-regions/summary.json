@@ -1,0 +1,126 @@
+{
+  "encoder": {
+    "continuous_pan_source": {
+      "global": {
+        "n": 48,
+        "p50_ms": 7.823235,
+        "p95_ms": 9.06489,
+        "mean_detail_bytes": 71147.5,
+        "mean_frame_bytes": 73822.5,
+        "modes": {
+          "global-v1": 42,
+          "independent": 6
+        }
+      },
+      "regional_fallback": {
+        "n": 48,
+        "p50_ms": 7.53786,
+        "p95_ms": 9.34285,
+        "mean_detail_bytes": 71147.5,
+        "mean_frame_bytes": 73822.5,
+        "modes": {
+          "global-v1": 42,
+          "independent": 6
+        }
+      }
+    },
+    "opposing_no_ack": {
+      "global": {
+        "n": 48,
+        "p50_ms": 6.96289,
+        "p95_ms": 7.98606,
+        "mean_detail_bytes": 106816.54166666667,
+        "mean_frame_bytes": 109491.54166666667,
+        "modes": {
+          "independent": 48
+        }
+      },
+      "regional_fallback": {
+        "n": 48,
+        "p50_ms": 6.7535050000000005,
+        "p95_ms": 7.36988,
+        "mean_detail_bytes": 106816.54166666667,
+        "mean_frame_bytes": 109491.54166666667,
+        "modes": {
+          "independent": 48
+        }
+      }
+    },
+    "opposing_source_motion": {
+      "global": {
+        "n": 48,
+        "p50_ms": 7.878585,
+        "p95_ms": 8.23746,
+        "mean_detail_bytes": 104943.04166666667,
+        "mean_frame_bytes": 107618.04166666667,
+        "modes": {
+          "global-v1": 6,
+          "independent": 42
+        }
+      },
+      "regional_fallback": {
+        "n": 48,
+        "p50_ms": 8.75124,
+        "p95_ms": 9.90195,
+        "mean_detail_bytes": 91330.625,
+        "mean_frame_bytes": 94005.625,
+        "modes": {
+          "global-v1": 6,
+          "independent": 8,
+          "regional-v2": 34
+        }
+      }
+    },
+    "photo_scene_cut": {
+      "global": {
+        "n": 48,
+        "p50_ms": 8.07374,
+        "p95_ms": 9.13915,
+        "mean_detail_bytes": 117207.54166666667,
+        "mean_frame_bytes": 119882.54166666667,
+        "modes": {
+          "global-v1": 40,
+          "independent": 8
+        }
+      },
+      "regional_fallback": {
+        "n": 48,
+        "p50_ms": 8.061934999999998,
+        "p95_ms": 9.9634,
+        "mean_detail_bytes": 117207.54166666667,
+        "mean_frame_bytes": 119882.54166666667,
+        "modes": {
+          "global-v1": 40,
+          "independent": 8
+        }
+      }
+    }
+  },
+  "restore": {
+    "host": {
+      "global": {
+        "n": 24,
+        "p50_us": 39.055499999999995,
+        "p95_us": 43.42
+      },
+      "four_regions": {
+        "n": 24,
+        "p50_us": 43.239999999999995,
+        "p95_us": 81.89
+      }
+    },
+    "pico": {
+      "global": {
+        "n": 24,
+        "p50_us": 92.422,
+        "p95_us": 112.656
+      },
+      "four_regions": {
+        "n": 24,
+        "p50_us": 103.72399999999999,
+        "p95_us": 111.302
+      }
+    }
+  },
+  "statistics": "p50 is sample median, p95 is nearest rank; timings are wall-clock; no CI inferred"
+}

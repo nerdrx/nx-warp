@@ -1,0 +1,30 @@
+{
+  "implementation_commit": "08f55c16af6e96980d5b5f522b70efc6ca8492dd",
+  "baseline_commit": "070b671b1e2cbd18cd1c676bc88c0d12391cf553",
+  "source_sha256": {
+    "common/nxwarp_direct.h": "5e0881bdb00a5d3725dd0148d4f756df3ecab15f4d17cf0d27028e22e9699b92",
+    "common/nxwarp_direct_motion_regions.h": "14fd155406c4d3e72965ad3321fad80673643ccb01b3db1772a959b033d9c57f",
+    "server/encoder/nxwarp_codec_direct.cpp": "3ed8ce30d60e9373ac68939e295f10335c650e46c6b6a7ca64e2725e361d385c",
+    "client/decoder/nxwarp/nxwarp_decoder.cpp": "48fabbd0132fa7d7aa4c124bfd64e543766dd600c267f862d882eb2b1b4248c3",
+    "client/decoder/nxwarp/nxwarp_decoder.h": "a5963ebc450bacd91352c02eca25e614c7136e9405729e03f1236705b973d312",
+    "tests/direct_motion_regions_test.cpp": "231aa60246a1253095e912e66f36de546b33a99f176c4569fcbdba30a6507924",
+    "tests/direct_motion_test.cpp": "ecbc2284dae1b96adebf0db55528a696707edb1b1def19be7ce89eb30ad74d11"
+  },
+  "deployment": {
+    "server_sha256": "07a3793646a473b89dc8bbd6685dea1e6136a6f0e3108276f57ce0f0d9dd430d",
+    "apk_sha256": "1c5dfdbd8b9508c7b7d6c657e4df68d22a3b749f2940ebcc181c0e9ce86b4015",
+    "installed_apk_pulled_and_hash_verified": true,
+    "application_id": "org.meumeu.wivrn.nx.warp",
+    "saved_launch_profile_enabled": true,
+    "server_started": false,
+    "live_stream_tested": false
+  },
+  "validation": [
+    "Host strict scalar-oracle checks",
+    "AddressSanitizer and UndefinedBehaviorSanitizer",
+    "Production Vulkan encode and byte-exact oracle, ABBA",
+    "Pico ARM64 standalone exact restore",
+    "Matching signed release APK build and install",
+    "Host server link and --help smoke"
+  ]
+}

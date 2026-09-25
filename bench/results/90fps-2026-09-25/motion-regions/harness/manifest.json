@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-25",
+  "baseline_commit": "070b671b1e2cbd18cd1c676bc88c0d12391cf553",
+  "candidate_commit": "08f55c16af6e96980d5b5f522b70efc6ca8492dd",
+  "candidate_description": "exact regional motion fallback after global compression gate",
+  "source_sha256": {
+    "baseline/common/nxwarp_direct.h": "aaabb87c9ce57ede94199986ff2f2a6ffc4b5fff5315b33d3930a351768713d1",
+    "baseline/common/nxwarp_direct_motion.h": "f97341574862e07d744ca0ccca4e399c222524250cce31153d8819402b3b33a6",
+    "baseline/common/nxwarp_direct_zstd.h": "7bf9c8e01202236fdb86113032aa5274a8b4ddc74cd48c16706a545524ea92e2",
+    "baseline/server/encoder/nxwarp_codec_direct.cpp": "20ea67b72233c8dbd0dc7ec47bc7a1ba71aad1b8df474d9f605b627415d141c9",
+    "baseline/server/encoder/nxwarp_codec.h": "badb91a5b6c1080494560bf89be004a4064091bb918b3024c222470a22b29ade",
+    "candidate/common/nxwarp_direct.h": "5e0881bdb00a5d3725dd0148d4f756df3ecab15f4d17cf0d27028e22e9699b92",
+    "candidate/common/nxwarp_direct_motion.h": "f97341574862e07d744ca0ccca4e399c222524250cce31153d8819402b3b33a6",
+    "candidate/common/nxwarp_direct_motion_regions.h": "14fd155406c4d3e72965ad3321fad80673643ccb01b3db1772a959b033d9c57f",
+    "candidate/common/nxwarp_direct_zstd.h": "7bf9c8e01202236fdb86113032aa5274a8b4ddc74cd48c16706a545524ea92e2",
+    "candidate/server/encoder/nxwarp_codec_direct.cpp": "3ed8ce30d60e9373ac68939e295f10335c650e46c6b6a7ca64e2725e361d385c",
+    "candidate/server/encoder/nxwarp_codec.h": "badb91a5b6c1080494560bf89be004a4064091bb918b3024c222470a22b29ade"
+  },
+  "binary_sha256": {
+    "baseline_gpu_test": "c283660ee85b8570272527c774b39a3030697572dd160d39e5147aa6c08c5e5a",
+    "regional_gpu_test": "5fd20b13c82cc2aab8e880266ec54b332cde37e5eeb514e4dfc75a768e295151",
+    "pico_helper_benchmark": "79175c9d1032cb963f4c53c8576e9fd44fd63a27343f0f2406df6c59ea84d4b2"
+  },
+  "artifact_sha256": {
+    "README.md": "caaec60ef98e9d93e5790eb7603069b7480f246a1336b35f32f9581cd71e5acf",
+    "rejected-selector-samples.csv": "92c01b119bf8833ed9a63974a0798ed300456b7ca6ecadfdb468b469760bc0c5",
+    "build.py": "2f9eebb65762d03c2eb7c2c1dc37bd9e52c650f2989eb9f1aea762a797df152c",
+    "motion_regions_gpu_test_wrapper.cpp": "1a60bb4a22429ca78b0f23464cf05a8eb26c7faa678a9af5a7ce2d258bb0c024",
+    "restore_microbench.cpp": "1a3a367eb9a7a21e23144f3a36b8e615b2b92c580b2e8dfd666be6354230a6bd",
+    "region_helpers.cpp": "e2fdad3a4b934901acdd514f0fe92baa4f98010a7fd79a6665598d7dc19ae98b",
+    "direct_motion_regions_gpu_test.cpp": "3aa4997b7bee36062dfdc515180f176600dc031651126e634aad78fbe74e22e2",
+    "direct_blocks_gpu_test.cpp": "660eadd86fb6ddb23bdc9fe985eecc399776e5f7d96d6393800a146a266b7733"
+  },
+  "fixture_class": "private photographic source crops shifted before native-center blending; synthetic fixed GPU periphery",
+  "pico_helper": {
+    "layout": "2176x2176 stereo",
+    "raw_nxdf_bytes": 561808,
+    "warm_samples_per_mode": 24,
+    "measured_samples_per_mode": 24,
+    "timed_scope": "motion wire header parse and exact reconstruction; body allocation outside timer"
+  },
+  "validation": "paired scenario samples reconstruct exactly; transport, packet loss, frame presentation, and game FPS not measured"
+}

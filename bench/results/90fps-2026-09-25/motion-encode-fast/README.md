@@ -33,7 +33,7 @@ See [production harness, measurements and build provenance](production/README.md
 
 An offline prototype estimates two or four vectors over fixed native-centre regions. Three artificial opposing-shift cases saved **44–60%** of independent detail bytes, including prototype vector metadata. The scene-cut control made the candidates larger and selected independent coding. All reconstructions were exact.
 
-This is a promising compression lead, **not integrated**. Regions are fixed rather than detected objects; the periphery remains unchanged. Reference delivery, safety, FEC and padding are excluded. Pico decoding and full-encoder cost have not been measured. [Regional harness, CSV and limitations](mixed-motion/README.md).
+At the time of this experiment, this was a promising compression lead, **not integrated**. The later [regional integration and selector correction](../motion-regions/README.md) includes production-encoder and Pico restoration measurements. Regions are fixed rather than detected objects; the periphery remains unchanged. Reference delivery, safety, FEC and padding are excluded. Pico decoding and full-encoder cost have not been measured. [Regional harness, CSV and limitations](mixed-motion/README.md).
 
 ## Validation and limits
 

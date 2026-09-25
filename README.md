@@ -32,11 +32,21 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 25 September: regional motion fallback, exact pixels
+
+The new regional fallback sends **12.6% fewer complete codec frame bytes** on a controlled opposing-motion test, with unchanged reconstructed pixels. It costs **0.87 ms extra median PC encode time**. Isolated Pico reconstruction rises only **0.092 → 0.104 ms**; full headset decoding and live latency are not measured here.
+
+A first selector made pans larger. The corrected version keeps winning global-motion packets, trying four regions only after global prediction fails its savings gate. Tested pan, scene-cut and no-ACK payloads stay unchanged. The matching client is installed and the saved motion profile enables the feature; the server remains stopped.
+
+[Measurements, graphs, rejected candidate and reproduction](bench/results/90fps-2026-09-25/motion-regions/README.md)
+
+![Regional fallback bandwidth and PC cost](bench/results/90fps-2026-09-25/motion-regions/encoder.png)
+
 ### 25 September: lower PC cost for exact motion compression
 
 The optimized motion encoder uses one predicted-Zstd pass for residuals, while retaining the independent fallback. In warm **offscreen production-encoder** tests, moving-centre medians fell **8.58 → 7.67 ms** and **9.82 → 8.28 ms**: **10.6–15.7% faster**, with identical tested payload sizes and byte-exact reconstruction. The no-ACK control varied between runs; this is not a new live Pico FPS or photon-latency result.
 
-A separate fixed-region motion prototype saved **44–60% of detail bytes** on artificial opposing shifts. It remains offline pending headset-cost validation.
+A separate fixed-region motion prototype saved **44–60% of detail bytes** on artificial opposing shifts. Its later [regional integration](bench/results/90fps-2026-09-25/motion-regions/README.md) uses stricter source-motion tests and a corrected selector; those production gains are smaller.
 
 [Measurements, graphs, reproducible harnesses and limitations](bench/results/90fps-2026-09-25/motion-encode-fast/README.md)
 
