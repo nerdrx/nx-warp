@@ -32,13 +32,15 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
-### 25 September: optional checkerboard half-refresh
+### 25 September: cheaper checkerboard half-refresh
 
-WiVRn NX now has a **Checkerboard half-refresh** toggle under Streaming → Advanced, off by default and applied after reconnecting. It sends alternating encoded samples and reads the other half from the preceding image in the existing presentation pass. In short Pico runs, complete codec payload fell **63.7 → 46.7 Mbit/s (about 27%)**, with roughly **90 new-source selections/s**. Alternate non-flat samples refresh at about **45 Hz**, and moving edges can shimmer. The on-run GPU pass measured **6.2 ms**, versus **3.2–4.1 ms** in off controls; headset placement changed, so this is a bandwidth tradeoff with extra GPU work, not an isolated latency win. A later settled capture verified the static image in both eyes.
+The optional **Checkerboard half-refresh** toggle now merges packed current/history samples once on the CPU. The existing presentation shader does less work: matched Pico runs measured **5.4 → 3.3 ms GPU time**, while decode telemetry increased **0.5 → 1.1 ms**. Image selections remained near **90/s**, with unchanged **53.3 Mbit/s** payload in this stepping-photo workload. The 500 Mbit/s slider is a quality budget, not the measured transmission rate.
 
-[Method, graphs and limits](bench/results/90fps-2026-09-25/checkerboard/README.md) · [10× slow-motion comparison](bench/results/90fps-2026-09-25/checkerboard/motion/synthetic-motion-10x-slow-90fps.mp4)
+Find the toggle under Streaming → Advanced; it is **off by default** and applies after reconnecting. Alternate non-flat samples refresh at about **45 Hz**. Moving edges can show checker texture because adjacent samples come from different moments; the faster path preserves this tradeoff. The test shifts the photograph 16 pixels every four frames. Neither these short runs nor selected-image counts prove physical motion-to-photon latency or sustained 90 Hz refresh of every pixel.
 
-![Checkerboard payload, image-update cadence and GPU observations](bench/results/90fps-2026-09-25/checkerboard/pico-comparison.png)
+[GPU savings, method and graphs](bench/results/90fps-2026-09-25/checkerboard-upload/README.md) · [Original bandwidth tests](bench/results/90fps-2026-09-25/checkerboard/README.md) · [10× slow-motion comparison](bench/results/90fps-2026-09-25/checkerboard/motion/synthetic-motion-10x-slow-90fps.mp4)
+
+![Pico checkerboard GPU cost and decode tradeoff](bench/results/90fps-2026-09-25/checkerboard-upload/checkerboard-upload-summary.png)
 
 ### Overnight follow-up: fewer bytes and shorter software delay
 

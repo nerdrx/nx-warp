@@ -1,0 +1,28 @@
+{
+  "source_basename": "graphicsplugin_vulkan.cpp",
+  "source_sha256": "79ad97e3e7ba774df977777d2f2316c61e3e296f165e828c2c78fad00401f555",
+  "source_shift_expression": "((stereoFrame / 4u) & 1u) ? 8 : -8",
+  "renderer_eye_size": [
+    2160,
+    2160
+  ],
+  "coded_eye_size": [
+    2176,
+    2176
+  ],
+  "eyes": 2,
+  "same_photo_both_eyes": true,
+  "photo_count": 1,
+  "offsets_pixels": [
+    -8,
+    8
+  ],
+  "frames_per_position": 4,
+  "refresh_hz": 90,
+  "requested_quality_mbps": 500,
+  "direct_byte_budget_mbps": 433.604336,
+  "client_warmup_seconds": 10,
+  "run_seconds_after_upload": 35,
+  "raw_photos_and_logs": "local only",
+  "integration_commit": "11eff6786ca6ac8061e2ca6d09d7c0a0d271cbaf"
+}

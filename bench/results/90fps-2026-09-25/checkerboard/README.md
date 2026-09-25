@@ -6,6 +6,10 @@ app, open Streaming settings → Advanced and enable **Checkerboard half-refresh
 matching builds. `debug.wivrn.test.nx_checkerboard=0` or `=1` is a non-persistent
 Android A/B override; other values use the saved setting.
 
+A later [CPU upload merge](../checkerboard-upload/README.md) preserves these
+samples while reducing the measured checkerboard GPU pass from about 5.4 to
+3.3 ms. The initial measurements below remain the original GPU-history path.
+
 ## Behavior and limits
 
 After the initial full frame, each eye sends alternating encoded samples with
@@ -76,7 +80,8 @@ test. See [`motion/README.md`](motion/README.md) for regeneration steps.
 
 The final client was tested with one off/on/off sequence, F/G/H. Each run
 continued for 35 seconds after the source uploaded; client summaries exclude the
-first 10 seconds. The source alternates two supplied pictures every frame, a
+first 10 seconds. The source alternates two supplied pictures every frame and shifts horizontally
+between −8 and +8 pixels every four stereo frames, a
 whole-image change stress case rather than natural movement. Both eyes receive
 the same fixture image. Streaming targets 90 Hz and a 500 Mbit/s slider setting;
 the reported direct byte budget is 433.604 Mbit/s in every arm. Adaptive bitrate
