@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 25 September: fewer recovery drops and cheaper CPU merging
+
+Adaptive v2 now retries gently after congestion, then grows its probe gain when delivery clears. Across nine offline link cases, restricted-link losses fell **114-116 → 28-29 frames per 30 seconds**, retaining about **96.8%** of the previous quality budget. Full-budget recovery takes **3.4-8.2 seconds**, roughly one second longer. This trades a slightly slower quality climb for fewer interrupted updates.
+
+An endian-safe packed store also cut standalone host checkerboard merge time **0.203 → 0.161 ms** (median run p50 across three ABBA cycles). Parity tests pass and fixture checksums match. **These are model and host results, not new Pico or photon-latency measurements.** The mapped-buffer staging copy stays: removing it made standalone compression roughly ten times slower on this host.
+
+[Results, graphs, validation and rejected candidates](bench/results/90fps-2026-09-25/recovery-headroom/README.md)
+
+![Recovery model and host checkerboard CPU measurements](bench/results/90fps-2026-09-25/recovery-headroom/recovery-headroom.png)
+
 ### 25 September: cheaper checkerboard half-refresh
 
 The optional **Checkerboard half-refresh** toggle now merges packed current/history samples once on the CPU. The existing presentation shader does less work: matched Pico runs measured **5.4 → 3.3 ms GPU time**, while decode telemetry increased **0.5 → 1.1 ms**. Image selections remained near **90/s**, with unchanged **53.3 Mbit/s** payload in this stepping-photo workload. The 500 Mbit/s slider is a quality budget, not the measured transmission rate.

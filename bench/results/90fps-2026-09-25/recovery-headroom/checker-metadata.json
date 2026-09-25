@@ -1,0 +1,154 @@
+{
+  "scope": "Standalone CPU merge only; excludes decompression, GPU upload, headset and server.",
+  "baseline_commit": "11eff678",
+  "baseline_header_sha256": "a310faea00ef25b3820b2dcbb9b6fae0edf6d58ae00301cfb1f332329099acd3",
+  "candidate_header_sha256": "b74b3affa2f646196c1f9f5607e837b1c71facb5284e0d75c18498689d48ef38",
+  "baseline_binary_sha256": "10c8229c658c134525303972b3e074d2299a4be77a6f51542f9f7bf21f488576",
+  "candidate_binary_sha256": "32562f7e43ec676c30ad22d1597be1df309b7a08f94971b32b4110c5dc325e77",
+  "host": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 9 9950X3D 16-Core Processor"
+  },
+  "compiler": "g++ (GCC) 16.2.1 20260810",
+  "compiler_flags": "-std=c++20 -O3",
+  "fixture_hashes": [
+    {
+      "filename": "frame-066.nxdf",
+      "sha256": "028fcfeb6e8499e568fd51fded9893346d77e2e226983cb1d315adc67e12bc7c"
+    },
+    {
+      "filename": "frame-068.nxdf",
+      "sha256": "3ceb4d7f0a3f480854ec49f129c7ce25fc712fdb440a09ec63e9426cc938d575"
+    }
+  ],
+  "warmup_per_phase": 20,
+  "measured_iterations_per_run": 180,
+  "run_order": "ABBA repeated 3 times; A=baseline, B=candidate",
+  "runs": [
+    {
+      "run": 1,
+      "build": "baseline",
+      "mean_ms": 0.203597,
+      "p50_ms": 0.203224,
+      "p95_ms": 0.206355,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 2,
+      "build": "candidate",
+      "mean_ms": 0.160837,
+      "p50_ms": 0.160137,
+      "p95_ms": 0.164408,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 3,
+      "build": "candidate",
+      "mean_ms": 0.161317,
+      "p50_ms": 0.160537,
+      "p95_ms": 0.164878,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 4,
+      "build": "baseline",
+      "mean_ms": 0.203943,
+      "p50_ms": 0.203374,
+      "p95_ms": 0.206695,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 5,
+      "build": "baseline",
+      "mean_ms": 0.204373,
+      "p50_ms": 0.203904,
+      "p95_ms": 0.207875,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 6,
+      "build": "candidate",
+      "mean_ms": 0.161436,
+      "p50_ms": 0.160467,
+      "p95_ms": 0.165908,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 7,
+      "build": "candidate",
+      "mean_ms": 0.161358,
+      "p50_ms": 0.160757,
+      "p95_ms": 0.164568,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 8,
+      "build": "baseline",
+      "mean_ms": 0.203672,
+      "p50_ms": 0.203024,
+      "p95_ms": 0.207385,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 9,
+      "build": "baseline",
+      "mean_ms": 0.203285,
+      "p50_ms": 0.202954,
+      "p95_ms": 0.205894,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 10,
+      "build": "candidate",
+      "mean_ms": 0.161479,
+      "p50_ms": 0.161107,
+      "p95_ms": 0.163968,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 11,
+      "build": "candidate",
+      "mean_ms": 0.161953,
+      "p50_ms": 0.161618,
+      "p95_ms": 0.164948,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    },
+    {
+      "run": 12,
+      "build": "baseline",
+      "mean_ms": 0.203376,
+      "p50_ms": 0.202965,
+      "p95_ms": 0.207905,
+      "checksum": "07974e6858546853",
+      "output_bytes": 535376
+    }
+  ],
+  "median_of_run_p50_ms": {
+    "baseline_median": 0.203124,
+    "candidate_median": 0.160647,
+    "change_percent": -20.91185679683345
+  },
+  "median_of_run_p95_ms": {
+    "baseline_median": 0.20704,
+    "candidate_median": 0.164723,
+    "change_percent": -20.439045595054097
+  },
+  "checksums_identical": true,
+  "sanitizer_compile_log": "sanitizer-compile.log",
+  "sanitizer_run_log": "sanitizer-run.log",
+  "benchmark_raw_log": "bench-runs.txt",
+  "parser_source": "summarize.py",
+  "candidate_commit": "5e91ca3cdf8f9cdbf81f2a3947d4db0ab6cacc7b",
+  "candidate_commit_url": "https://github.com/nerdrx/wivrn-nx/commit/5e91ca3cdf8f9cdbf81f2a3947d4db0ab6cacc7b"
+}
