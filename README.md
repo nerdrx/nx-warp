@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 25 September: lower PC cost for exact motion compression
+
+The optimized motion encoder uses one predicted-Zstd pass for residuals, while retaining the independent fallback. In warm **offscreen production-encoder** tests, moving-centre medians fell **8.58 → 7.67 ms** and **9.82 → 8.28 ms**: **10.6–15.7% faster**, with identical tested payload sizes and byte-exact reconstruction. The no-ACK control varied between runs; this is not a new live Pico FPS or photon-latency result.
+
+A separate fixed-region motion prototype saved **44–60% of detail bytes** on artificial opposing shifts. It remains offline pending headset-cost validation.
+
+[Measurements, graphs, reproducible harnesses and limitations](bench/results/90fps-2026-09-25/motion-encode-fast/README.md)
+
+![Offscreen exact motion encoder cost before and after optimization](bench/results/90fps-2026-09-25/motion-encode-fast/encoder-cost.png)
+
 ### 25 September: motion prediction for compression, with exact corrections
 
 A new **offline prototype** predicts native centre pixels from an earlier frame, then sends lossless corrections. It restores the exact encoded NXDF bytes; it does not extrapolate the displayed image. Automatic matching of two photographic 8-pixel shifts reduced changed-frame detail from **55,787 to 47,499 bytes** and **87,477 to 62,875 bytes**: **14.9–28.1% less**. A vectorized restore added about **0.03–0.05 ms** to isolated Pico CPU decode with cached reference metadata.
