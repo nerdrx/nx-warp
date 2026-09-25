@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 25 September: more lossless compression with tiny Pico overhead
+
+Vertical prediction reduces complete codec payload by **7.5–18.0%** in controlled production-encoder tests, preserving the exact decoded pixels. All **960 timed encodes** match their independent oracle; no matched candidate frame gets larger. Extra work falls mostly on the PC: **0.8–1.6 ms** more median encode time. The hardest regional scene-cut case still takes **12.02 ms**, so this does not prove sustained 90 FPS.
+
+A separate full-photo Pico helper test measures only **0.008–0.021 ms extra median CPU decode** for accepted candidates. The encoder retains the existing motion decision and requires another 5% body saving before choosing the new representation. The matching client is installed and the saved launch profile enables it; the server remains stopped. No new live Wi-Fi or photon-latency result is claimed.
+
+[Measurements, graphs, rejected alternatives and reproduction](bench/results/90fps-2026-09-25/row-compression/README.md)
+
+![Vertical prediction: compression and PC cost](bench/results/90fps-2026-09-25/row-compression/encoder.png)
+
 ### 25 September: regional motion fallback, exact pixels
 
 The new regional fallback sends **12.6% fewer complete codec frame bytes** on a controlled opposing-motion test, with unchanged reconstructed pixels. It costs **0.87 ms extra median PC encode time**. Isolated Pico reconstruction rises only **0.092 → 0.104 ms**; full headset decoding and live latency are not measured here.

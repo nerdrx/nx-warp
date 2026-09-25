@@ -1,0 +1,72 @@
+{
+  "purpose": "Standalone offscreen Vulkan ABBA comparison for native row-predictor v3",
+  "baseline": {
+    "commit": "08f55c16af6e96980d5b5f522b70efc6ca8492dd",
+    "codec_source_sha256": "3ed8ce30d60e9373ac68939e295f10335c650e46c6b6a7ca64e2725e361d385c"
+  },
+  "candidate": {
+    "commit": "6637aa10",
+    "codec_source_sha256_at_benchmark": "d567b57b0c10285e11a1af1f8d209958e6831c9dd33f23285dbc09033efc1b2b",
+    "codec_source_sha256_after_log_only_fix": "70728e6c098a8356d8e65128c17a6c4cf30cb92e362f8b5debaf7d7062b0f046",
+    "log_only_followup_commit": "1c2120a8",
+    "zstd_row_helper_sha256": "a9fb4f00747ed37af43f25850c5f5e175db2240de5a3d120589401fbcd6698dd",
+    "stream_layout_sha256": "2a762877fcaf5934cc6b00a1204197fc55a0a14a861f3e51392a3c2440407c61",
+    "client_decoder_sha256": "364141857dd818446c1c20bef8f03a667fb611fc9c69eecef356b956e0d0883c"
+  },
+  "harness": {
+    "crop_script_sha256": "067972d5fabf6a498ec74c232f3f8529e20d8a583da6768883a6644d29fe8be2",
+    "build_script_sha256": "613bd3e1bd22e36016ebea50196b8f3ffcd8864fed746471b51117c9f1c06f44",
+    "runner_sha256": "3ef7aa1d01cd80314a8855233e7c4ca8039fbcb7c7ed189f927f9b7e88ea16bc",
+    "fixture_wrapper_sha256": "27b67205c6ff75114cb865b3da5cda451118866e2402a5f27e21cfb241c81565",
+    "fixture_body_sha256": "fd08fc78b4b3c839f7c28704913016630d4d79556fd3a58789adc37a30fa8526"
+  },
+  "input_provenance": {
+    "format": "raw 2160x2160 RGBA8, 18662400 bytes each",
+    "forest_source_sha256": "033da4919b1652854afa1369e4c3557880436054897340bc93418b4286bfae5a",
+    "dark_source_sha256": "9544039448fabbe2afe97356d09d3dfcaed5c202fe60506985e6d67a4c069805",
+    "crop": "centre 256x256; duplicate for both eyes; clamp source x+0 or x+8 before native foveation",
+    "periphery": "synthetic solid-color two-eye Vulkan fixture",
+    "private_pixel_buffers_included": false
+  },
+  "run": {
+    "codec_target_bitrate_bps": 700000000,
+    "compression_cache": "disabled",
+    "ordering": "baseline, candidate, candidate, baseline",
+    "per_process": "6 warmup paired encodes followed by 24 timed paired encodes",
+    "pair_model": "reset references, encode anchor, encode one current frame; repeated pairs, not continuous motion",
+    "cases": [
+      "forest-pan",
+      "dark-pan",
+      "scene-cut",
+      "independent-noack",
+      "dark-noack"
+    ],
+    "motion_settings": [
+      "global",
+      "regional"
+    ],
+    "measured_frames": 960,
+    "oracle_matches": 960,
+    "matched_candidate_wire_size_regressions": 0,
+    "results_csv_sha256": "cbb8a4001343a523e1217e75f72c88a4ce934c526e7740379a760bbab6b6dd3d",
+    "published_csv_sha256": "5428f2190cf84c7baa760f5382c59f9822fbc02481f8e7fadc60a3a702e80106",
+    "published_file": "encoder-samples.csv",
+    "original_csv_line_endings": "CRLF, normalized to LF for publication",
+    "unpublished_scratch_summary_sha256": "b51d56d32f4e9932b0ce0730f827450ed20bd919d0771d7866941004146f76ab"
+  },
+  "standalone_artifacts": {
+    "baseline_codec_object_sha256": "93bcab7e9a3af5dba508051eae4e82a36e2d7c8e1b6d276131863acb9856d260",
+    "candidate_codec_object_sha256": "2d8dabc9547db3ff8a0b07f792d15162d24f76972b5d60f2eb6dca4397a0c622",
+    "baseline_test_binary_sha256": "97ec34bf189a3663cec9f2625954be2c9f2f4ea344c251241c703e1b8622ca39",
+    "candidate_test_binary_sha256": "9b79c2b091f4408797d38105c2641dde5ea74b433d7f8cb4e3f53daf265e3f26"
+  },
+  "apk": {
+    "package": "org.meumeu.wivrn.nx.warp",
+    "version_name": "1.0",
+    "version_code": 1,
+    "sha256": "47aa9048b87de7d9b965d090f73ca0f33882a29c082c4f91fc00aa3c4c2c63ac",
+    "signer_certificate_sha256": "fb6a4688fd7c9234f42ba6c2c9efe5922e6a804c805ab0982b04b6c02afbc150",
+    "installed_at_measurement": false,
+    "current_deployment_record": "deployment.json"
+  }
+}

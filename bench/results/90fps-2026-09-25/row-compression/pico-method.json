@@ -1,0 +1,47 @@
+{
+  "experiment": "native-only vertical predictor, NXDZ v3",
+  "layout": "2176x2176 per eye, stereo, RGB888 native center side 256",
+  "baseline": "production pack_detail winner selector; zstd predicted v2 (stride-4) on all 10 fixtures",
+  "candidate": "compress_zstd_row_predicted/decompress_zstd v3; vertical predictor replaces stride-4 only in native RGB888 tile pixels",
+  "source_revision": "frozen helper snapshot; validated source hashes below",
+  "helper_sha256": "a9fb4f00747ed37af43f25850c5f5e175db2240de5a3d120589401fbcd6698dd",
+  "helper_test_sha256_at_measurement": "4b5c29c36bbb7ccb0e0417a7974634f165ab1eaa219dc367fbda73829027c177",
+  "final_helper_test_sha256": "72611d911c70b0f180eded28e0017c1eada7e565833c15a75ba857bba9a6a7fe",
+  "final_helper_test_note": "Helper unchanged after timing; later tests cover mixed blocks, unsorted offsets, gaps, tails, aliases, and all four motion quadrants. Strict and ASan/UBSan pass.",
+  "benchmark_source": "harness/row_bench.cpp",
+  "benchmark_source_sha256": "998d763c4d5412ef28e94585a3202deeea70f38bfc911b065154cb1c695eb1d8",
+  "android_binary": "final_row_bench.arm64",
+  "android_binary_sha256": "7783bec1d1c172c0ef89df55a9f593e7e75624e695da2bbdc9719185af9ec85e",
+  "runtime": "Android arm64 standalone executable; Android NDK r29 clang++, -O3 -DNDEBUG -std=c++20; pinned Zstandard 1.5.7 static library",
+  "baseline_selector_probe": "selector-probe.csv; LZ4, dense Zstd and predicted Zstd compared; v2 won all ten fixtures",
+  "fixtures": {
+    "frame_count": 6,
+    "motion_residual_count": 4,
+    "raw_bytes_per_fixture": 523728,
+    "basis": "private photo-derived production NXDF captures; residuals derived from adjacent shifted frames; no source images included"
+  },
+  "protocol": {
+    "order": "randomized ABBA/BAAB blocks",
+    "warm_blocks_per_fixture": 12,
+    "measured_blocks_per_fixture": 12,
+    "samples_per_path_per_phase": 24,
+    "sample_rows": 960,
+    "exactness": "decompressed bytes compared with input after the timed section on every warm and measured sample",
+    "percentiles": "nearest-rank; p95 from 24 samples is coarse"
+  },
+  "selection_threshold": "candidate replaces incumbent only when wire size is at least 5% smaller",
+  "no_app_or_server_started": true,
+  "files": {
+    "summary_csv": "pico-summary.csv",
+    "summary_sha256": "02f331bca32e92ba5bec6d8f1f3469b1441a9d0c55b7e934b02b5165d219f280",
+    "raw_samples_csv": "pico-samples.csv",
+    "raw_samples_sha256": "6790b11beeeea53dcca88f6115a673d74ca974e6e9ef1f5f3bb3d5d680c21f2d",
+    "selector_probe_csv": "selector-probe.csv",
+    "selector_probe_sha256": "1746922f3db00f707237bc610e43818d629a8f6953e83f6f70bd6f93786d3f36",
+    "corpus_manifest_sha256": "2b3c799635d9a3130a663d5f25c5d248eaa8ae6468dda03a11976166ca6f0f31"
+  },
+  "selector_probe_source": "harness/selector_probe.cpp",
+  "selector_probe_source_sha256": "f09bcd5ac74a8ac7c5c7a8c20dac58f60b54a3b23bfba1f30907743961526866",
+  "subsequent_test_coverage": "Regional v3 restoration with distinct vectors in all four quadrants; helper unchanged; strict and ASan/UBSan pass",
+  "intermediate_helper_test_sha256": "1ec2c36869d53c79fa14135c1c90a5ab0f0ea9ce226d5c4794781a26f1c704ad"
+}
