@@ -40,6 +40,8 @@ After visual review, **Q20 is the preferred quality profile**; Q10 remains the b
 
 The **opt-in NXVC-centre + Q20 JPEG-periphery hybrid now runs in WiVRn NX on Pico**. In a short 195-cube motion scene it delivered **59.4 fresh frames/s** against a 90 Hz target; server encode averaged **12.71 ms/frame**, including **2.94 ms** for stereo JPEG compression. Pico JPEG decode averaged **1.77 ms** and the JPEG reached the presentation shader on **91.2%** of reported eye frames. This establishes end-to-end function, but misses the fresh-frame target; it is not a photon-latency or worn-headset quality verdict. [Live method, logs and graph](bench/results/90fps-2026-09-29/jpeg-periphery/live/README.md). The earlier [isolated Pico results](bench/results/90fps-2026-09-29/jpeg-periphery/pico-check/README.md) use a different JPEG decoder and should not be substituted for the live numbers.
 
+The next [native-source, no-foveation experiment](bench/results/90fps-2026-09-29/jpeg-periphery/native-1088/README.md) doubles JPEG width and height to **1088² per eye**. Pico used a current or at-most-two-frame-old JPEG on **360/360 sampled eye frames** in the animated test; fresh source rate remained about **53–60/s**, below 90 Hz. The linked result includes a headset screenshot and the decode/encode costs.
+
 [Results, graphs and reproducible harness](bench/results/90fps-2026-09-29/jpeg-periphery/README.md)
 
 ![Source-derived JPEG periphery: quality versus codec payload](bench/results/90fps-2026-09-29/jpeg-periphery/rate-quality.png)

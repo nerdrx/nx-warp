@@ -5,6 +5,10 @@
 **59.4 fresh frames/s**, so the hybrid is still experimental rather than the
 90 FPS default.
 
+A later [native-source 1088²/eye, no-foveation Pico test](native-1088/README.md)
+shows the quality-first variant and a headset screenshot. It retains the most
+recent JPEG for at most two frames to prevent sharp/soft flashing.
+
 The hypothesis is useful on these two scenes: retain the existing NXVC centre,
 then replace coarse outer tiles with a finer image compressed at low JPEG
 quality. At **544×544 pixels per eye, JPEG Q10, 4:2:0**, total codec payload fell
