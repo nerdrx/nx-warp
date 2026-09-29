@@ -1,0 +1,72 @@
+{
+  "status": "complete",
+  "started_utc": "2026-09-29T08:52:43.833+00:00",
+  "ended_utc": "2026-09-29T08:52:56.499+00:00",
+  "job_count": 48,
+  "jobs_completed": 48,
+  "shuffle_seed": 20260929,
+  "protocol": "one serial process per job; 12 warmups + 24 measured whole-frame samples; timer covers ordered tj3Decompress8 calls only; RGB hashing and checks outside timer",
+  "scope": "CPU libjpeg-turbo JPEG decode to RGB888 only; excludes GPU, Android hardware decode, NXVC, app pipeline, transport, presentation, and live FPS",
+  "library": "libjpeg-turbo 3.2.0",
+  "cpu_model": "AMD Ryzen 9 9950X3D 16-Core Processor",
+  "platform": "Linux-7.2.7-1-cachyos-x86_64-with-glibc2.44",
+  "machine": "x86_64",
+  "host_load_start_top5": [
+    {
+      "cpu_percent": 542.0,
+      "name": "GameThread"
+    },
+    {
+      "cpu_percent": 50.0,
+      "name": "python3"
+    },
+    {
+      "cpu_percent": 37.5,
+      "name": "rtk"
+    },
+    {
+      "cpu_percent": 30.8,
+      "name": "recalld"
+    },
+    {
+      "cpu_percent": 24.8,
+      "name": "firefox"
+    }
+  ],
+  "manifest": "/run/media/nerdrx/Lex/claude/nx-warp/scratch/jpeg-periphery/decode-jobs.json",
+  "manifest_sha256": "4e875123052de05856ce93752ac728761071f6330d55fdfc85ebff12883e43d9",
+  "source": "/run/media/nerdrx/Lex/claude/nx-warp/scratch/mjpeg-decode-agent/jpeg_decode_bench.cpp",
+  "source_sha256": "17ac7e249cfb61ee9788e522617fa5cd73ec4e895781731ac10db2066c3a22e0",
+  "binary": "/run/media/nerdrx/Lex/claude/nx-warp/scratch/mjpeg-decode-agent/jpeg_decode_bench",
+  "binary_sha256": "3476f872f10d8fb5f8e60cd835a24eff0d218145205251dfd1e9f60b23d54d1b",
+  "runner": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-09-29/jpeg-periphery/harness/run_decode.py",
+  "runner_sha256": "0b645a769450d2395d137e416d721267637af765131cceaebf78e8e20cafe72d",
+  "scratch_run_dir": "/run/media/nerdrx/Lex/claude/nx-warp/scratch/jpeg-periphery/timing",
+  "last_job": "dark-s0__r272__q5__c420",
+  "last_job_started_utc": "2026-09-29T08:52:56.453+00:00",
+  "last_job_ended_utc": "2026-09-29T08:52:56.495+00:00",
+  "host_load_end_top5": [
+    {
+      "cpu_percent": 542.0,
+      "name": "GameThread"
+    },
+    {
+      "cpu_percent": 30.8,
+      "name": "recalld"
+    },
+    {
+      "cpu_percent": 24.8,
+      "name": "firefox"
+    },
+    {
+      "cpu_percent": 14.3,
+      "name": "Discord"
+    },
+    {
+      "cpu_percent": 13.2,
+      "name": "steamwebhelper"
+    }
+  ],
+  "summary_sha256": "0f421900da9c6f88035f9dab030793441c49ff49389cfa55e40c8a548a1f12b2",
+  "samples_sha256": "b2dd8d1b7efc8e9c650a2e6627df2f3e81610702f514c8733d8033fcc1c2bdf4"
+}

@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 29 September: NXVC centre with a low-quality JPEG outer image
+
+A new **offline hybrid prototype** keeps the existing decoded NXVC centre unchanged and uses source-derived JPEG for finer outer detail, with a gradual round transition. At **544×544 per eye, Q10**, complete codec payload falls from **47.75 to 34.62 Mbit/s** on the forest scene and **62.43 to 53.92 Mbit/s** on the dark scene: **13.6–27.5% fewer bytes**. Outer signs and silhouettes retain more detail, with JPEG artifacts accepted in the periphery. These are two photographic scenes, three source shifts each, normalized to 90 frames/s; no live-throughput claim.
+
+JPEG decode alone takes **0.49–0.58 ms p50 on the PC**. Pico cost, texture upload and the combined presentation path remain unmeasured; this is not installed in WiVRn. The live codec remains unchanged.
+
+[Results, graphs and reproducible harness](bench/results/90fps-2026-09-29/jpeg-periphery/README.md)
+
+![Source-derived JPEG periphery: quality versus codec payload](bench/results/90fps-2026-09-29/jpeg-periphery/rate-quality.png)
+
 ### 29 September: Motion JPEG on the same foveated pixels
 
 Plain full-raster MJPEG at Q85 needs **147–221 Mbit/s**, versus **48–62 Mbit/s** for current independent NXVC frames on two saved photographic scenes. These are file sizes normalized to 90 frames/s, including a common safety payload; they are not live Wi-Fi measurements or equal-quality encodes.

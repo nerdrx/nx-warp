@@ -1,0 +1,105 @@
+{
+  "scope": "center-only sparse NXDF, selector envelope, CPU helper decode only",
+  "method": {
+    "preserved_tile_disk_radius_px": 384,
+    "map": "9248 row-interleaved stereo descriptors",
+    "exterior": "inline black mode-3 descriptors",
+    "selector": "production LZ4 vs dense/predicted Zstd, then native-row v3 5% gate",
+    "validation": "decoded RGB equality to original NXDF within r384; r128 core counted separately",
+    "timing": "CPU helper decode only",
+    "source_revision": "private corpus compression-corpus-20260925",
+    "source_file_sha256": "904f94fcbb99b3958bb646cd9488b28c59ac80f55a5cca7aa846e12b34d56795",
+    "exporter_file_sha256": "391f0a44a8a1d3730efdcf930c3db50f88777150b6ed5729ccb21dc924801090",
+    "percentiles": "nearest rank ceil(N*q)-1"
+  },
+  "preserved_tile_disk_radius_px": 384,
+  "validated_nx_decoded_active_radius_px": 384,
+  "validated_nx_decoded_core_radius_px": 128,
+  "warmups": 6,
+  "timed_iterations": 24,
+  "fixtures": {
+    "forest-s0": {
+      "selected_bytes": 30005,
+      "raw_bytes": 481008,
+      "retained_tiles_per_frame": 984,
+      "validated_core_pixels": 102936,
+      "validated_active_pixels": 926608,
+      "decode_p50_us": 129.661,
+      "decode_p95_us": 157.771
+    },
+    "forest-s8": {
+      "selected_bytes": 29415,
+      "raw_bytes": 481008,
+      "retained_tiles_per_frame": 984,
+      "validated_core_pixels": 102936,
+      "validated_active_pixels": 926608,
+      "decode_p50_us": 127.85,
+      "decode_p95_us": 131.05
+    },
+    "forest-s16": {
+      "selected_bytes": 29102,
+      "raw_bytes": 481008,
+      "retained_tiles_per_frame": 984,
+      "validated_core_pixels": 102936,
+      "validated_active_pixels": 926608,
+      "decode_p50_us": 128.9,
+      "decode_p95_us": 163.87
+    },
+    "dark-s0": {
+      "selected_bytes": 48560,
+      "raw_bytes": 481008,
+      "retained_tiles_per_frame": 984,
+      "validated_core_pixels": 102936,
+      "validated_active_pixels": 926608,
+      "decode_p50_us": 149.471,
+      "decode_p95_us": 152.781
+    },
+    "dark-s8": {
+      "selected_bytes": 48433,
+      "raw_bytes": 481008,
+      "retained_tiles_per_frame": 984,
+      "validated_core_pixels": 102936,
+      "validated_active_pixels": 926608,
+      "decode_p50_us": 151.961,
+      "decode_p95_us": 204.681
+    },
+    "dark-s16": {
+      "selected_bytes": 48049,
+      "raw_bytes": 481008,
+      "retained_tiles_per_frame": 984,
+      "validated_core_pixels": 102936,
+      "validated_active_pixels": 926608,
+      "decode_p50_us": 150,
+      "decode_p95_us": 153.4
+    }
+  },
+  "output_sha256s": {
+    "decoded/dark-s0.ppm": "76dd530f8441fd85cf8c7157457217bce78fb1686bf31f2f27924687cb7e9ecf",
+    "decoded/dark-s16.ppm": "7927d53562648e92a5ee7708993c4ce111305cb0264210b2d2a71314d8c41835",
+    "decoded/dark-s8.ppm": "9de40cb15b24a19f2608de37724b1585aacf647690585853fa2057b21fb456c6",
+    "decoded/forest-s0.ppm": "372ea5412d017d731ba76b6e7b002d34c44ff7e06fb89ae8160ca815f4f38d25",
+    "decoded/forest-s16.ppm": "061f15c263e7998a0150169e9e94bb2ba37cf2de1675cb97e346b3aecc3b2946",
+    "decoded/forest-s8.ppm": "7887a629601e25638d8ed54c6447c6a658489b945a609f1e25ccbb9d446b77ba",
+    "output/dark-s0.detail.bin": "21d0d361de5735c390597dec125441c40475749631045f5b286a9ed573608cb3",
+    "output/dark-s0.nxdf": "3a3088144f07af858cc2f44abdfd63757560993c114151840834119fd0b1778c",
+    "output/dark-s16.detail.bin": "9e3b7d975fdd7fffd67713ed6cf4d35f3ec306bb528c15bbeb5b377da9e1162c",
+    "output/dark-s16.nxdf": "478bd57829a3cd6122b00cbd488e3aac3d78c7f3da0e3c55267f837a1621f137",
+    "output/dark-s8.detail.bin": "b4d75c9f18027d669b777ad2ad0bf6e70d2d4f4a63fd37c69002ccb971162549",
+    "output/dark-s8.nxdf": "8e90afcdde51509675fea8a177f7e5b13a81bf84faec99d3cbfa03b96f1b72c6",
+    "output/forest-s0.detail.bin": "2f79d7dd4a1dac067de4046646c3392ef8fafb46a7448988242b40ad71d5ab75",
+    "output/forest-s0.nxdf": "db0a92d40d402543d1b3bda4c7bc78fec882496475020fd6dd0a04f36ee8e7c2",
+    "output/forest-s16.detail.bin": "a4b027e72a47c4e3e1a117d0062300d4987e77ed6d0d783602598f3b40595fdb",
+    "output/forest-s16.nxdf": "7a0ca4f58d8454ca371e60328acdc29afcc699136ce53dd1d54c744412e725dc",
+    "output/forest-s8.detail.bin": "22b1a4c1c7e20afc31b68c4bbc71ebd989fb06be355d05b16f6c03fc7123917f",
+    "output/forest-s8.nxdf": "3eb54762cfb98838bddac2e1bf0adb4e6dc0835d1fd330ec8026a39a5cd5f524",
+    "output/samples.csv": "e44a8338658111d59c3d805aabedb59d1b202e97ac93ba4465f6c34666332f1b"
+  },
+  "input_sha256s": {
+    "dark-s0.nxdf": "4f352c1b11b0cbaa6a645b605c2de6f7360c3feea1f045aa5e11ddda9e8d8935",
+    "dark-s16.nxdf": "356025b2aff24789a146f8e3d893ba43fb0b0f6872fc01cb048f65cb9d93500e",
+    "dark-s8.nxdf": "39f29f5978c554d478348ed8bf7d70d6b1e2738310f60c30f1819dd7dbda9774",
+    "forest-s0.nxdf": "ea0f52d69ff8a79b26f4fc78539da6d9056a8e06d31d6c400778672efeae5010",
+    "forest-s16.nxdf": "a453b7ac7e0ea72009276f8f9b70901cf5252620e7a738b24c417a9192884d3a",
+    "forest-s8.nxdf": "b43e52229b5a2c5187c8e02d91215f8dfd81809237d5a980a3a1ff56ec8208d5"
+  }
+}

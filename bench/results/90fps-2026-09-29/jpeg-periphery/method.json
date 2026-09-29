@@ -1,0 +1,44 @@
+{
+  "scope": "offline source-derived JPEG periphery and retained production NXVC centre",
+  "eye_size": 2176,
+  "fps_normalization": 90,
+  "source_size": 2160,
+  "source_truth_resample": "shader floor coordinate convention 2160 to 2176; no lossy NV12 prefilter",
+  "jpeg_downsample": "Lanczos",
+  "jpeg_upsample": "bilinear per eye",
+  "jpeg_quality": [
+    5,
+    10,
+    20,
+    30
+  ],
+  "jpeg_side": [
+    272,
+    544,
+    1088
+  ],
+  "jpeg_chroma": [
+    420,
+    444
+  ],
+  "jpeg_optimize": true,
+  "jpeg_library": "8.0",
+  "round_blend_end": 384,
+  "blend": "quintic smoothstep",
+  "nx_centre": "existing sparse NXDF tiles inside outer radius, production independent envelope selector",
+  "stereo": "duplicated eyes, both encoded; no deduplication credit",
+  "jpeg_overlap": "whole low-resolution frame includes redundant centre; counted in bytes",
+  "safety": "unchanged compressed production companion, counted",
+  "packet_header_bytes": 36,
+  "packet_integration": false,
+  "excludes": [
+    "transport/FEC",
+    "GPU upload",
+    "shader sampling cost",
+    "network delivery",
+    "Pico timing"
+  ],
+  "variants": 144,
+  "round_nx_preserved_radius": 128,
+  "core_equality_reference": "current decoded NXVC, not original source"
+}
