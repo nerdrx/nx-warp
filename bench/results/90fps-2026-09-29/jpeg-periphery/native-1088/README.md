@@ -1,6 +1,10 @@
 # Native-source JPEG with foveation disabled
 
-This is an **opt-in live experiment**, not the default NXVC profile. The server samples each eye from the renderer image *before* foveation, writes a uniform 1088 × 1088 RGB capture in the existing compositor compute pass, and encodes it as Q20 JPEG. The main 2176 × 2176-per-eye NXVC stream also uses a uniform source mapping. No foveation map is needed for either image in this test. The JPEG still supplies the outer image; NXVC supplies the central reconstruction.
+**Disposition: rejected for active use after the user's headset quality
+verdict.** The active profile is pre-JPEG NXVC with standard foveation. Keep
+this page and its screenshot as historical experiment evidence.
+
+This was an **opt-in live experiment**, not the default NXVC profile. The server sampled each eye from the renderer image *before* foveation, wrote a uniform 1088 × 1088 RGB capture in the existing compositor compute pass, and encoded it as Q20 JPEG. The main 2176 × 2176-per-eye NXVC stream also used a uniform source mapping. No foveation map was needed for either image in this test. The JPEG supplied the outer image; NXVC supplied the central reconstruction.
 
 ![Pico stereo capture of the native-source, no-foveation stream during the animated 195-cube scene](pico-stereo.png)
 

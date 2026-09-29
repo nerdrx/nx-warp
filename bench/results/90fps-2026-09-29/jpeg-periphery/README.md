@@ -1,5 +1,10 @@
 # NXVC centre, low-quality JPEG periphery
 
+**Disposition: rejected for active use after the user's headset quality
+verdict.** The active profile is pre-JPEG NXVC with standard foveation. This
+directory remains a historical record; its offline Q20 preference does not
+override that verdict.
+
 **29 September 2026 — offline study.** The Q20 variant was subsequently
 [integrated and checked live on Pico](live/README.md). That run delivered
 **59.4 fresh frames/s**, so the hybrid is still experimental rather than the
@@ -102,8 +107,8 @@ Vulkan upload/sample test are now reported [separately](pico-check/README.md).
 No integrated compositor, networking, fresh-frame rate or photon latency was
 measured here.
 
-**Offline integration decision:** Q20 at 544²/eye is the preferred visual profile
-after side-by-side review; Q10 is the bandwidth fallback. Q20 saves **21.4%**
+**Historical offline decision (superseded):** Q20 at 544²/eye was preferred
+after side-by-side review; Q10 was the bandwidth fallback. Q20 saves **21.4%**
 on forest and **2.1%** on dark against the current independent NXVC frames.
 Standalone JPEG decode on the Pico is **1.31–1.51 ms p50** to stereo RGBA at Q20.
 A separate offscreen Vulkan helper measures **0.203 ms p50** for both image

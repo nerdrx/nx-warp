@@ -32,15 +32,21 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
-### 29 September: NXVC centre with a low-quality JPEG outer image
+### 29 September: JPEG periphery experiment — rejected for active use
 
-A new **offline hybrid prototype** keeps the existing decoded NXVC centre unchanged and uses source-derived JPEG for finer outer detail, with a gradual round transition. At **544×544 per eye, Q10**, complete codec payload falls from **47.75 to 34.62 Mbit/s** on the forest scene and **62.43 to 53.92 Mbit/s** on the dark scene: **13.6–27.5% fewer bytes**. Outer signs and silhouettes retain more detail, with JPEG artifacts accepted in the periphery. These are two photographic scenes, three source shifts each, normalized to 90 frames/s; no live-throughput claim.
+The JPEG-periphery hybrid is **rejected for the active profile** after the
+user's headset quality verdict. The active profile is restored to pre-JPEG
+NXVC with its standard foveation; neither the 544² JPEG hybrid nor the 1088²
+no-foveation variant should be used as the live profile. The measurements,
+graphs and headset captures below remain as historical experiment records.
 
-After visual review, **Q20 is the preferred quality profile**; Q10 remains the bandwidth fallback. Q20 uses **37.55 / 61.12 Mbit/s** on forest / dark, so the dark scene saves only about **2%** against current NXVC. Both figures include the safety image.
+The offline prototype kept the decoded NXVC centre and used source-derived JPEG for finer outer detail. At **544×544 per eye, Q10**, complete codec payload fell from **47.75 to 34.62 Mbit/s** on the forest scene and **62.43 to 53.92 Mbit/s** on the dark scene: **13.6–27.5% fewer bytes**. These historical offline measurements use two photographic scenes and three source shifts each, normalized to 90 frames/s; they are not live-throughput claims.
 
-The **opt-in NXVC-centre + Q20 JPEG-periphery hybrid now runs in WiVRn NX on Pico**. In a short 195-cube motion scene it delivered **59.4 fresh frames/s** against a 90 Hz target; server encode averaged **12.71 ms/frame**, including **2.94 ms** for stereo JPEG compression. Pico JPEG decode averaged **1.77 ms** and the JPEG reached the presentation shader on **91.2%** of reported eye frames. This establishes end-to-end function, but misses the fresh-frame target; it is not a photon-latency or worn-headset quality verdict. [Live method, logs and graph](bench/results/90fps-2026-09-29/jpeg-periphery/live/README.md). The earlier [isolated Pico results](bench/results/90fps-2026-09-29/jpeg-periphery/pico-check/README.md) use a different JPEG decoder and should not be substituted for the live numbers.
+The original offline preference for **Q20** was superseded by the later headset quality verdict. Q20 used **37.55 / 61.12 Mbit/s** on forest / dark, saving only about **2%** on the dark scene. Both figures include the safety image.
 
-The next [native-source, no-foveation experiment](bench/results/90fps-2026-09-29/jpeg-periphery/native-1088/README.md) doubles JPEG width and height to **1088² per eye**. Pico used a current or at-most-two-frame-old JPEG on **360/360 sampled eye frames** in the animated test; fresh source rate remained about **53–60/s**, below 90 Hz. The linked result includes a headset screenshot and the decode/encode costs.
+The opt-in hybrid ran end to end on Pico, delivering **59.4 fresh frames/s** against a 90 Hz target; server encode averaged **12.71 ms/frame**, including **2.94 ms** for stereo JPEG compression. Pico JPEG decode averaged **1.77 ms** and JPEG reached presentation on **91.2%** of reported eye frames. These are historical measurements, not an endorsement for active use. [Live method, logs and graph](bench/results/90fps-2026-09-29/jpeg-periphery/live/README.md). The earlier [isolated Pico results](bench/results/90fps-2026-09-29/jpeg-periphery/pico-check/README.md) use a different JPEG decoder.
+
+The later [native-source, no-foveation experiment](bench/results/90fps-2026-09-29/jpeg-periphery/native-1088/README.md) doubled JPEG width and height to **1088² per eye**. Pico used a current or at-most-two-frame-old JPEG on **360/360 sampled eye frames**; fresh source rate remained about **53–60/s**, below 90 Hz. Its screenshot and encode/decode costs remain available as historical evidence.
 
 [Results, graphs and reproducible harness](bench/results/90fps-2026-09-29/jpeg-periphery/README.md)
 

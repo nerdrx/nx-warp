@@ -1,6 +1,10 @@
 # Live Pico check: NXVC centre + Q20 JPEG periphery
 
-The hybrid is installed in the custom WiVRn NX APK and was exercised end to end on a Pico. The server encodes a 544×544 Q20 JPEG for each eye beside the direct NXVC stream. The Pico decodes it on a worker and samples it in the existing reprojection pass: NXVC remains unchanged through radius 128, with a smooth radial blend to JPEG by radius 384. Missing or late JPEG falls back to NXVC. The server switch is `NX_WARP_JPEG_PERIPHERY=1`; it is opt-in.
+**Disposition: rejected for active use after the user's headset quality
+verdict.** The active profile is pre-JPEG NXVC with standard foveation. This
+page and its captures remain historical experiment evidence.
+
+At the time of this check, the hybrid ran end to end on Pico. The server encoded a 544×544 Q20 JPEG for each eye beside the direct NXVC stream. The Pico decoded it on a worker and sampled it in the existing reprojection pass: NXVC remained unchanged through radius 128, with a smooth radial blend to JPEG by radius 384. Missing or late JPEG fell back to NXVC. The server switch was `NX_WARP_JPEG_PERIPHERY=1`.
 
 ![Live short-run telemetry](live-telemetry.png)
 
