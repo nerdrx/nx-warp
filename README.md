@@ -36,6 +36,8 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 A new **offline hybrid prototype** keeps the existing decoded NXVC centre unchanged and uses source-derived JPEG for finer outer detail, with a gradual round transition. At **544×544 per eye, Q10**, complete codec payload falls from **47.75 to 34.62 Mbit/s** on the forest scene and **62.43 to 53.92 Mbit/s** on the dark scene: **13.6–27.5% fewer bytes**. Outer signs and silhouettes retain more detail, with JPEG artifacts accepted in the periphery. These are two photographic scenes, three source shifts each, normalized to 90 frames/s; no live-throughput claim.
 
+After visual review, **Q20 is the preferred quality profile**; Q10 remains the bandwidth fallback. Q20 uses **37.55 / 61.12 Mbit/s** on forest / dark, so the dark scene saves only about **2%** against current NXVC. Both figures include the safety image.
+
 JPEG decode alone takes **0.49–0.58 ms p50 on the PC**. Pico cost, texture upload and the combined presentation path remain unmeasured; this is not installed in WiVRn. The live codec remains unchanged.
 
 [Results, graphs and reproducible harness](bench/results/90fps-2026-09-29/jpeg-periphery/README.md)

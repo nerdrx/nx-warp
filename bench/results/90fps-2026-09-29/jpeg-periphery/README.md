@@ -94,7 +94,9 @@ headset memory traffic still matter. The existing sparse NX frame also remains
 481,008 raw bytes before envelope compression. No Pico decoder, Vulkan upload,
 compositor, networking, fresh-frame rate or photon latency was measured here.
 
-**Next integration candidate:** Q10 at 544²/eye, with Q20 as a quality option.
+**Next integration candidate:** Q20 at 544²/eye is the preferred visual profile
+after side-by-side review; Q10 is the bandwidth fallback. Q20 saves **21.4%**
+on forest and **2.1%** on dark against the current independent NXVC frames.
 First measure JPEG decode and texture delivery on the Pico, then sample the
 outer texture directly inside the existing presentation pass. Avoid creating
 another full-resolution intermediate image. This result supports that bounded
