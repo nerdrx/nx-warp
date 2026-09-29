@@ -32,6 +32,16 @@ The latest quality comparison uses **100% stream scale, 90 Hz, native RGB888 det
 
 [Raw evidence, methodology and limitations](bench/results/90fps-2026-09-22/recovery-motion/README.md) · [Earlier live bitrate failures](bench/results/90fps-2026-09-22/direct-live/README.md)
 
+### 29 September: Motion JPEG on the same foveated pixels
+
+Plain full-raster MJPEG at Q85 needs **147–221 Mbit/s**, versus **48–62 Mbit/s** for current independent NXVC frames on two saved photographic scenes. These are file sizes normalized to 90 frames/s, including a common safety payload; they are not live Wi-Fi measurements or equal-quality encodes.
+
+A compact **JPEG sample-atlas prototype** is more promising: Q75 saves **22–35%** of payload, with additional detail loss. It keeps peripheral samples packed and reduces JPEG output to 308,224 pixels per stereo frame. The prototype is not integrated, and its full Pico decode/presentation cost remains unmeasured. The current codec and settings are unchanged.
+
+[Comparison, quality curves, CPU timing and reproduction](bench/results/90fps-2026-09-29/mjpeg-vs-nxvc/README.md)
+
+![MJPEG versus NXVC payload on identical foveated reference pixels](bench/results/90fps-2026-09-29/mjpeg-vs-nxvc/bitrate.png)
+
 ### 25 September: more lossless compression with tiny Pico overhead
 
 Vertical prediction reduces complete codec payload by **7.5–18.0%** in controlled production-encoder tests, preserving the exact decoded pixels. All **960 timed encodes** match their independent oracle; no matched candidate frame gets larger. Extra work falls mostly on the PC: **0.8–1.6 ms** more median encode time. The hardest regional scene-cut case still takes **12.02 ms**, so this does not prove sustained 90 FPS.

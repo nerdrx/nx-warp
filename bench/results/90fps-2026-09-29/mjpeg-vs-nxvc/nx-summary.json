@@ -1,0 +1,13 @@
+{
+  "scope": "independent selected detail envelope; CPU helper decode only",
+  "layout": "2176x2176 per eye, stereo, RGB888 native 256, Zstd predictor",
+  "warmups": 6, "timed_iterations": 24,
+  "fixtures": {
+    "forest-s0": {"raw_bytes": 523728, "selected_bytes": 56293, "incumbent_bytes_before_native_row": 56293, "native_row_trial_bytes": 53576, "native_row_savings_pct": 4.82653, "native_row_selected": false, "safety_raw_bytes": 21688, "safety_wire_bytes": 10558, "decode_p50_us": 319.132, "decode_p95_us": 401.801},
+    "forest-s8": {"raw_bytes": 523728, "selected_bytes": 55787, "incumbent_bytes_before_native_row": 55787, "native_row_trial_bytes": 53004, "native_row_savings_pct": 4.98862, "native_row_selected": false, "safety_raw_bytes": 21688, "safety_wire_bytes": 10513, "decode_p50_us": 323.322, "decode_p95_us": 390.721},
+    "forest-s16": {"raw_bytes": 523728, "selected_bytes": 55236, "incumbent_bytes_before_native_row": 55236, "native_row_trial_bytes": 52573, "native_row_savings_pct": 4.82113, "native_row_selected": false, "safety_raw_bytes": 21688, "safety_wire_bytes": 10561, "decode_p50_us": 321.561, "decode_p95_us": 389.001},
+    "dark-s0": {"raw_bytes": 523728, "selected_bytes": 75668, "incumbent_bytes_before_native_row": 88057, "native_row_trial_bytes": 75668, "native_row_savings_pct": 14.0693, "native_row_selected": true, "safety_raw_bytes": 21688, "safety_wire_bytes": 11276, "decode_p50_us": 205.441, "decode_p95_us": 213.541},
+    "dark-s8": {"raw_bytes": 523728, "selected_bytes": 75417, "incumbent_bytes_before_native_row": 87477, "native_row_trial_bytes": 75417, "native_row_savings_pct": 13.7865, "native_row_selected": true, "safety_raw_bytes": 21688, "safety_wire_bytes": 11365, "decode_p50_us": 206.851, "decode_p95_us": 210.321},
+    "dark-s16": {"raw_bytes": 523728, "selected_bytes": 75038, "incumbent_bytes_before_native_row": 87348, "native_row_trial_bytes": 75038, "native_row_savings_pct": 14.0931, "native_row_selected": true, "safety_raw_bytes": 21688, "safety_wire_bytes": 11347, "decode_p50_us": 205.301, "decode_p95_us": 251.111}
+  }
+}
