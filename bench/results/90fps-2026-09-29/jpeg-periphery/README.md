@@ -1,6 +1,9 @@
 # NXVC centre, low-quality JPEG periphery
 
-**29 September 2026 — offline prototype; not installed in WiVRn.**
+**29 September 2026 — offline study.** The Q20 variant was subsequently
+[integrated and checked live on Pico](live/README.md). That run delivered
+**59.4 fresh frames/s**, so the hybrid is still experimental rather than the
+90 FPS default.
 
 The hypothesis is useful on these two scenes: retain the existing NXVC centre,
 then replace coarse outer tiles with a finer image compressed at low JPEG
@@ -95,17 +98,18 @@ Vulkan upload/sample test are now reported [separately](pico-check/README.md).
 No integrated compositor, networking, fresh-frame rate or photon latency was
 measured here.
 
-**Next integration candidate:** Q20 at 544²/eye is the preferred visual profile
+**Offline integration decision:** Q20 at 544²/eye is the preferred visual profile
 after side-by-side review; Q10 is the bandwidth fallback. Q20 saves **21.4%**
 on forest and **2.1%** on dark against the current independent NXVC frames.
 Standalone JPEG decode on the Pico is **1.31–1.51 ms p50** to stereo RGBA at Q20.
 A separate offscreen Vulkan helper measures **0.203 ms p50** for both image
 uploads and **1.092 ms p50** for a bilinear draw to full-size targets; these
 timings are not additive proof of live frame latency. [Device results, method and
-graphs](pico-check/README.md). Next transport the peripheral JPEG beside the
-NXVC centre and sample it directly inside the existing presentation pass. Avoid
-another full-resolution intermediate image. This result supports that bounded
-prototype; it does not justify replacing the live path yet.
+graphs](pico-check/README.md). The proposed next step was to transport the
+peripheral JPEG beside the NXVC centre and sample it in the existing
+presentation pass. This result supported that bounded
+prototype; it did not justify replacing the default live path. The later
+[opt-in live check](live/README.md) uses a different decoder and JPEG input.
 
 ## Method and validation
 
@@ -133,7 +137,8 @@ lossless JPEG**. C++ centre helper passes `-Wall -Wextra -Werror`.
 
 Source pictures, JPEGs, PPMs and example hybrid packets remain private. Public
 artifacts contain scripts, hashes, measurements and numeric diagrams only.
-The server stayed stopped.
+The server stayed stopped during this offline study; the later live check is
+reported separately.
 
 - [Quality and byte counts](quality.csv), [source hashes](fixtures.json), [method](method.json), [checks](validation.json)
 - [NX centre measurements](nx-centre-summary.json), [raw NX timings](nx-centre-samples.csv)

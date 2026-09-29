@@ -1,0 +1,18 @@
+{
+  "scenario": "headless Vulkan hello_xr full-field synthetic motion, WiVRn NX, Pico, 2176x2176 per eye, 90 Hz requested",
+  "fresh_frames_per_second_mean": 59.41304347826087,
+  "server_encode_ms_mean": 12.708695652173914,
+  "jpeg_compress_ms_mean": 2.9386666666666668,
+  "jpeg_bytes_per_stereo_frame_mean": 40014.333333333336,
+  "pico_jpeg_decode_ms_mean": 1.765541935483871,
+  "jpeg_applied_eye_frame_fraction": 0.9117149758454106,
+  "source_display_offset_ms_mean": 78.932,
+  "network_completed_frames_per_second_mean": 59.41304347826087,
+  "windows": {
+    "encode": 23,
+    "jpeg_compress": 15,
+    "decode": 31,
+    "applied": 23
+  },
+  "warning": "Source display-time offset is not physical motion-to-photon latency. Synthetic scene and off-head Pico are not a user quality test."
+}

@@ -38,11 +38,13 @@ A new **offline hybrid prototype** keeps the existing decoded NXVC centre unchan
 
 After visual review, **Q20 is the preferred quality profile**; Q10 remains the bandwidth fallback. Q20 uses **37.55 / 61.12 Mbit/s** on forest / dark, so the dark scene saves only about **2%** against current NXVC. Both figures include the safety image.
 
-JPEG decode alone takes **0.49–0.58 ms p50 on the PC**. On the Pico, Q20 stereo JPEG software decode to RGBA takes **1.31–1.51 ms p50** across the two scenes. A separate offscreen Vulkan test measures **0.203 ms p50** for a pair of 544² RGBA uploads and **1.092 ms p50** for bilinear sampling to two 2176² targets; the submit-to-fence wall interval is **1.772 ms p50**. These are isolated tests, not additive live-frame timings. The combined presentation path remains unmeasured; this is not installed in WiVRn. The live codec remains unchanged. [Pico method and graphs](bench/results/90fps-2026-09-29/jpeg-periphery/pico-check/README.md).
+The **opt-in NXVC-centre + Q20 JPEG-periphery hybrid now runs in WiVRn NX on Pico**. In a short 195-cube motion scene it delivered **59.4 fresh frames/s** against a 90 Hz target; server encode averaged **12.71 ms/frame**, including **2.94 ms** for stereo JPEG compression. Pico JPEG decode averaged **1.77 ms** and the JPEG reached the presentation shader on **91.2%** of reported eye frames. This establishes end-to-end function, but misses the fresh-frame target; it is not a photon-latency or worn-headset quality verdict. [Live method, logs and graph](bench/results/90fps-2026-09-29/jpeg-periphery/live/README.md). The earlier [isolated Pico results](bench/results/90fps-2026-09-29/jpeg-periphery/pico-check/README.md) use a different JPEG decoder and should not be substituted for the live numbers.
 
 [Results, graphs and reproducible harness](bench/results/90fps-2026-09-29/jpeg-periphery/README.md)
 
 ![Source-derived JPEG periphery: quality versus codec payload](bench/results/90fps-2026-09-29/jpeg-periphery/rate-quality.png)
+
+![Live Pico short-run fresh frames and stage costs](bench/results/90fps-2026-09-29/jpeg-periphery/live/live-telemetry.png)
 
 ### 29 September: Motion JPEG on the same foveated pixels
 
