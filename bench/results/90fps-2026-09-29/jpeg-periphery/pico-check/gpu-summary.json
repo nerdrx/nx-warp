@@ -1,0 +1,28 @@
+{
+  "device": "Adreno (TM) 650",
+  "source": "544x544",
+  "stereo_rgba_bytes": 2367488,
+  "target": "2176x2176_per_eye",
+  "timed_frames": 100,
+  "warmups": 12,
+  "upload_pair_gpu": {
+    "p50_ms": 0.203,
+    "p95_ms": 0.206,
+    "p99_ms": 0.207
+  },
+  "render_pair_gpu": {
+    "p50_ms": 1.092,
+    "p95_ms": 1.104,
+    "p99_ms": 1.118
+  },
+  "submit_to_fence_cpu": {
+    "p50_ms": 1.772,
+    "p95_ms": 2.203,
+    "p99_ms": 2.682
+  },
+  "gpu_timestamps": true,
+  "readback_checksum": "4404f5f4fe9f26bd",
+  "channel_errors_over_2": 0,
+  "max_channel_delta": 2,
+  "scope": "Standalone offscreen Vulkan synthetic textures; separate from JPEG CPU test and WiVRn live stream"
+}

@@ -89,16 +89,21 @@ must not be added to JPEG percentiles and described as a measured full pipeline.
 
 544² per eye produces **591,872 decoded JPEG pixels**, or **1,775,616 RGB bytes**
 per stereo frame. Low JPEG quality reduces transmitted bytes; it does not reduce
-that output-buffer size. Upload format, colour conversion, GPU sampling and
-headset memory traffic still matter. The existing sparse NX frame also remains
-481,008 raw bytes before envelope compression. No Pico decoder, Vulkan upload,
-compositor, networking, fresh-frame rate or photon latency was measured here.
+that output-buffer size. The existing sparse NX frame also remains 481,008 raw
+bytes before envelope compression. Pico JPEG decode and an independent offscreen
+Vulkan upload/sample test are now reported [separately](pico-check/README.md).
+No integrated compositor, networking, fresh-frame rate or photon latency was
+measured here.
 
 **Next integration candidate:** Q20 at 544²/eye is the preferred visual profile
 after side-by-side review; Q10 is the bandwidth fallback. Q20 saves **21.4%**
 on forest and **2.1%** on dark against the current independent NXVC frames.
-First measure JPEG decode and texture delivery on the Pico, then sample the
-outer texture directly inside the existing presentation pass. Avoid creating
+Standalone JPEG decode on the Pico is **1.31–1.51 ms p50** to stereo RGBA at Q20.
+A separate offscreen Vulkan helper measures **0.203 ms p50** for both image
+uploads and **1.092 ms p50** for a bilinear draw to full-size targets; these
+timings are not additive proof of live frame latency. [Device results, method and
+graphs](pico-check/README.md). Next transport the peripheral JPEG beside the
+NXVC centre and sample it directly inside the existing presentation pass. Avoid
 another full-resolution intermediate image. This result supports that bounded
 prototype; it does not justify replacing the live path yet.
 
