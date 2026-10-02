@@ -19,6 +19,8 @@ The two supplied VRChat screenshots are valuable because one combines a detailed
 
 The [machine-readable data](results.csv) also contains 1 Gbit/s points. Bitrate is calculated as `frame_bytes × 8 × 90`; it is not a measured wireless throughput. NXVC bytes comprise the selected detail and safety payload from the [prior independent frame test](../../90fps-2026-09-29/mjpeg-vs-nxvc/nx-summary.json). PyroWave bytes exclude its 4-byte frame prefix and one-time 40-byte stream header. Neither side includes Wi-Fi packetization or FEC. NXVC timing in that earlier test is a CPU helper decode and is intentionally **not** compared with PyroWave's GPU timings.
 
+The whole-raster PSNR gain is mostly peripheral at the matched, roughly 50–63 Mbit/s payload. In the central 256 × 256 region, forest is **29.36 dB NXVC versus 28.92 dB PyroWave**; dark is **26.30 versus 26.89 dB**. At 500 Mbit/s PyroWave's centres reach 39.11 and 33.29 dB. So the low-rate result is evidence for eliminating conspicuous peripheral simplification, not a universal centre-detail win. The current NXVC 500 Mbit/s *quality setting* used only 48–63 Mbit/s on these frames; PyroWave's 500 Mbit/s row actually spends approximately the full budget.
+
 The PyroWave figures are one-frame Vulkan timestamp sums from its CLI. Encode includes packing, resolve, analysis, quantization, and DWT; decode includes inverse DWT and dequantization. They omit transfers, CPU submission, shader compilation, transport, compositor work, and headset thermals. Thus 0.1–0.2 ms here cannot be translated into Pico motion-to-photon latency or sustained 90 Hz.
 
 ## What to borrow
