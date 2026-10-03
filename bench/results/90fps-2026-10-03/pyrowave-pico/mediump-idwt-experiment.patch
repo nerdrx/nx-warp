@@ -1,0 +1,15 @@
+diff --git a/common/pyrowave/shaders/idwt.frag.inc b/common/pyrowave/shaders/idwt.frag.inc
+index 3ed1c291..2ff0350a 100644
+--- a/common/pyrowave/shaders/idwt.frag.inc
++++ b/common/pyrowave/shaders/idwt.frag.inc
+@@ -175,8 +175,8 @@ void main()
+ #define GenInput(comp) Y[comp]
+ #endif
+ 
+-	AccumT C0, C1, C2, C3, C4;
+-	float W0, W1, W2, W3, W4;
++	mediump AccumT C0, C1, C2, C3, C4;
++	mediump float W0, W1, W2, W3, W4;
+ 
+ 	// Not ideal, but gotta do what we gotta do.
+ 	// GPU will have to take both paths here,

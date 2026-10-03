@@ -1,0 +1,90 @@
+diff --git a/common/pyrowave/shaders/wavelet_dequant.inc b/common/pyrowave/shaders/wavelet_dequant.inc
+index 5c3120ca..32757339 100644
+--- a/common/pyrowave/shaders/wavelet_dequant.inc
++++ b/common/pyrowave/shaders/wavelet_dequant.inc
+@@ -70,9 +70,9 @@ uint read_payload_u16(int coord)
+ 	return texelFetch(PayloadU16, coord).x;
+ }
+ 
+-uint read_payload_u32(int coord)
++uint read_payload_u32(uint coord)
+ {
+-	return texelFetch(PayloadU32, coord).x;
++	return texelFetch(PayloadU32, int(coord)).x;
+ }
+ #elif STORAGE_MODE == 2
+ uint read_payload_u8(uint coord)
+@@ -95,6 +95,11 @@ uint read_payload_u32(uint coord)
+ 	uint y = bitfieldExtract(coord, 10, 22);
+ 	return texelFetch(PayloadU32, ivec2(x, y), 0).x;
+ }
++#else
++uint read_payload_u32(uint coord)
++{
++	return payload_data_u32.data[coord];
++}
+ #endif
+ 
+ mat2x4 decode_payload(uint code_word, uint q_bits, uint offset, uint block_index)
+@@ -116,31 +121,43 @@ mat2x4 decode_payload(uint code_word, uint q_bits, uint offset, uint block_index
+         bitCount(bitfieldExtract(msbs, 0, bit_offset)) +
+         q_bits * block_index + offset;
+ 
+-#if STORAGE_MODE == 0
+-    // Eagerly load the data to keep latency down.
+-    // Also forces the descriptor to be loaded early.
+-    uint payload = uint(payload_data_u8.data[byte_offset]);
+-#else
+-	uint payload = read_payload_u8(int(byte_offset));
+-#endif
+-
++    uint word_index = byte_offset >> 2;
++    uint byte_shift = (byte_offset & 3u) * 8u;
++    uint packed_word = read_payload_u32(word_index);
+     uint local_control_word = bitfieldExtract(code_word, bit_offset, 2);
+     int decoded_abs[8] = int[8](0, 0, 0, 0, 0, 0, 0, 0);
+     int plane_iterations = int(q_bits + local_control_word);
+ 
+-    for (int q = plane_iterations - 1; q >= 0; q--)
++    for (int plane = plane_iterations; plane > 0; plane -= 4)
+     {
+-        for (int b = 0; b < 8; b++)
++        int plane_count = min(plane, 4);
++        uint packed = packed_word;
++        packed >>= byte_shift;
++        bool crosses_word = byte_shift != 0u && (byte_offset & 3u) + uint(plane_count) > 4u;
++        uint next_word = 0u;
++        if (crosses_word)
+         {
+-            int decoded = int(bitfieldExtract(payload, b, 1));
+-            decoded_abs[b] = bitfieldInsert(decoded_abs[b], decoded, q, 1);
++            next_word = read_payload_u32(word_index + 1u);
++            packed |= next_word << (32u - byte_shift);
++        }
++
++        for (int p = 0; p < plane_count; p++)
++        {
++            int q = plane - 1 - p;
++            uint plane_bits = (packed >> (8 * p)) & 0xffu;
++            for (int b = 0; b < 8; b++)
++            {
++                int decoded = int(bitfieldExtract(plane_bits, b, 1));
++                decoded_abs[b] = bitfieldInsert(decoded_abs[b], decoded, q, 1);
++            }
++        }
++        byte_offset += uint(plane_count);
++        if (plane > 4)
++        {
++            word_index = byte_offset >> 2;
++            byte_shift = (byte_offset & 3u) * 8u;
++            packed_word = crosses_word ? next_word : read_payload_u32(word_index);
+         }
+-        byte_offset++;
+-#if STORAGE_MODE == 0
+-        payload = uint(payload_data_u8.data[byte_offset]);
+-#else
+-        payload = read_payload_u8(int(byte_offset));
+-#endif
+     }
+ 
+     mat2x4 m;

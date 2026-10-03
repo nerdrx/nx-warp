@@ -1,0 +1,10 @@
+Device: PICO 4, Adreno (TM) 650, Vulkan 1.1.128
+Harness: /tmp/pyrowave-pico-bench.cpp; Decoder fragment_path=true
+Input source: /tmp/dark-420-500m.y4m (uniform full-frame Lanczos downscale; no foveation)
+Scaled Y4M: /tmp/pyrowave-scale-2688x1344.y4m, 2688x1344, 4:2:0
+PyroWave sample: /tmp/pyrowave-scale-2688x1344-500m.pyrowave
+Container: 694484 bytes total; one 694440-byte frame packet; 2688x1344, 4:2:0
+Rate target: 694440*8*90 = 499,996,800 bit/s (about 500 Mbit/s at 90 Hz)
+Raw 12-iteration output:
+GPU=Adreno (TM) 650 api=1.1 frame=2688x1344 packet=694440B iterations=12 CPU_p50=10.7762ms CPU_p95=12.4809ms GPU_p50=9.29484ms GPU_p95=11.2358ms
+CPU measures clear + packet ingestion + command recording + submit + fence wait. GPU timestamp brackets Decoder::decode. First iteration is included. No output readback/fidelity comparison.
