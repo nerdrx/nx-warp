@@ -1,0 +1,112 @@
+--- a/common/pyrowave/pyrowave_decoder.cpp
++++ b/common/pyrowave/pyrowave_decoder.cpp
+@@ -1420,12 +1420,22 @@
+ 	begin_label(cmd, "DWT dequant");
+ 	// auto start_dequant = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+ 
++	// Serialize the previous inverse transform's reads before clearing for reuse.
++	vk::MemoryBarrier reuse_barrier{
++	        .srcAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite,
++	        .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
++	};
++	cmd.pipelineBarrier(
++	        vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eFragmentShader,
++	        vk::PipelineStageFlagBits::eTransfer,
++	        {}, reuse_barrier, {}, {});
++
+ 	std::array image_barrier{
+ 	        vk::ImageMemoryBarrier{
+ 	                .srcAccessMask = vk::AccessFlagBits::eNone,
+-	                .dstAccessMask = vk::AccessFlagBits::eShaderWrite,
++	                .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
+ 	                .oldLayout = vk::ImageLayout::eUndefined,
+-	                .newLayout = vk::ImageLayout::eGeneral,
++	                .newLayout = vk::ImageLayout::eTransferDstOptimal,
+ 	                .image = wavelet_img_high_res,
+ 	                .subresourceRange = {
+ 	                        .aspectMask = vk::ImageAspectFlagBits::eColor,
+@@ -1435,9 +1445,9 @@
+ 	        },
+ 	        vk::ImageMemoryBarrier{
+ 	                .srcAccessMask = vk::AccessFlagBits::eNone,
+-	                .dstAccessMask = vk::AccessFlagBits::eShaderWrite,
++	                .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
+ 	                .oldLayout = vk::ImageLayout::eUndefined,
+-	                .newLayout = vk::ImageLayout::eGeneral,
++	                .newLayout = vk::ImageLayout::eTransferDstOptimal,
+ 	                .image = wavelet_img_low_res,
+ 	                .subresourceRange = {
+ 	                        .aspectMask = vk::ImageAspectFlagBits::eColor,
+@@ -1448,25 +1458,31 @@
+ 	};
+ 
+ 	if (wavelet_img_low_res)
+-	{
+-		cmd.pipelineBarrier(
+-		        vk::PipelineStageFlagBits::eComputeShader,
+-		        vk::PipelineStageFlagBits::eComputeShader,
+-		        {},
+-		        {},
+-		        {},
+-		        image_barrier);
+-	}
++		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, image_barrier);
+ 	else
+-	{
+-		cmd.pipelineBarrier(
+-		        vk::PipelineStageFlagBits::eComputeShader,
+-		        vk::PipelineStageFlagBits::eComputeShader,
+-		        {},
+-		        {},
+-		        {},
+-		        image_barrier[0]);
+-	}
++		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, image_barrier[0]);
++
++	const vk::ClearColorValue zero{};
++	const vk::ImageSubresourceRange all_subresources{
++	        .aspectMask = vk::ImageAspectFlagBits::eColor,
++	        .levelCount = VK_REMAINING_MIP_LEVELS,
++	        .layerCount = VK_REMAINING_ARRAY_LAYERS,
++	};
++	cmd.clearColorImage(wavelet_img_high_res, vk::ImageLayout::eTransferDstOptimal, zero, all_subresources);
++	if (wavelet_img_low_res)
++		cmd.clearColorImage(wavelet_img_low_res, vk::ImageLayout::eTransferDstOptimal, zero, all_subresources);
++
++	for (auto & b: image_barrier)
++	{
++		b.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
++		b.dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
++		b.oldLayout = vk::ImageLayout::eTransferDstOptimal;
++		b.newLayout = vk::ImageLayout::eGeneral;
++	}
++	if (wavelet_img_low_res)
++		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eComputeShader, {}, {}, {}, image_barrier);
++	else
++		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eComputeShader, {}, {}, {}, image_barrier[0]);
+ 
+ 	// De-quantize
+ 	for (int level = 0; level < DecompositionLevels; level++)
+--- a/common/pyrowave/shaders/wavelet_dequant.inc
++++ b/common/pyrowave/shaders/wavelet_dequant.inc
+@@ -241,10 +241,7 @@
+ 
+     if (offset_u32 == ~0u)
+     {
+-        for (int j = 0; j < 2; j++)
+-            for (int i = 0; i < 4; i++)
+-                imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer), vec4(0.0));
+-        return;
++        return; // Whole coefficient images were cleared before dequantization.
+     }
+ 
+ #if STORAGE_MODE == 0
+@@ -387,5 +384,6 @@
+     // Write output.
+     for (int j = 0; j < 2; j++)
+         for (int i = 0; i < 4; i++)
+-            imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer), vec4(v[j][i]));
+-}
++            if (v[j][i] != 0.0)
++                imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer), vec4(v[j][i]));
++}

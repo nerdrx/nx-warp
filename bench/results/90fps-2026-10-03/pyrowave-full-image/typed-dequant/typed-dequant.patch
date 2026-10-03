@@ -1,0 +1,143 @@
+--- /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-haar-fused-20261003/common/pyrowave/shaders/wavelet_dequant.inc	2026-10-03 18:55:26.513009601 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant.inc	2026-10-03 19:40:36.227525835 +0200
+@@ -15,7 +15,11 @@
+ 
+ layout(local_size_x = 128) in;
+ 
+-layout(set = 0, binding = 0) writeonly uniform image2DArray uDequantImg;
++#if OUTPUT_FORMAT == 16
++layout(r16f, set = 0, binding = 0) writeonly uniform image2DArray uDequantImg;
++#else
++layout(r32f, set = 0, binding = 0) writeonly uniform image2DArray uDequantImg;
++#endif
+ 
+ layout(set = 0, binding = 1) readonly buffer PayloadOffsets
+ {
+--- /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-haar-fused-20261003/common/pyrowave/pyrowave_decoder.h	2026-10-03 18:57:32.125007192 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/pyrowave_decoder.h	2026-10-03 19:40:36.227716135 +0200
+@@ -125,6 +125,7 @@
+ 	};
+ 
+ 	pipeline dequant_[3];
++	vk::raii::Pipeline dequant_typed_[3][2] = {{nullptr, nullptr}, {nullptr, nullptr}, {nullptr, nullptr}};
+ 	pipeline idwt_;
+ 	vk::raii::Pipeline idwt_dcshift = nullptr;
+ #ifdef PYROWAVE_HAAR_FUSED
+--- /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-haar-fused-20261003/common/pyrowave/pyrowave_decoder.cpp	2026-10-03 19:12:08.724409176 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/pyrowave_decoder.cpp	2026-10-03 19:40:36.227825525 +0200
+@@ -731,6 +731,15 @@
+ 		p.pipeline = device.createComputePipeline(
+ 		        nullptr, // FIXME: cache
+ 		        info);
++#ifdef PYROWAVE_HAAR_FUSED
++		for (int fmt = 0; fmt < 2; ++fmt)
++		{
++			auto typed_shader = load_shader(device, std::format("wavelet_dequant_{}_r{}", i, fmt == 0 ? 16 : 32));
++			auto typed_info = info;
++			typed_info.stage.module = *typed_shader;
++			dequant_typed_[i][fmt] = device.createComputePipeline(nullptr, typed_info);
++		}
++#endif
+ 
+ 		for (int level = 0; level < DecompositionLevels; level++)
+ 		{
+@@ -1465,7 +1474,9 @@
+ 	DequantizerPushData push = {};
+ 
+ 	auto & p = dequant_[storage_mode];
++#ifndef PYROWAVE_HAAR_FUSED
+ 	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *p.pipeline);
++#endif
+ 	begin_label(cmd, "DWT dequant");
+ 	// auto start_dequant = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+ 
+@@ -1520,6 +1531,9 @@
+ 	// De-quantize
+ 	for (int level = 0; level < DecompositionLevels; level++)
+ 	{
++#ifdef PYROWAVE_HAAR_FUSED
++		cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *dequant_typed_[storage_mode][level < 2 ? 0 : 1]);
++#endif
+ 		for (int component = 0; component < NumComponents; component++)
+ 		{
+ 			// Ignore top-level CbCr when doing 420 subsampling.
+--- /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-haar-fused-20261003/build-cache/common/pyrowave/pyrowave_shaders.cpp	2026-10-03 18:20:21.723432849 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/build-cache/common/pyrowave/pyrowave_shaders.cpp	2026-10-03 19:40:53.999440605 +0200
+@@ -94,4 +94,22 @@
+ { "idwt_haar", {
+ #include "idwt_haar.spv"
+ }},
++{ "wavelet_dequant_0_r16", {
++#include "wavelet_dequant_0_r16.spv"
++}},
++{ "wavelet_dequant_0_r32", {
++#include "wavelet_dequant_0_r32.spv"
++}},
++{ "wavelet_dequant_1_r16", {
++#include "wavelet_dequant_1_r16.spv"
++}},
++{ "wavelet_dequant_1_r32", {
++#include "wavelet_dequant_1_r32.spv"
++}},
++{ "wavelet_dequant_2_r16", {
++#include "wavelet_dequant_2_r16.spv"
++}},
++{ "wavelet_dequant_2_r32", {
++#include "wavelet_dequant_2_r32.spv"
++}},
+ };}
+\ No newline at end of file
+--- /dev/null	2026-10-03 17:49:44.484770805 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant_0_r16.comp	2026-10-03 19:40:36.227614805 +0200
+@@ -0,0 +1,6 @@
++#version 450
++// Private typed storage-image candidate, generated from wavelet_dequant.inc.
++#define STORAGE_MODE 0
++#define OUTPUT_FORMAT 16
++#extension GL_ARB_shading_language_include : require
++#include "wavelet_dequant.inc"
+--- /dev/null	2026-10-03 17:49:44.484770805 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant_0_r32.comp	2026-10-03 19:40:36.227633105 +0200
+@@ -0,0 +1,6 @@
++#version 450
++// Private typed storage-image candidate, generated from wavelet_dequant.inc.
++#define STORAGE_MODE 0
++#define OUTPUT_FORMAT 32
++#extension GL_ARB_shading_language_include : require
++#include "wavelet_dequant.inc"
+--- /dev/null	2026-10-03 17:49:44.484770805 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant_1_r16.comp	2026-10-03 19:40:36.227645855 +0200
+@@ -0,0 +1,6 @@
++#version 450
++// Private typed storage-image candidate, generated from wavelet_dequant.inc.
++#define STORAGE_MODE 1
++#define OUTPUT_FORMAT 16
++#extension GL_ARB_shading_language_include : require
++#include "wavelet_dequant.inc"
+--- /dev/null	2026-10-03 17:49:44.484770805 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant_1_r32.comp	2026-10-03 19:40:36.227656925 +0200
+@@ -0,0 +1,6 @@
++#version 450
++// Private typed storage-image candidate, generated from wavelet_dequant.inc.
++#define STORAGE_MODE 1
++#define OUTPUT_FORMAT 32
++#extension GL_ARB_shading_language_include : require
++#include "wavelet_dequant.inc"
+--- /dev/null	2026-10-03 17:49:44.484770805 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant_2_r16.comp	2026-10-03 19:40:36.227666995 +0200
+@@ -0,0 +1,6 @@
++#version 450
++// Private typed storage-image candidate, generated from wavelet_dequant.inc.
++#define STORAGE_MODE 2
++#define OUTPUT_FORMAT 16
++#extension GL_ARB_shading_language_include : require
++#include "wavelet_dequant.inc"
+--- /dev/null	2026-10-03 17:49:44.484770805 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-typed-20261003/common/pyrowave/shaders/wavelet_dequant_2_r32.comp	2026-10-03 19:40:36.227678255 +0200
+@@ -0,0 +1,6 @@
++#version 450
++// Private typed storage-image candidate, generated from wavelet_dequant.inc.
++#define STORAGE_MODE 2
++#define OUTPUT_FORMAT 32
++#extension GL_ARB_shading_language_include : require
++#include "wavelet_dequant.inc"

@@ -1,0 +1,5 @@
+frame=4352x2176 stereo 4:2:0
+input_bytes=14204928 output_plane_bytes=14204928
+source_to_420_chroma=floor((sum_2x2+2)/4)
+plane_MAE_Y_Cb_Cr=1.481642,1.310970,1.100527
+preview=1280x350; each eye image downscaled from 2176x2176 to 640x320 including crop-free full view; chroma upsampled bilinear for display

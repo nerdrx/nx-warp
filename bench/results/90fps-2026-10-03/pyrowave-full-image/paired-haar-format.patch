@@ -1,0 +1,627 @@
+diff --git a/client/decoder/pyrowave/decoder.cpp b/client/decoder/pyrowave/decoder.cpp
+index 514660a3..180184af 100644
+--- a/client/decoder/pyrowave/decoder.cpp
++++ b/client/decoder/pyrowave/decoder.cpp
+@@ -274,14 +274,20 @@ void pyrowave_decoder::worker_function(uint32_t queue_family_index)
+ 			cmd_buf.reset();
+ 			cmd_buf.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+ 			cmd_buf.resetQueryPool(*qp, 0, 2);
+-			cmd_buf.writeTimestamp(vk::PipelineStageFlagBits::eComputeShader, *qp, 0);
++			cmd_buf.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, *qp, 0);
++			const auto output_stage = dec.uses_fragment_path()
++			                                  ? vk::PipelineStageFlagBits::eColorAttachmentOutput
++			                                  : vk::PipelineStageFlagBits::eComputeShader;
++			const auto output_access = dec.uses_fragment_path()
++			                                   ? vk::AccessFlagBits::eColorAttachmentWrite
++			                                   : vk::AccessFlagBits::eShaderWrite;
+ 
+ 			if (item->current_layout != vk::ImageLayout::eGeneral)
+ 			{
+ 				item->current_layout = vk::ImageLayout::eGeneral;
+ 				vk::ImageMemoryBarrier barrier{
+ 				        .srcAccessMask = vk::AccessFlagBits::eNone,
+-				        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
++				        .dstAccessMask = output_access,
+ 				        .oldLayout = vk::ImageLayout::eUndefined,
+ 				        .newLayout = vk::ImageLayout::eGeneral,
+ 				        .image = item->image,
+@@ -293,7 +299,7 @@ void pyrowave_decoder::worker_function(uint32_t queue_family_index)
+ 				};
+ 				cmd_buf.pipelineBarrier(
+ 				        vk::PipelineStageFlagBits::eAllCommands,
+-				        vk::PipelineStageFlagBits::eColorAttachmentOutput,
++				        output_stage,
+ 				        {},
+ 				        {},
+ 				        {},
+@@ -302,7 +308,7 @@ void pyrowave_decoder::worker_function(uint32_t queue_family_index)
+ 			dec.decode(cmd_buf, *input, views);
+ 			{
+ 				vk::ImageMemoryBarrier barrier{
+-				        .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
++				        .srcAccessMask = output_access,
+ 				        .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+ 				        .oldLayout = vk::ImageLayout::eGeneral,
+ 				        .newLayout = vk::ImageLayout::eGeneral,
+@@ -314,14 +320,14 @@ void pyrowave_decoder::worker_function(uint32_t queue_family_index)
+ 				        },
+ 				};
+ 				cmd_buf.pipelineBarrier(
+-				        vk::PipelineStageFlagBits::eColorAttachmentOutput,
++				        output_stage,
+ 				        vk::PipelineStageFlagBits::eFragmentShader,
+ 				        {},
+ 				        {},
+ 				        {},
+ 				        barrier);
+ 			}
+-			cmd_buf.writeTimestamp(vk::PipelineStageFlagBits::eComputeShader, *qp, 1);
++			cmd_buf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *qp, 1);
+ 			cmd_buf.end();
+ 
+ 			application::get_queue().lock()->submit(
+diff --git a/common/pyrowave/CMakeLists.txt b/common/pyrowave/CMakeLists.txt
+index dc1e43ec..41a43101 100644
+--- a/common/pyrowave/CMakeLists.txt
++++ b/common/pyrowave/CMakeLists.txt
+@@ -9,7 +9,11 @@ add_library(pyrowave STATIC
+ file(GLOB_RECURSE VULKAN_SHADERS CONFIGURE_DEPENDS "shaders/*.comp" "shaders/*.glsl")
+ wivrn_compile_glsl(pyrowave TARGET_ENV vulkan1.1 SHADERS ${VULKAN_SHADERS} NAMESPACE pyrowave)
+ 
++option(PYROWAVE_HAAR_FORMAT "Build incompatible paired-Haar Pyrowave format" OFF)
+ target_compile_definitions(pyrowave PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS)
++if(PYROWAVE_HAAR_FORMAT)
++    target_compile_definitions(pyrowave PRIVATE PYROWAVE_HAAR_FORMAT=1)
++endif()
+ 
+ target_link_libraries(pyrowave PRIVATE wivrn-common)
+ target_include_directories(pyrowave PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+diff --git a/common/pyrowave/pyrowave_common.h b/common/pyrowave/pyrowave_common.h
+index 168c0b3b..b497032a 100644
+--- a/common/pyrowave/pyrowave_common.h
++++ b/common/pyrowave/pyrowave_common.h
+@@ -42,6 +42,7 @@ static_assert(sizeof(BitstreamHeader) == 8, "BitstreamHeader is not 8 bytes.");
+ enum
+ {
+ 	BITSTREAM_EXTENDED_CODE_START_OF_FRAME = 0,
++	BITSTREAM_EXTENDED_CODE_START_OF_FRAME_HAAR = 1,
+ };
+ 
+ enum
+diff --git a/common/pyrowave/pyrowave_decoder.cpp b/common/pyrowave/pyrowave_decoder.cpp
+index 5553650b..11b09e6f 100644
+--- a/common/pyrowave/pyrowave_decoder.cpp
++++ b/common/pyrowave/pyrowave_decoder.cpp
+@@ -48,7 +48,12 @@ static vk::raii::DescriptorPool make_descriptor_pool(vk::raii::Device & device,
+ 	        },
+ 	        vk::DescriptorPoolSize{
+ 	                .type = vk::DescriptorType::eCombinedImageSampler,
+-	                .descriptorCount = idwt,
++	                .descriptorCount = idwt *
++#ifdef PYROWAVE_HAAR_FORMAT
++			                   2,
++#else
++			                   1,
++#endif
+ 	        },
+ 	        vk::DescriptorPoolSize{
+ 	                .type = vk::DescriptorType::eStorageImage,
+@@ -394,7 +399,11 @@ bool DecoderInput::push_data(std::span<const uint8_t> data)
+ 				last_seq = header.sequence;
+ 			}
+ 
++#ifdef PYROWAVE_HAAR_FORMAT
++			if (seq.code == BITSTREAM_EXTENDED_CODE_START_OF_FRAME_HAAR)
++#else
+ 			if (seq.code == BITSTREAM_EXTENDED_CODE_START_OF_FRAME)
++#endif
+ 			{
+ 				if (seq.width_minus_1 + 1 != decoder.width || seq.height_minus_1 + 1 != decoder.height)
+ 				{
+@@ -431,9 +440,13 @@ Decoder::Decoder(
+         int width,
+         int height,
+         ChromaSubsampling chroma,
+-        bool fragment_path) :
++        [[maybe_unused]] bool use_fragment_path) :
+         WaveletBuffers(device, width, height, chroma),
+-        fragment_path(fragment_path),
++#ifdef PYROWAVE_HAAR_FORMAT
++        fragment_path(false), // Haar packets require the paired compute inverse.
++#else
++        fragment_path(use_fragment_path),
++#endif
+         phys_dev(phys_dev),
+         ds_pool(nullptr)
+ {
+@@ -491,6 +504,12 @@ Decoder::Decoder(
+ 	if (not(feat12.storageBuffer8BitAccess or use_readonly_texel_buffer))
+ 		throw std::runtime_error("Missing storageBuffer8BitAccess feature");
+ 
++#ifdef PYROWAVE_HAAR_FORMAT
++	static_assert(DecompositionLevels == 5, "fused Haar shader expects five levels");
++	if (Configuration::get().get_precision() != 1 || wavelet_img_high_res.info().mipLevels != 2 || wavelet_img_low_res.info().mipLevels != 3)
++		throw std::runtime_error("fused Haar inverse requires precision 1 with two high and three low mips");
++#endif
++
+ 	ds_pool = make_descriptor_pool(device, use_readonly_texel_buffer, fragment_path);
+ 
+ 	if (fragment_path)
+@@ -1292,6 +1311,13 @@ Decoder::Decoder(
+ 	}
+ 	else
+ 	{
++#ifdef PYROWAVE_HAAR_FORMAT
++		std::array bindings{
++		        vk::DescriptorSetLayoutBinding{.binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
++		        vk::DescriptorSetLayoutBinding{.binding = 1, .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
++		        vk::DescriptorSetLayoutBinding{.binding = 2, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute},
++		};
++#else
+ 		std::array bindings{
+ 		        vk::DescriptorSetLayoutBinding{
+ 		                .binding = 0,
+@@ -1306,6 +1332,7 @@ Decoder::Decoder(
+ 		                .stageFlags = vk::ShaderStageFlagBits::eCompute,
+ 		        },
+ 		};
++#endif
+ 		idwt_.ds_layout = device.createDescriptorSetLayout({
+ 		        .bindingCount = bindings.size(),
+ 		        .pBindings = bindings.data(),
+@@ -1322,22 +1349,36 @@ Decoder::Decoder(
+ 		        .pushConstantRangeCount = 1,
+ 		        .pPushConstantRanges = &pc,
+ 		});
+-		VkBool32 dc_shift = false;
+-		vk::SpecializationMapEntry sp_entry{
+-		        .constantID = 0,
+-		        .size = sizeof(dc_shift),
++		VkBool32 dc_shift[] = {false, width % Alignment != 0 || height % Alignment != 0};
++		std::array sp_entries{
++		        vk::SpecializationMapEntry{.constantID = 0, .offset = 0, .size = sizeof(VkBool32)},
++		        vk::SpecializationMapEntry{.constantID = 1, .offset = sizeof(VkBool32), .size = sizeof(VkBool32)},
+ 		};
+ 		vk::SpecializationInfo sp{
+-		        .mapEntryCount = 1,
+-		        .pMapEntries = &sp_entry,
++#ifdef PYROWAVE_HAAR_FORMAT
++		        .mapEntryCount = 2,
++		        .pMapEntries = sp_entries.data(),
+ 		        .dataSize = sizeof(dc_shift),
+-		        .pData = &dc_shift,
++#else
++		        .mapEntryCount = 1,
++		        .pMapEntries = sp_entries.data(),
++		        .dataSize = sizeof(VkBool32),
++#endif
++		        .pData = dc_shift,
+ 		};
+ 
++#ifdef PYROWAVE_HAAR_FORMAT
++		auto shader = load_shader(device, "idwt_haar");
++#else
+ 		auto shader = load_shader(device, std::string("idwt_" XSTR(PYROWAVE_PRECISION)) + (feat12.shaderFloat16 ? "_fp16" : ""));
++#endif
+ 		vk::ComputePipelineCreateInfo info{
+ 		        .stage = {
++#ifdef PYROWAVE_HAAR_FORMAT
++		                .flags = {},
++#else
+ 		                .flags = vk::PipelineShaderStageCreateFlagBits::eRequireFullSubgroups,
++#endif
+ 		                .stage = vk::ShaderStageFlagBits::eCompute,
+ 		                .module = *shader,
+ 		                .pName = "main",
+@@ -1349,11 +1390,37 @@ Decoder::Decoder(
+ 		        nullptr, // FIXME: cache
+ 		        info);
+ 
+-		dc_shift = true;
++		dc_shift[0] = true;
+ 		idwt_dcshift = device.createComputePipeline(
+ 		        nullptr, // FIXME: cache
+ 		        info);
+ 
++#ifdef PYROWAVE_HAAR_FORMAT
++		for (int c = 0; c < NumComponents; c++)
++		{
++			// Level 1 is guaranteed to reference the high-resolution image even
++			// when 4:2:0 does not need a level-0 chroma output view.
++			auto high_info = component_layer_views_info[c][1];
++			high_info.viewType = vk::ImageViewType::e2DArray;
++			high_info.subresourceRange.baseMipLevel = 0;
++			high_info.subresourceRange.levelCount = 2;
++			fused_high_views[c] = device.createImageView(high_info);
++			auto low_info = component_layer_views_info[c][2];
++			low_info.viewType = vk::ImageViewType::e2DArray;
++			low_info.subresourceRange.levelCount = DecompositionLevels - 2;
++			fused_low_views[c] = device.createImageView(low_info);
++			auto set = idwt_.ds[c][0] = allocate_descriptor_set(*idwt_.ds_layout);
++			std::array<vk::DescriptorImageInfo, 2> tex{{
++			        {.sampler = *mirror_repeat_sampler, .imageView = *fused_high_views[c], .imageLayout = vk::ImageLayout::eGeneral},
++			        {.sampler = *mirror_repeat_sampler, .imageView = *fused_low_views[c], .imageLayout = vk::ImageLayout::eGeneral},
++			}};
++			std::array<vk::WriteDescriptorSet, 2> writes{{
++			        {.dstSet = set, .dstBinding = 0, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &tex[0]},
++			        {.dstSet = set, .dstBinding = 2, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .pImageInfo = &tex[1]},
++			}};
++			device.updateDescriptorSets(writes, {});
++		}
++#else
+ 		for (int input_level = DecompositionLevels - 1; input_level >= 0; input_level--)
+ 		{
+ 			for (int c = 0; c < NumComponents; c++)
+@@ -1396,6 +1463,7 @@ Decoder::Decoder(
+ 				device.updateDescriptorSets(descriptor_write, {});
+ 			}
+ 		}
++#endif
+ 	}
+ }
+ 
+@@ -1545,10 +1613,27 @@ bool Decoder::idwt(vk::raii::CommandBuffer & cmd, const ViewBuffers & views)
+ 	// auto start_idwt = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+ 
+ 	IDwtPushData push{};
+-
++#ifdef PYROWAVE_HAAR_FORMAT
++	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *idwt_dcshift);
++	for (int c = 0; c < NumComponents; c++)
++	{
++		int base_level = chroma == ChromaSubsampling::Chroma420 && c != 0 ? 1 : 0;
++		push.resolution[0] = component_ll_dim[c][base_level].height;
++		push.resolution[1] = component_ll_dim[c][base_level].width;
++		push.inv_resolution[0] = float(base_level); // Haar-only base mip selector.
++		push.inv_resolution[1] = 0.0f;
++		cmd.pushConstants<IDwtPushData>(*idwt_.layout, vk::ShaderStageFlagBits::eCompute, 0, push);
++		vk::DescriptorImageInfo storage{.imageView = views[c], .imageLayout = vk::ImageLayout::eGeneral};
++		vk::WriteDescriptorSet write{.dstSet = idwt_.ds[c][0], .dstBinding = 1, .descriptorCount = 1, .descriptorType = vk::DescriptorType::eStorageImage, .pImageInfo = &storage};
++		device.updateDescriptorSets(write, {});
++		cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *idwt_.layout, 0, idwt_.ds[c][0], {});
++		cmd.dispatch((push.resolution[0] + 15) / 16, (push.resolution[1] + 15) / 16, 1);
++	}
++	return true;
++#else
+ 	for (int input_level = DecompositionLevels - 1; input_level >= 0; input_level--)
+ 	{
+-		// Transposed.
++		// Transposed for the CDF gather inverse.
+ 		push.resolution[0] = component_ll_dim[0][input_level].height;
+ 		push.resolution[1] = component_ll_dim[0][input_level].width;
+ 		push.inv_resolution[0] = 1.0f / float(push.resolution[0]);
+@@ -1649,6 +1734,7 @@ bool Decoder::idwt(vk::raii::CommandBuffer & cmd, const ViewBuffers & views)
+ 	// auto end_idwt = cmd.write_timestamp(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+ 	// device->register_time_interval("GPU", std::move(start_idwt), std::move(end_idwt), "iDWT");
+ 	return true;
++#endif
+ }
+ 
+ bool Decoder::idwt_fragment(vk::raii::CommandBuffer & cmd, const ViewBuffers & views)
+@@ -1914,7 +2000,10 @@ bool Decoder::idwt_fragment(vk::raii::CommandBuffer & cmd, const ViewBuffers & v
+ 			auto barrier = [&] {
+ 				cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput,
+ 				                    vk::PipelineStageFlagBits::eColorAttachmentOutput,
+-				                    vk::DependencyFlagBits::eByRegion, by_region, {}, {});
++				                    vk::DependencyFlagBits::eByRegion,
++				                    by_region,
++				                    {},
++				                    {});
+ 			};
+ 
+ 			// Need vertical fixup (very common for 1080p).
+diff --git a/common/pyrowave/pyrowave_decoder.h b/common/pyrowave/pyrowave_decoder.h
+index e1797881..bbe24d0d 100644
+--- a/common/pyrowave/pyrowave_decoder.h
++++ b/common/pyrowave/pyrowave_decoder.h
+@@ -127,6 +127,9 @@ class Decoder : public WaveletBuffers
+ 	pipeline dequant_[3];
+ 	pipeline idwt_;
+ 	vk::raii::Pipeline idwt_dcshift = nullptr;
++	// Unconditional members keep the public class layout identical in both builds.
++	vk::raii::ImageView fused_high_views[NumComponents] = {nullptr, nullptr, nullptr};
++	vk::raii::ImageView fused_low_views[NumComponents] = {nullptr, nullptr, nullptr};
+ 
+ public:
+ 	using ViewBuffers = std::array<vk::ImageView, 3>;
+@@ -138,6 +141,11 @@ public:
+ 	Decoder(vk::raii::PhysicalDevice & phys_dev, vk::raii::Device & device, int width, int height, ChromaSubsampling chroma, bool fragment_path = false);
+ 	~Decoder();
+ 
++	bool uses_fragment_path() const
++	{
++		return fragment_path;
++	}
++
+ 	bool decode(vk::raii::CommandBuffer & cmd, DecoderInput & input, const ViewBuffers & views);
+ 
+ private:
+diff --git a/common/pyrowave/pyrowave_encoder.cpp b/common/pyrowave/pyrowave_encoder.cpp
+index 98c00c91..3a66c8fa 100644
+--- a/common/pyrowave/pyrowave_encoder.cpp
++++ b/common/pyrowave/pyrowave_encoder.cpp
+@@ -159,6 +159,10 @@ Encoder::Encoder(vk::raii::PhysicalDevice & phys_dev, vk::raii::Device & device,
+         WaveletBuffers(device, width, height, chroma),
+         ds_pool(make_descriptor_pool(device))
+ {
++#ifdef PYROWAVE_HAAR_FORMAT
++	if (Configuration::get().get_precision() != 1)
++		throw std::runtime_error("paired Haar format requires precision 1");
++#endif
+ 	auto [prop, prop11, prop13] = phys_dev.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceVulkan11Properties, vk::PhysicalDeviceVulkan13Properties>();
+ 	SubgroupSizeProperties subgroup_prop{prop13.minSubgroupSize, prop13.maxSubgroupSize, prop13.requiredSubgroupSizeStages};
+ 	auto ops = prop11.subgroupSupportedOperations;
+@@ -720,7 +724,11 @@ Encoder::Encoder(vk::raii::PhysicalDevice & phys_dev, vk::raii::Device & device,
+ 		        .pData = &dc_shift,
+ 		};
+ 
++#ifdef PYROWAVE_HAAR_FORMAT
++		auto shader = load_shader(device, std::string("dwt_haar_" XSTR(PYROWAVE_PRECISION)));
++#else
+ 		auto shader = load_shader(device, std::string("dwt_" XSTR(PYROWAVE_PRECISION)) + (feat12.shaderFloat16 ? "_fp16" : ""));
++#endif
+ 		vk::ComputePipelineCreateInfo info{
+ 		        .stage = {
+ 		                .flags = vk::PipelineShaderStageCreateFlagBits::eRequireFullSubgroups,
+@@ -1428,7 +1436,11 @@ size_t Encoder::packetize(Packet * packets, size_t packet_boundary, void * outpu
+ 	header.height_minus_1 = height - 1;
+ 	header.sequence = reinterpret_cast<const BitstreamHeader *>(input_bitstream + meta[0].offset_u32)->sequence;
+ 	header.extended = 1;
++#ifdef PYROWAVE_HAAR_FORMAT
++	header.code = BITSTREAM_EXTENDED_CODE_START_OF_FRAME_HAAR;
++#else
+ 	header.code = BITSTREAM_EXTENDED_CODE_START_OF_FRAME;
++#endif
+ 	header.total_blocks = num_non_zero_blocks;
+ 	header.chroma_resolution = chroma == ChromaSubsampling::Chroma444 ? CHROMA_RESOLUTION_444 : CHROMA_RESOLUTION_420;
+ 
+diff --git a/common/pyrowave/shaders/dwt.inc b/common/pyrowave/shaders/dwt.inc
+index d7023d6b..ec9b9c28 100644
+--- a/common/pyrowave/shaders/dwt.inc
++++ b/common/pyrowave/shaders/dwt.inc
+@@ -110,7 +110,17 @@ void forward_transform8x2()
+ 		values[i] = v;
+ 	}
+ 
+-	// CDF 9/7 lifting steps.
++#ifdef PYROWAVE_HAAR_FORMAT
++// Paired Haar transform. This changes the bitstream representation.
++	for (int i = 0; i < PADDED_SIZE; i += 2)
++	{
++		VEC2 a = values[i + 0];
++		VEC2 b = values[i + 1];
++		values[i + 0] = (a + b) * FLOAT(0.5);
++		values[i + 1] = (a - b) * FLOAT(0.5);
++	}
++#else
++// CDF 9/7 lifting steps.
+ 	// Arith go brrr.
+ 	for (int i = 1; i < PADDED_SIZE - 1; i += 2)
+ 		values[i] += ALPHA * (values[i - 1] + values[i + 1]);
+@@ -121,7 +131,8 @@ void forward_transform8x2()
+ 	for (int i = 4; i < PADDED_SIZE - 4; i += 2)
+ 		values[i] += DELTA * (values[i - 1] + values[i + 1]);
+ 
+-	// Avoid WAR hazard.
++	#endif
++// Avoid WAR hazard.
+ 	barrier();
+ 
+ 	for (int i = APRON_HALF; i < PADDED_SIZE_HALF - APRON_HALF; i++)
+@@ -129,9 +140,11 @@ void forward_transform8x2()
+ 		VEC2 a = values[2 * i + 0];
+ 		VEC2 b = values[2 * i + 1];
+ 
++#ifndef PYROWAVE_HAAR_FORMAT
+ 		// Filter kernel rescale.
+ 		a *= inv_K;
+ 		b *= K;
++#endif
+ 
+ 		// Transpose the 2x2 block.
+ 		VEC2 t0 = VEC2(a.x, b.x);
+@@ -161,7 +174,17 @@ void forward_transform4x2(bool active_lane, int y_offset)
+ 			values[i] = v;
+ 		}
+ 
+-		// CDF 9/7 lifting steps.
++#ifdef PYROWAVE_HAAR_FORMAT
++// Paired Haar transform. This changes the bitstream representation.
++		for (int i = 0; i < PADDED_SIZE; i += 2)
++		{
++			VEC2 a = values[i + 0];
++			VEC2 b = values[i + 1];
++			values[i + 0] = (a + b) * FLOAT(0.5);
++			values[i + 1] = (a - b) * FLOAT(0.5);
++		}
++#else
++// CDF 9/7 lifting steps.
+ 		// Arith go brrr.
+ 		for (int i = 1; i < PADDED_SIZE - 1; i += 2)
+ 			values[i] += ALPHA * (values[i - 1] + values[i + 1]);
+@@ -171,6 +194,7 @@ void forward_transform4x2(bool active_lane, int y_offset)
+ 			values[i] += GAMMA * (values[i - 1] + values[i + 1]);
+ 		for (int i = 4; i < PADDED_SIZE - 4; i += 2)
+ 			values[i] += DELTA * (values[i - 1] + values[i + 1]);
++	#endif
+ 	}
+ 
+ 	// Avoid WAR hazard.
+@@ -183,9 +207,11 @@ void forward_transform4x2(bool active_lane, int y_offset)
+ 			VEC2 a = values[2 * i + 0];
+ 			VEC2 b = values[2 * i + 1];
+ 
++#ifndef PYROWAVE_HAAR_FORMAT
+ 			// Filter kernel rescale.
+ 			a *= inv_K;
+ 			b *= K;
++#endif
+ 
+ 			// Transpose the 2x2 block.
+ 			VEC2 t0 = VEC2(a.x, b.x);
+diff --git a/common/pyrowave/shaders/dwt_haar_1.comp b/common/pyrowave/shaders/dwt_haar_1.comp
+new file mode 100644
+index 00000000..afda67d5
+--- /dev/null
++++ b/common/pyrowave/shaders/dwt_haar_1.comp
+@@ -0,0 +1,9 @@
++#version 450
++// Copyright (c) 2025 Hans-Kristian Arntzen
++// SPDX-License-Identifier: MIT
++// Paired Haar bitstream experiment; not compatible with CDF 9/7 streams.
++#extension GL_KHR_shader_subgroup_basic : require
++#extension GL_ARB_shading_language_include : require
++#define PRECISION 1
++#define PYROWAVE_HAAR_FORMAT 1
++#include "dwt.inc"
+diff --git a/common/pyrowave/shaders/idwt_haar.comp b/common/pyrowave/shaders/idwt_haar.comp
+new file mode 100644
+index 00000000..6b7a8cb5
+--- /dev/null
++++ b/common/pyrowave/shaders/idwt_haar.comp
+@@ -0,0 +1,70 @@
++#version 450
++// Copyright (c) 2025 Hans-Kristian Arntzen
++// SPDX-License-Identifier: MIT
++// Paired Haar bitstream experiment; not compatible with CDF 9/7 streams.
++layout(local_size_x = 16, local_size_y = 16) in;
++layout(constant_id = 0) const bool DCShift = false;
++layout(constant_id = 1) const bool CropOutput = false;
++layout(set = 0, binding = 0) uniform sampler2DArray uHigh;
++layout(set = 0, binding = 1) writeonly uniform image2D uOutput;
++layout(set = 0, binding = 2) uniform sampler2DArray uLow;
++layout(push_constant) uniform Registers
++{
++    ivec2 resolution;       // Coefficient dimensions, transposed by caller.
++    vec2 inv_resolution;    // Preserved push-constant ABI.
++};
++
++float band(int level, ivec2 coord, int layer)
++{
++    if (level <= 1)
++        return texelFetch(uHigh, ivec3(coord, layer), level).r;
++    return texelFetch(uLow, ivec3(coord, layer), level - 2).r;
++}
++
++void main()
++{
++    ivec2 dispatch_coord = ivec2(gl_GlobalInvocationID.xy);
++    if (any(greaterThanEqual(dispatch_coord, resolution)))
++        return;
++
++    // Preserve the faster transposed dispatch while sampling native coordinates.
++    ivec2 p = dispatch_coord.yx;
++    ivec2 output_base = p * 2;
++    ivec2 output_size = CropOutput ? imageSize(uOutput) : ivec2(0);
++    if (CropOutput && any(greaterThanEqual(output_base, output_size)))
++        return;
++    int base_level = int(inv_resolution.x + 0.5);
++    float ll = texelFetch(uLow, ivec3(p >> (4 - base_level), 0), 2).r;
++    for (int level = 4; level > base_level; --level)
++    {
++        int relative_level = level - base_level;
++        ivec2 coord = p >> relative_level;
++        float sx = ((p.x >> (relative_level - 1)) & 1) == 0 ? 1.0 : -1.0;
++        float sy = ((p.y >> (relative_level - 1)) & 1) == 0 ? 1.0 : -1.0;
++        float hl = band(level, coord, 1);
++        float lh = band(level, coord, 2);
++        float hh = band(level, coord, 3);
++        ll += hl * sx + lh * sy + hh * sx * sy;
++    }
++
++    float hl = band(base_level, p, 1);
++    float lh = band(base_level, p, 2);
++    float hh = band(base_level, p, 3);
++    vec4 pixels = vec4(
++        ll + hl + lh + hh,
++        ll - hl + lh - hh,
++        ll + hl - lh - hh,
++        ll - hl - lh + hh);
++    if (DCShift)
++        pixels += vec4(0.5);
++
++    imageStore(uOutput, output_base, vec4(pixels.x));
++    if (!CropOutput || output_base.x + 1 < output_size.x)
++        imageStore(uOutput, output_base + ivec2(1, 0), vec4(pixels.y));
++    if (!CropOutput || output_base.y + 1 < output_size.y)
++    {
++        imageStore(uOutput, output_base + ivec2(0, 1), vec4(pixels.z));
++        if (!CropOutput || output_base.x + 1 < output_size.x)
++            imageStore(uOutput, output_base + ivec2(1, 1), vec4(pixels.w));
++    }
++}
+diff --git a/docs/NXVC_HAAR.md b/docs/NXVC_HAAR.md
+new file mode 100644
+index 00000000..6637e0e6
+--- /dev/null
++++ b/docs/NXVC_HAAR.md
+@@ -0,0 +1,69 @@
++# NXVC paired-Haar experiment
++
++The experimental `pyrowave-probe` branch can replace PyroWave's CDF 9/7
++transform with a paired Haar transform. This is a different bitstream format,
++not a faster decoder for an unchanged CDF packet. Native image dimensions and
++colour sampling remain unchanged by this option; it does not apply foveation.
++
++The purpose is to remove reconstruction work while accepting a modest change
++in texture detail. Clean edges and stable-looking images matter more than
++matching a reference pixel exactly. GPU commands, buffer sizes, and host/client
++format pairing still have to be valid.
++
++## What changes
++
++The encoder represents each pair by its average and half-difference. The
++matching decoder reconstructs a 2x2 footprint using sums and differences of
++four coefficients, without CDF's lifting filter. The existing packet layout,
++rate control and quantized-coefficient unpacking remain in use. The build
++option is off by default:
++
++```sh
++cmake -S . -B build -DPYROWAVE_HAAR_FORMAT=ON
++cmake --build build
++```
++
++Build **both the host and headset** with the same setting. Haar start-of-frame
++headers carry extended code 1; standard CDF uses code 0. A decoder rejects the
++other code. Standalone fixture helpers also distinguish `PYROHAAR` from
++`PYROWAVE`. Current stream negotiation still calls this experimental transport
++PyroWave; this option is not a separately negotiated consumer codec.
++
++The Haar library forces the matching compute inverse even when a caller
++requests the old fragment path. The client uses the decoder's actual output
++stage for image barriers. Haar's inverse does not request full subgroups,
++because it does not use subgroup operations. Output cropping is selected at
++pipeline creation for non-32-aligned dimensions; aligned frames compile out
++the edge checks.
++
++## Measured reconstruction cut
++
++At a roughly 694 kB packet budget, the native 4352x2176 4:4:4 fixture showed
++slightly more plane error than CDF, with coherent reconstructed detail. Six
++independently encoded translated frames and a separate 4:2:0 fixture were
++also decoded on the host. These are spatial checks, not proof of comfortable
++live VR, motion stability, 90 Hz presentation or photon latency.
++
++The integrated inverse reconstructs all five levels algebraically in one
++compute pass per component: three dispatches instead of fifteen. It avoids
++intermediate LL image writes and barriers. This prototype supports precision
++1 (two R16F high mips and three R32F low mips); other settings fail explicitly.
++
++On the Pico, the matched native 4:2:0 packet measured **12.42 ms GPU p50**,
++versus **16.85 ms** for standard CDF: a **26% GPU reduction**. The synchronous
++call measured **15.32 ms**, versus **21.11 ms**. Both used the same source and
++approximately 694 kB packet budget, with 12 warmups and 30 measured repeats.
++Pico and desktop Haar output matched byte-for-byte. These isolated static
++decode timings still exceed the 11.11 ms 90 Hz frame budget and exclude
++transport, presentation, encoder cost, and photon latency.
++
++Clearing coefficient images and skipping zero writes made reconstruction
++slower; it is not integrated. Alternate dispatch layouts and typed final
++stores showed no convincing benefit. A correct 4x4 output variant was roughly
++6% slower than 2x2 on Pico and is rejected. Dithering is deferred.
++
++Results and full measurement scopes are maintained in
++[the NX Warp experiment report](https://github.com/nerdrx/nx-warp/tree/main/bench/results/90fps-2026-10-03/pyrowave-full-image).
++
++The incorporated PyroWave sources retain Hans-Kristian Arntzen's MIT
++copyright and SPDX notices. This experiment builds on that work.

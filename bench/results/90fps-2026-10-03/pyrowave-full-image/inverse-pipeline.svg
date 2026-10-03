@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040" role="img" aria-labelledby="title desc">
+<title id="title">Paired-Haar inverse: sequential five-level vs fused analytic pass</title>
+<desc id="desc">Both paths decode and dequantize the same paired-Haar packet. Sequential Haar materializes four intermediate low-low images per component across five inverse dispatches; fused paired Haar reads all levels in one analytic output pass per component and writes final pixels. Packet bytes are identical between these inverse schedules; total GPU memory traffic is not measured.</desc>
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#65758b"/></marker>
+  <marker id="blueArrow" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#315a9b"/></marker>
+  <marker id="orangeArrow" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#c86e2b"/></marker>
+  <style>
+    text{font-family:Inter,Arial,sans-serif;fill:#202a36}
+    .title{font-size:30px;font-weight:700}.sub{font-size:15px;fill:#566273}
+    .panel{fill:#fff;stroke:#d3dce6;stroke-width:1.5}.head{font-size:20px;font-weight:700}
+    .cap{font-size:12px;font-weight:700;letter-spacing:.7px;fill:#566273}
+    .body{font-size:14px}.small{font-size:12px;fill:#566273}
+    .cdf{fill:#eaf0f8;stroke:#315a9b;stroke-width:1.4}.haar{fill:#fff1e4;stroke:#c86e2b;stroke-width:1.4}
+    .tmp{fill:#f3f6f9;stroke:#9aa8b8;stroke-width:1.2;stroke-dasharray:4 3}
+    .out{fill:#e8f5ee;stroke:#39805c;stroke-width:1.5}
+    .arrow{stroke:#65758b;stroke-width:1.7;fill:none;marker-end:url(#arrow)}
+    .blue{stroke:#315a9b;stroke-width:1.8;fill:none;marker-end:url(#blueArrow)}
+    .orange{stroke:#c86e2b;stroke-width:1.8;fill:none;marker-end:url(#orangeArrow)}
+    .band{fill:#f1f4f8;stroke:#9aa8b8;stroke-width:1}
+  </style>
+</defs>
+<rect width="1600" height="1040" fill="#f7f9fc"/>
+<text x="56" y="58" class="title">Paired-Haar inverse: sequential five-level vs fused analytic pass</text>
+<text x="56" y="86" class="sub">4352 × 2176 native 4:4:4 • same 694,244 B Haar payload (694,288 B fixture incl. 44 B header) • dispatch count, not speed</text>
+
+<!-- Shared input -->
+<rect x="300" y="111" width="1000" height="82" rx="12" fill="#edf2f8" stroke="#8191a4" stroke-width="1.5"/>
+<text x="800" y="141" text-anchor="middle" class="cap">SHARED FRONT END</text>
+<text x="800" y="165" text-anchor="middle" class="body">Same Haar frame → parser / dequantizer → five-level coefficient pyramid for Y, Cb, Cr</text>
+<path d="M800 193 V218 H391 V238" class="blue"/>
+<path d="M800 218 H1209 V238" class="orange"/>
+
+<!-- Panels -->
+<rect x="48" y="238" width="690" height="560" rx="14" class="panel"/>
+<rect x="862" y="238" width="690" height="560" rx="14" class="panel"/>
+<text x="78" y="278" class="head">Sequential paired-Haar inverse</text>
+<text x="78" y="302" class="small">Compute path • five resolution levels • shown for one component</text>
+<text x="892" y="278" class="head">Fused paired-Haar inverse</text>
+<text x="892" y="302" class="small">Compute path • one analytic output pass per component</text>
+
+<!-- Sequential paired-Haar ladder -->
+<text x="95" y="342" class="cap">LEVEL</text><text x="220" y="342" class="cap">INVERSE DISPATCH</text><text x="480" y="342" class="cap">MATERIALIZED OUTPUT</text>
+<g>
+ <rect x="84" y="360" width="74" height="48" rx="7" class="band"/><text x="121" y="389" text-anchor="middle" class="body">L4</text>
+ <rect x="200" y="360" width="208" height="48" rx="7" class="cdf"/><text x="304" y="389" text-anchor="middle" class="body">IDWT L4</text>
+ <rect x="456" y="360" width="208" height="48" rx="7" class="tmp"/><text x="560" y="389" text-anchor="middle" class="body">LL₃ temporary</text>
+ <path d="M158 384 H194" class="blue"/><path d="M408 384 H450" class="blue"/>
+ <path d="M304 409 V423" class="blue"/>
+ <rect x="84" y="426" width="74" height="48" rx="7" class="band"/><text x="121" y="455" text-anchor="middle" class="body">L3</text>
+ <rect x="200" y="426" width="208" height="48" rx="7" class="cdf"/><text x="304" y="455" text-anchor="middle" class="body">IDWT L3</text>
+ <rect x="456" y="426" width="208" height="48" rx="7" class="tmp"/><text x="560" y="455" text-anchor="middle" class="body">LL₂ temporary</text>
+ <path d="M158 450 H194" class="blue"/><path d="M408 450 H450" class="blue"/><path d="M304 475 V489" class="blue"/>
+ <rect x="84" y="492" width="74" height="48" rx="7" class="band"/><text x="121" y="521" text-anchor="middle" class="body">L2</text>
+ <rect x="200" y="492" width="208" height="48" rx="7" class="cdf"/><text x="304" y="521" text-anchor="middle" class="body">IDWT L2</text>
+ <rect x="456" y="492" width="208" height="48" rx="7" class="tmp"/><text x="560" y="521" text-anchor="middle" class="body">LL₁ temporary</text>
+ <path d="M158 516 H194" class="blue"/><path d="M408 516 H450" class="blue"/><path d="M304 541 V555" class="blue"/>
+ <rect x="84" y="558" width="74" height="48" rx="7" class="band"/><text x="121" y="587" text-anchor="middle" class="body">L1</text>
+ <rect x="200" y="558" width="208" height="48" rx="7" class="cdf"/><text x="304" y="587" text-anchor="middle" class="body">IDWT L1</text>
+ <rect x="456" y="558" width="208" height="48" rx="7" class="tmp"/><text x="560" y="587" text-anchor="middle" class="body">LL₀ temporary</text>
+ <path d="M158 582 H194" class="blue"/><path d="M408 582 H450" class="blue"/><path d="M304 607 V621" class="blue"/>
+ <rect x="84" y="624" width="74" height="48" rx="7" class="band"/><text x="121" y="653" text-anchor="middle" class="body">L0</text>
+ <rect x="200" y="624" width="208" height="48" rx="7" class="cdf"/><text x="304" y="653" text-anchor="middle" class="body">IDWT L0 + DC shift</text>
+ <rect x="456" y="624" width="208" height="48" rx="7" class="out"/><text x="560" y="653" text-anchor="middle" class="body">Final plane</text>
+ <path d="M158 648 H194" class="blue"/><path d="M408 648 H450" class="blue"/>
+</g>
+<text x="84" y="714" class="body" font-weight="700">Per component: 5 dispatches, 4 intermediate LL images</text>
+<text x="84" y="739" class="small">4:4:4 total: 15 inverse dispatches; 12 per-level temporary outputs</text>
+
+<!-- Fused flow -->
+<text x="902" y="342" class="cap">COEFFICIENT MIPS</text><text x="1125" y="342" class="cap">ONE OUTPUT KERNEL</text>
+<g>
+ <rect x="900" y="360" width="86" height="42" rx="6" class="band"/><text x="943" y="386" text-anchor="middle" class="body">L4</text>
+ <rect x="900" y="414" width="86" height="42" rx="6" class="band"/><text x="943" y="440" text-anchor="middle" class="body">L3</text>
+ <rect x="900" y="468" width="86" height="42" rx="6" class="band"/><text x="943" y="494" text-anchor="middle" class="body">L2</text>
+ <rect x="900" y="522" width="86" height="42" rx="6" class="band"/><text x="943" y="548" text-anchor="middle" class="body">L1</text>
+ <rect x="900" y="576" width="86" height="42" rx="6" class="band"/><text x="943" y="602" text-anchor="middle" class="body">L0</text>
+ <path d="M986 381 C1035 381 1030 475 1084 475" class="orange"/>
+ <path d="M986 435 C1038 435 1034 482 1084 482" class="orange"/>
+ <path d="M986 489 H1084" class="orange"/>
+ <path d="M986 543 C1038 543 1034 500 1084 500" class="orange"/>
+ <path d="M986 597 C1035 597 1030 507 1084 507" class="orange"/>
+ <rect x="1094" y="420" width="244" height="154" rx="12" class="haar"/>
+ <text x="1216" y="451" text-anchor="middle" class="body" font-weight="700">Analytic Haar inverse</text>
+ <text x="1216" y="479" text-anchor="middle" class="small">LL₄ + signed ancestor bands</text>
+ <text x="1216" y="501" text-anchor="middle" class="small">coordinate-bit signs; no LL chain</text>
+ <text x="1216" y="535" text-anchor="middle" class="small">one invocation writes a 2 × 2 quad</text>
+ <path d="M1338 497 H1380" class="orange"/>
+ <rect x="1388" y="462" width="126" height="70" rx="9" class="out"/>
+ <text x="1451" y="492" text-anchor="middle" class="body">Final plane</text><text x="1451" y="513" text-anchor="middle" class="small">Y / Cb / Cr</text>
+</g>
+<text x="900" y="674" class="body" font-weight="700">Per component: 1 dispatch; 4:4:4 total: 3</text>
+<text x="900" y="699" class="small">One kernel reads all five coefficient levels and writes final output.</text>
+<text x="900" y="724" class="small">No per-level LL output images are materialized.</text>
+
+<!-- Bandwidth note -->
+<rect x="48" y="826" width="1504" height="147" rx="14" fill="#fff" stroke="#d3dce6" stroke-width="1.5"/>
+<text x="78" y="864" class="cap">FIXED PACKET BUDGET; GPU MEMORY TRAFFIC NOT MEASURED</text>
+<text x="78" y="895" class="body">Both schedule panels use the same Haar packet: 694,244 B payload; 694,288 B fixture including the common 44 B header.</text>
+<text x="78" y="923" class="body">Changing only the inverse schedule does not change packet bytes. Fused removes intermediate LL writes but resamples ancestor bands per output coordinate; net GPU bytes moved were not measured.</text>
+<text x="78" y="951" class="small">Source: paired-Haar fused candidate Decoder::idwt and shaders/idwt_haar.comp. No valid device latency comparison is available.</text>
+</svg>

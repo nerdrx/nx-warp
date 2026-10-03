@@ -1,5 +1,9 @@
 # Full-image PyroWave probe — 3 October 2026
 
+**Newer decoder result:** [Fused paired-Haar reconstruction](report.md) cuts matched native 4:2:0 Pico GPU decode from 16.85 to 12.42 ms at the same source and approximately 694 kB frame budget. It trades a small source-error increase for less reconstruction work. Still above the 90 Hz budget; no live VR claim.
+
+![Matched native Pico decoder timing](matched-420-latency.svg)
+
 ![Matched-source full-image comparison](full-image-control.png)
 
 **Updated decision:** PyroWave wins against the *previous foveated NXVC output*, but **does not win this full-image quality comparison**. With both codecs fed the original full-resolution pixels, NXVC is nearly tied around 50–63 Mbit/s and ahead by **2.24–3.67 dB** near 500 Mbit/s while using fewer bytes. The earlier 5.5–6.9 dB gap was largely the cost of NXVC's foveated representation, not evidence that PyroWave's wavelet transform is better. The live Pico performance question remains open.

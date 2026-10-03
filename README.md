@@ -17,6 +17,12 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 3 October: less native reconstruction work
+
+The optional paired-Haar experiment cuts matched native **4352 × 2176, 4:2:0** Pico decode from **16.85 to 12.42 ms GPU p50** (26% less), at approximately the same **694 kB frame payload**. It reconstructs the coefficient pyramid directly in three dispatches, avoiding intermediate image passes. Desktop and Pico Haar pixels match exactly; source error is slightly higher than CDF. **This is isolated decoder proof, still above the 11.11 ms 90 Hz budget—not a live frame-rate or photon-latency claim.** [Methods, graphs, animation and rejected experiments](bench/results/90fps-2026-10-03/pyrowave-full-image/report.md).
+
+![Matched native decoder latency on Pico](bench/results/90fps-2026-10-03/pyrowave-full-image/matched-420-latency.svg)
+
 ### 3 October: PyroWave Pico decoder probe
 
 The opt-in, full-image PyroWave branch now decodes correctly on Pico 4 after a missing GPU-memory flush was fixed. Six synthetic moving frames at **2688 × 1344 stereo** matched the desktop decode within **0.15 luma byte levels MAE**; 54 timed decodes then measured **8.59 ms GPU p50 / 9.23 ms p95**. At native **4352 × 2176**, isolated decode still takes **20.35 / 20.66 ms**, beyond the 90 Hz frame interval before transport or presentation. This is a headless decoder result, not a live VR or motion-to-photon result. PyroWave remains experimental and does not replace the current NXVC path. [Methods, logs, graphs and Pico readback](bench/results/90fps-2026-10-03/pyrowave-pico/README.md).

@@ -1,0 +1,14 @@
+Validation Error: [ VUID-VkShaderModuleCreateInfo-pCode-08742 ] | MessageID = 0xfc68be96
+vkCreateShaderModule(): SPIR-V Extension SPV_KHR_8bit_storage was declared, but one of the following requirements is required (1.2.0 (0x00402000) or VK_KHR_8bit_storage).
+The Vulkan spec states: If pCode is a pointer to SPIR-V code, and pCode declares any of the SPIR-V extensions listed in the SPIR-V Environment appendix, one of the corresponding requirements must be satisfied (https://docs.vulkan.org/spec/latest/chapters/shaders.html#VUID-VkShaderModuleCreateInfo-pCode-08742)
+
+Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-flags-02759 ] | MessageID = 0xea9b0c11
+vkCreateComputePipelines(): pCreateInfos[0].stage.flags (VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT), but local workgroup size X dimension (16) is not a multiple of VkPhysicalDeviceVulkan11Properties::subgroupSize (64).
+The Vulkan spec states: If flags has the VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT flag set and flags does not have the VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT flag set and no VkPipelineShaderStageRequiredSubgroupSizeCreateInfo structure is included in the pNext chain, the local workgroup size in the X dimension of the pipeline must be a multiple of subgroupSize (https://docs.vulkan.org/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-flags-02759)
+
+Validation Error: [ VUID-VkPipelineShaderStageCreateInfo-flags-02759 ] | MessageID = 0xea9b0c11
+vkCreateComputePipelines(): pCreateInfos[0].stage.flags (VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT), but local workgroup size X dimension (16) is not a multiple of VkPhysicalDeviceVulkan11Properties::subgroupSize (64).
+The Vulkan spec states: If flags has the VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT flag set and flags does not have the VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT flag set and no VkPipelineShaderStageRequiredSubgroupSizeCreateInfo structure is included in the pNext chain, the local workgroup size in the X dimension of the pipeline must be a multiple of subgroupSize (https://docs.vulkan.org/spec/latest/chapters/pipelines.html#VUID-VkPipelineShaderStageCreateInfo-flags-02759)
+
+frame=0 prefix=validation/validation-layer-run.frame000 planes=9469952,9469952,9469952 bytes
+GPU=AMD Radeon RX 7900 XTX (RADV NAVI31) api=1.4 frame=4352x2176 fixture_frames=1 decodes=1 warmup=0 samples=1 correctness-only path=paired-Haar compute readback=separate-not-timed cpu_definition=push_submit_fence GPU_definition=decode_timestamps CPU_p50=2.24716ms CPU_p95=2.24716ms GPU_p50=0.28172ms GPU_p95=0.28172ms
