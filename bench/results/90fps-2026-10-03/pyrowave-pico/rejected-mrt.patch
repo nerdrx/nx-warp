@@ -1,0 +1,543 @@
+--- a/common/pyrowave/pyrowave_decoder.h
++++ b/common/pyrowave/pyrowave_decoder.h
+@@ -69,7 +69,7 @@
+ 	vk::raii::PhysicalDevice & phys_dev;
+ 	vk::raii::DescriptorPool ds_pool;
+ 
+-	using key_render_pass = std::tuple<std::array<vk::Format, 3>, std::array<vk::ImageLayout, 3>>;
++	using key_render_pass = std::tuple<std::array<vk::Format, 4>, std::array<vk::ImageLayout, 4>>;
+ 	using sp = std::tuple<
+ 	        VkBool32, // vertical
+ 	        VkBool32, // final_y
+@@ -90,8 +90,8 @@
+ 			vk::Extent2D fb_extent{};
+ 			vk::Pipeline pipeline[3];
+ 		};
+-		vk::raii::DescriptorSetLayout ds_layout[3] = {nullptr, nullptr, nullptr};
+-		vk::raii::PipelineLayout layout[3] = {nullptr, nullptr, nullptr};
++		vk::raii::DescriptorSetLayout ds_layout[4] = {nullptr, nullptr, nullptr, nullptr};
++		vk::raii::PipelineLayout layout[4] = {nullptr, nullptr, nullptr, nullptr};
+ 		std::map<key_render_pass, vk::raii::RenderPass> render_pass;
+ 		std::map<key_pipeline, vk::raii::Pipeline> pipelines;
+ 		std::map<vk::ImageView, vk::raii::Framebuffer> framebuffers;
+--- a/common/pyrowave/pyrowave_decoder.cpp
++++ b/common/pyrowave/pyrowave_decoder.cpp
+@@ -744,9 +744,9 @@
+ 	// idwt pipeline
+ 	if (fragment_path)
+ 	{
+-		for (size_t chroma_config = 0; chroma_config < 3; ++chroma_config)
+-		{
+-			std::vector bindings{
++		for (size_t chroma_config = 0; chroma_config < 4; ++chroma_config)
++		{
++		std::vector bindings{
+ 			        vk::DescriptorSetLayoutBinding{
+ 			                .binding = 0,
+ 			                .descriptorType = vk::DescriptorType::eSampledImage,
+@@ -764,8 +764,34 @@
+ 			                .descriptorType = vk::DescriptorType::eSampler,
+ 			                .descriptorCount = 1,
+ 			                .stageFlags = vk::ShaderStageFlagBits::eFragment,
+-			        },
+-			};
++				        },
++		};
++			if (chroma_config == 3)
++			{
++				bindings.clear();
++				for (uint32_t binding = 0; binding < 9; ++binding)
++					bindings.push_back(vk::DescriptorSetLayoutBinding{
++					        .binding = binding,
++					        .descriptorType = binding == 4 ? vk::DescriptorType::eSampler : vk::DescriptorType::eSampledImage,
++					        .descriptorCount = 1,
++					        .stageFlags = vk::ShaderStageFlagBits::eFragment,
++					});
++				fragment.ds_layout[chroma_config] = device.createDescriptorSetLayout({
++				        .bindingCount = uint32_t(bindings.size()),
++				        .pBindings = bindings.data(),
++				});
++				vk::PushConstantRange pc{
++				        .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
++				        .size = sizeof(IDwtFragmentPushData),
++				};
++				fragment.layout[chroma_config] = device.createPipelineLayout({
++				        .setLayoutCount = 1,
++				        .pSetLayouts = &*fragment.ds_layout[chroma_config],
++				        .pushConstantRangeCount = 1,
++				        .pPushConstantRanges = &pc,
++				});
++				continue;
++			}
+ 			if (chroma_config > 0)
+ 			{
+ 				bindings.push_back(
+@@ -819,10 +845,11 @@
+ 		}
+ 
+ 		auto vert_shader = load_shader(device, "idwt.vert");
+-		vk::raii::ShaderModule frag_shader[3] = {
++		vk::raii::ShaderModule frag_shader[4] = {
+ 		        load_shader(device, "idwt_0.frag"),
+ 		        load_shader(device, "idwt_1.frag"),
+ 		        load_shader(device, "idwt_2.frag"),
++		        load_shader(device, "idwt_mrt.frag"),
+ 		};
+ 
+ 		auto ensure_render_pass = [&](const key_render_pass & render_pass_key) {
+@@ -844,7 +871,11 @@
+ 				        vk::AttachmentReference{
+ 				                .attachment = 2,
+ 				                .layout = vk::ImageLayout::eColorAttachmentOptimal,
+-				        },
++			        },
++				        vk::AttachmentReference{
++				                .attachment = 3,
++				                .layout = vk::ImageLayout::eColorAttachmentOptimal,
++			        },
+ 				};
+ 				std::array attachments{
+ 				        vk::AttachmentDescription{
+@@ -864,7 +895,13 @@
+ 				                .loadOp = vk::AttachmentLoadOp::eDontCare,
+ 				                .initialLayout = layouts[2],
+ 				                .finalLayout = vk::ImageLayout::eColorAttachmentOptimal,
+-				        },
++			        },
++				        vk::AttachmentDescription{
++				                .format = formats[3],
++				                .loadOp = vk::AttachmentLoadOp::eDontCare,
++				                .initialLayout = layouts[3],
++				                .finalLayout = vk::ImageLayout::eColorAttachmentOptimal,
++			        },
+ 				};
+ 				vk::SubpassDescription subpass{
+ 				        .pipelineBindPoint = vk::PipelineBindPoint::eGraphics,
+@@ -967,7 +1004,10 @@
+ 				        },
+ 				        vk::PipelineColorBlendAttachmentState{
+ 				                .colorWriteMask = vk::FlagTraits<vk::ColorComponentFlagBits>::allFlags,
+-				        },
++			        },
++				        vk::PipelineColorBlendAttachmentState{
++				                .colorWriteMask = vk::FlagTraits<vk::ColorComponentFlagBits>::allFlags,
++			        },
+ 				};
+ 				vk::PipelineColorBlendStateCreateInfo colorblend_info{
+ 				        .attachmentCount = colorAttachmentCount,
+@@ -1009,111 +1049,61 @@
+ 			int output_level = input_level - 1;
+ 			bool has_chroma_output = output_level >= 0 || chroma == ChromaSubsampling::Chroma444;
+ 
+-			// Vertical passes.
+-			for (int vert_pass = 0; vert_pass < 2; vert_pass++)
+-			{
+-				auto & pipeline = in_level.vertical[vert_pass];
+-				key_render_pass render_pass_key{};
+-				auto & formats = std::get<0>(render_pass_key);
+-				formats[0] = in_level.vert[vert_pass][0].info().format;
+-				if (has_chroma_output)
+-					formats[1] = in_level.vert[vert_pass][1].info().format;
+-				for (int32_t edge = -1; edge <= 1; ++edge)
+-				{
+-					std::tie(pipeline.rp, pipeline.layout, pipeline.pipeline[edge + 1]) = ensure_pipeline(
+-					        render_pass_key,
+-					        has_chroma_output ? 1 : 0,
+-					        sp{true, false, false, edge});
+-				}
+-
+-				pipeline.ds = allocate_descriptor_set(*fragment.ds_layout[has_chroma_output ? 1 : 0]);
+-
+-				std::vector image_info{
+-				        vk::DescriptorImageInfo{
+-				                .imageView = *in_level.decoded[0][vert_pass + 0],
+-				                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+-				        },
+-				        vk::DescriptorImageInfo{
+-				                .imageView = *in_level.decoded[0][vert_pass + 2],
+-				                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+-				        },
+-				        vk::DescriptorImageInfo{
+-				                .sampler = *mirror_repeat_sampler,
+-				        },
+-				};
+-				if (has_chroma_output)
+-				{
+-					image_info.push_back(vk::DescriptorImageInfo{
+-					        .imageView = *in_level.decoded[1][vert_pass + 0],
+-					        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+-					});
+-					image_info.push_back(vk::DescriptorImageInfo{
+-					        .imageView = *in_level.decoded[1][vert_pass + 2],
+-					        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+-					});
+-					image_info.push_back(vk::DescriptorImageInfo{
+-					        .imageView = *in_level.decoded[2][vert_pass + 0],
+-					        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+-					});
+-					image_info.push_back(vk::DescriptorImageInfo{
+-					        .imageView = *in_level.decoded[2][vert_pass + 2],
+-					        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+-					});
+-				}
+-				std::vector descriptor_writes{
+-				        vk::WriteDescriptorSet{
+-				                .dstSet = pipeline.ds,
+-				                .dstBinding = 0,
+-				                .descriptorCount = 1,
+-				                .descriptorType = vk::DescriptorType::eSampledImage,
+-				                .pImageInfo = &image_info[0],
+-				        },
+-				        vk::WriteDescriptorSet{
+-				                .dstSet = pipeline.ds,
+-				                .dstBinding = 1,
+-				                .descriptorCount = 1,
+-				                .descriptorType = vk::DescriptorType::eSampledImage,
+-				                .pImageInfo = &image_info[1],
+-				        },
+-				        vk::WriteDescriptorSet{
+-				                .dstSet = pipeline.ds,
+-				                .dstBinding = 2,
+-				                .descriptorCount = 1,
+-				                .descriptorType = vk::DescriptorType::eSampler,
+-				                .pImageInfo = &image_info[2],
+-				        },
+-				};
+-				if (has_chroma_output)
+-				{
+-					for (uint32_t i = 3; i < 7; ++i)
+-						descriptor_writes.push_back(
+-						        vk::WriteDescriptorSet{
+-						                .dstSet = pipeline.ds,
+-						                .dstBinding = i,
+-						                .descriptorCount = 1,
+-						                .descriptorType = vk::DescriptorType::eSampledImage,
+-						                .pImageInfo = &image_info[i],
+-						        });
+-				}
+-				device.updateDescriptorSets(descriptor_writes, {});
+-
+-				std::array fb_att{
+-				        *in_level.vert_views[vert_pass][0],
+-				        *in_level.vert_views[vert_pass][1],
+-				};
+-
+-				vk::FramebufferCreateInfo fb_info{
+-				        .renderPass = pipeline.rp,
+-				        .attachmentCount = has_chroma_output ? 2u : 1u,
+-				        .pAttachments = fb_att.data(),
+-				        .width = in_level.vert[vert_pass][0].info().extent.width,
+-				        .height = in_level.vert[vert_pass][0].info().extent.height,
+-				        .layers = 1,
+-				};
+-
+-				pipeline.fb_extent = vk::Extent2D{.width = fb_info.width, .height = fb_info.height};
+-				pipeline.fb = device.createFramebuffer(fb_info);
+-			}
++			// Fused vertical even/odd synthesis pass.
++			auto & pipeline = in_level.vertical[0];
++			key_render_pass render_pass_key{};
++			auto & formats = std::get<0>(render_pass_key);
++			formats[0] = in_level.vert[0][0].info().format;
++			formats[1] = in_level.vert[0][1].info().format;
++			formats[2] = in_level.vert[1][0].info().format;
++			formats[3] = in_level.vert[1][1].info().format;
++			for (int32_t edge = -1; edge <= 1; ++edge)
++			{
++				std::tie(pipeline.rp, pipeline.layout, pipeline.pipeline[edge + 1]) = ensure_pipeline(
++				        render_pass_key,
++				        3,
++				        sp{true, false, false, edge});
++			}
++
++			pipeline.ds = allocate_descriptor_set(*fragment.ds_layout[3]);
++			std::array image_info{
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[0][0], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[0][2], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[0][1], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[0][3], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.sampler = *mirror_repeat_sampler},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[1][0], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[1][2], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[1][1], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			        vk::DescriptorImageInfo{.imageView = *in_level.decoded[1][3], .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal},
++			};
++			std::vector<vk::WriteDescriptorSet> descriptor_writes;
++			for (uint32_t binding = 0; binding < image_info.size(); ++binding)
++				descriptor_writes.push_back(vk::WriteDescriptorSet{
++				        .dstSet = pipeline.ds,
++				        .dstBinding = binding,
++				        .descriptorCount = 1,
++				        .descriptorType = binding == 4 ? vk::DescriptorType::eSampler : vk::DescriptorType::eSampledImage,
++				        .pImageInfo = &image_info[binding],
++				});
++			device.updateDescriptorSets(descriptor_writes, {});
++
++			std::array fb_att{
++			        *in_level.vert_views[0][0],
++			        *in_level.vert_views[0][1],
++			        *in_level.vert_views[1][0],
++			        *in_level.vert_views[1][1],
++			};
++			vk::FramebufferCreateInfo fb_info{
++			        .renderPass = pipeline.rp,
++			        .attachmentCount = fb_att.size(),
++			        .pAttachments = fb_att.data(),
++			        .width = in_level.vert[0][0].info().extent.width,
++			        .height = in_level.vert[0][0].info().extent.height,
++			        .layers = 1,
++			};
++			pipeline.fb_extent = vk::Extent2D{.width = fb_info.width, .height = fb_info.height};
++			pipeline.fb = device.createFramebuffer(fb_info);
+ 
+ 			// Horizontal pass
+ 			{
+@@ -1722,54 +1712,38 @@
+ 			begin_label(cmd, "Fragment iDWT final");
+ 
+ 		bool has_chroma_output = output_level >= 0 || chroma == ChromaSubsampling::Chroma444;
+-		// Vertical passes.
+-		for (int vert_pass = 0; vert_pass < 2; vert_pass++)
+-		{
+-			const auto & pipeline = fragment.levels[input_level].vertical[vert_pass];
+-			cmd.beginRenderPass(vk::RenderPassBeginInfo{
+-			                            .renderPass = pipeline.rp,
+-			                            .framebuffer = *pipeline.fb,
+-			                            .renderArea = {.extent = pipeline.fb_extent},
+-			                    },
+-			                    {});
+-			cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline.layout, 0, pipeline.ds, {});
+-
+-			const auto & extent = fragment.levels[input_level].vert[vert_pass][0].info().extent;
+-
+-			// Set mirror point.
+-			// Work around broken Mali r38.1 compiler.
+-			// If it sees negative texture offsets it breaks the output for whatever reason (!?!?!?!).
+-			const auto & input_dim = fragment.levels[input_level].decoded_dim;
+-			IDwtFragmentPushData push{
+-			        .uv_offset = {0, -2.f / input_dim.height},
+-			        .half_texel_offset = {0.5f / input_dim.width, 0.5f / input_dim.height},
+-			        .vp_scale = float(pipeline.fb_extent.height),
+-			        .pivot_size = pipeline.fb_extent.height,
+-			};
+-			cmd.pushConstants<IDwtFragmentPushData>(pipeline.layout, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex, 0, push);
+-			cmd.setViewport(0, vk::Viewport{
+-			                           .width = float(pipeline.fb_extent.width),
+-			                           .height = float(pipeline.fb_extent.height),
+-			                           .maxDepth = 1,
+-			                   });
+-
+-			// Render top edge condition.
+-			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.pipeline[0]);
+-			cmd.setScissor(0, vk::Rect2D{.extent = {.width = pipeline.fb_extent.width, .height = 8}});
+-			cmd.draw(3, 1, 0, 0);
+-
+-			// Render normal path
+-			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.pipeline[1]);
+-			cmd.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 8}, .extent = {.width = pipeline.fb_extent.width, .height = pipeline.fb_extent.height - 16}});
+-			cmd.draw(3, 1, 0, 0);
+-
+-			// Render bottom edge condition
+-			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.pipeline[2]);
+-			cmd.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = int32_t(pipeline.fb_extent.height - 8)}, .extent = {.width = pipeline.fb_extent.width, .height = 8}});
+-			cmd.draw(3, 1, 0, 0);
+-
+-			cmd.endRenderPass();
+-		}
++		// Fused vertical even/odd synthesis pass.
++		const auto & vertical_pipeline = fragment.levels[input_level].vertical[0];
++		cmd.beginRenderPass(vk::RenderPassBeginInfo{
++		                            .renderPass = vertical_pipeline.rp,
++		                            .framebuffer = *vertical_pipeline.fb,
++		                            .renderArea = {.extent = vertical_pipeline.fb_extent},
++		                    },
++		                    {});
++		cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, vertical_pipeline.layout, 0, vertical_pipeline.ds, {});
++		const auto & input_dim = fragment.levels[input_level].decoded_dim;
++		IDwtFragmentPushData vertical_push{
++		        .uv_offset = {0, -2.f / input_dim.height},
++		        .half_texel_offset = {0.5f / input_dim.width, 0.5f / input_dim.height},
++		        .vp_scale = float(vertical_pipeline.fb_extent.height),
++		        .pivot_size = vertical_pipeline.fb_extent.height,
++		};
++		cmd.pushConstants<IDwtFragmentPushData>(vertical_pipeline.layout, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex, 0, vertical_push);
++		cmd.setViewport(0, vk::Viewport{
++		                           .width = float(vertical_pipeline.fb_extent.width),
++		                           .height = float(vertical_pipeline.fb_extent.height),
++		                           .maxDepth = 1,
++		                   });
++		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, vertical_pipeline.pipeline[0]);
++		cmd.setScissor(0, vk::Rect2D{.extent = {.width = vertical_pipeline.fb_extent.width, .height = 8}});
++		cmd.draw(3, 1, 0, 0);
++		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, vertical_pipeline.pipeline[1]);
++		cmd.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 8}, .extent = {.width = vertical_pipeline.fb_extent.width, .height = vertical_pipeline.fb_extent.height - 16}});
++		cmd.draw(3, 1, 0, 0);
++		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, vertical_pipeline.pipeline[2]);
++		cmd.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = int32_t(vertical_pipeline.fb_extent.height - 8)}, .extent = {.width = vertical_pipeline.fb_extent.width, .height = 8}});
++		cmd.draw(3, 1, 0, 0);
++		cmd.endRenderPass();
+ 
+ 		assert(barriers.empty());
+ 		for (auto & vert: fragment.levels[input_level].vert)
+--- a/common/pyrowave/shaders/idwt.frag.inc
++++ b/common/pyrowave/shaders/idwt.frag.inc
+@@ -6,6 +6,12 @@
+ layout(location = 0) in vec2 vUV;
+ layout(location = 0, component = 2) in float vIntCoord;
+ 
++#ifdef FUSED_MRT
++layout(location = 0) out mediump float oYEven;
++layout(location = 1) out mediump vec2 oCbCrEven;
++layout(location = 2) out mediump float oYOdd;
++layout(location = 3) out mediump vec2 oCbCrOdd;
++#else
+ layout(location = 0) out mediump float oY;
+ #if OUTPUT_PLANES == 2
+ layout(location = 1) out mediump vec2 oCbCr;
+@@ -13,7 +19,19 @@
+ layout(location = 1) out mediump float oCb;
+ layout(location = 2) out mediump float oCr;
+ #endif
+-
++#endif
++
++#ifdef FUSED_MRT
++layout(set = 0, binding = 0) uniform mediump texture2D uYEven0;
++layout(set = 0, binding = 1) uniform mediump texture2D uYOdd0;
++layout(set = 0, binding = 2) uniform mediump texture2D uYEven1;
++layout(set = 0, binding = 3) uniform mediump texture2D uYOdd1;
++layout(set = 0, binding = 4) uniform mediump sampler uSampler;
++layout(set = 0, binding = 5) uniform mediump texture2D uCbCrEven0;
++layout(set = 0, binding = 6) uniform mediump texture2D uCbCrOdd0;
++layout(set = 0, binding = 7) uniform mediump texture2D uCbCrEven1;
++layout(set = 0, binding = 8) uniform mediump texture2D uCbCrOdd1;
++#else
+ layout(set = 0, binding = 0) uniform mediump texture2D uYEven;
+ layout(set = 0, binding = 1) uniform mediump texture2D uYOdd;
+ layout(set = 0, binding = 2) uniform mediump sampler uSampler;
+@@ -26,6 +44,7 @@
+ layout(set = 0, binding = 3) uniform mediump texture2D uCbCrEven;
+ layout(set = 0, binding = 4) uniform mediump texture2D uCbCrOdd;
+ #endif
++#endif
+ 
+ // Direct and naive implementing of the CDF 9/7 synthesis filters.
+ // Optimized for the mobile GPUs which don't have any
+@@ -115,16 +134,29 @@
+ 	return components;
+ }
+ 
+-void main()
+-{
+-	bool is_odd = (int(vIntCoord) & 1) != 0;
+-
+-	float Y[10] = sample_component_gather(uYEven, uYOdd);
++#if INPUT_PLANES > 1
++#define AccumT vec3
++#define GenInput(comp) vec3(Y[comp], CbCr[comp])
++#else
++#define AccumT float
++#define GenInput(comp) Y[comp]
++#endif
++
++AccumT synthesize(mediump texture2D y_even, mediump texture2D y_odd,
+ #if INPUT_PLANES == 2
+-	vec2 CbCr[10] = sample_component_gather2(uCbCrEven, uCbCrOdd);
++                  mediump texture2D cbcr_even, mediump texture2D cbcr_odd,
+ #elif INPUT_PLANES == 3
+-	float Cb[10] = sample_component_gather(uCbEven, uCbOdd);
+-	float Cr[10] = sample_component_gather(uCrEven, uCrOdd);
++                  mediump texture2D cb_even, mediump texture2D cb_odd,
++                  mediump texture2D cr_even, mediump texture2D cr_odd,
++#endif
++                  bool is_odd)
++{
++	float Y[10] = sample_component_gather(y_even, y_odd);
++#if INPUT_PLANES == 2
++	vec2 CbCr[10] = sample_component_gather2(cbcr_even, cbcr_odd);
++#elif INPUT_PLANES == 3
++	float Cb[10] = sample_component_gather(cb_even, cb_odd);
++	float Cr[10] = sample_component_gather(cr_even, cr_odd);
+ 	vec2 CbCr[10];
+ 	[[unroll]]
+ 	for (int i = 0; i < 10; i++)
+@@ -167,14 +199,6 @@
+ 		}
+ 	}
+ 
+-#if INPUT_PLANES > 1
+-#define AccumT vec3
+-#define GenInput(comp) vec3(Y[comp], CbCr[comp])
+-#else
+-#define AccumT float
+-#define GenInput(comp) Y[comp]
+-#endif
+-
+ 	AccumT C0, C1, C2, C3, C4;
+ 	float W0, W1, W2, W3, W4;
+ 
+@@ -211,6 +235,37 @@
+ 	}
+ 
+ 	AccumT result = C0 * W0 + C1 * W1 + C2 * W2 + C3 * W3 + C4 * W4;
++	return result;
++}
++
++void main()
++{
++	bool is_odd = (int(vIntCoord) & 1) != 0;
++#ifdef FUSED_MRT
++	AccumT even_result = synthesize(uYEven0, uYOdd0, uCbCrEven0, uCbCrOdd0, is_odd);
++	AccumT odd_result = synthesize(uYEven1, uYOdd1, uCbCrEven1, uCbCrOdd1, is_odd);
++	oYEven = even_result.x;
++	oCbCrEven = even_result.yz;
++	oYOdd = odd_result.x;
++	oCbCrOdd = odd_result.yz;
++	if (FINAL_Y)
++	{
++		oYEven += 0.5;
++		oYOdd += 0.5;
++	}
++	if (FINAL_CBCR)
++	{
++		oCbCrEven += 0.5;
++		oCbCrOdd += 0.5;
++	}
++#else
++	AccumT result = synthesize(uYEven, uYOdd,
++#if INPUT_PLANES == 2
++	                           uCbCrEven, uCbCrOdd,
++#elif INPUT_PLANES == 3
++	                           uCbEven, uCbOdd, uCrEven, uCrOdd,
++#endif
++	                           is_odd);
+ 
+ #if OUTPUT_PLANES == 3
+ 	oY = result.x;
+@@ -232,7 +287,8 @@
+ 		oCb += 0.5;
+ 		oCr += 0.5;
+ #elif OUTPUT_PLANES == 2
+-		oCbCr += 0.5;
+-#endif
+-	}
+-}
++			oCbCr += 0.5;
++#endif
++	}
++#endif
++}
+--- a/common/pyrowave/shaders/idwt_mrt.frag.glsl
++++ b/common/pyrowave/shaders/idwt_mrt.frag.glsl
+@@ -0,0 +1,11 @@
++#version 450
++// Copyright (c) 2025 Hans-Kristian Arntzen
++// SPDX-License-Identifier: MIT
++
++#extension GL_ARB_shading_language_include : require
++
++#define FUSED_MRT 1
++#define OUTPUT_PLANES 4
++#define INPUT_PLANES 2
++
++#include "idwt.frag.inc"

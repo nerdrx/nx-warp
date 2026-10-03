@@ -1,0 +1,9 @@
+Vertical iDWT MRT experiment, isolated under /tmp/pyrowave-mrt.WXZf0W
+
+Build: Android arm64 PyroWave library and fused fragment shader compiled.
+Device: PICO 4, Adreno 650, Vulkan 1.1, native 4352x2176 4:2:0 forest fixture.
+Baseline separate vertical passes: GPU p50 20.512 ms, p95 21.882 ms.
+MRT candidate: GPU p50 27.523 ms, p95 28.601 ms.
+Readback equality: Y byte-identical; Cb byte-identical; Cr candidate flat 128, baseline varied (26..176). Exact-output gate failed.
+Conclusion: reject candidate; no performance claim. Pico released to compute_compare. No repository files modified.
+Artifacts: /tmp/pyrowave-mrt.patch, /tmp/mrt-baseline.{y,cb,cr}.raw, /tmp/mrt-candidate.{y,cb,cr}.raw.

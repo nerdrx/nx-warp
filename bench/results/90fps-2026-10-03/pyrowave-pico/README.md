@@ -100,6 +100,13 @@ its 14-iteration runs include warmup iterations, and the fixture was one still
 frame. A corrected, warmup-separated bitrate-quality sweep remains future
 work.
 
+Two post-fix architecture probes were rejected too. A fused vertical
+inverse-wavelet MRT pass rendered Cr as flat 128 and increased native GPU p50
+from 20.51 to 27.52 ms; see `rejected-mrt.txt` and its patch. The decoder's
+existing compute reconstruction path produced large pixel errors at native
+and scaled sizes, so no compute-path speed claim was made; see
+`rejected-compute.txt`. Neither candidate was merged into WiVRn.
+
 ## Reproduction records
 
 - `pyrowave-pico-bench.cpp`: headless Vulkan benchmark harness.

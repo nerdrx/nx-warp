@@ -48,7 +48,7 @@ Next experiment: run an **opt-in full-native NXVC profile** on the Pico at 90 Hz
 
 ### Implementation follow-up
 
-An [isolated, opt-in PyroWave branch](https://github.com/nerdrx/wivrn-nx/tree/pyrowave-probe) now exists in the custom WiVRn NX fork. The host server, Linux viewer, and Android arm64 client library compile. It keeps NXVC available and follows live bitrate changes, but has **not** been packaged as an APK, installed on the Pico, or tested in a live stream. The branch is a way to measure the desktop-stage speed lead on the headset, not proof of a Pico win. See its [probe notes](https://github.com/nerdrx/wivrn-nx/blob/pyrowave-probe/docs/PYROWAVE-PROBE.md).
+An [isolated, opt-in PyroWave branch](https://github.com/nerdrx/wivrn-nx/tree/pyrowave-probe) exists in the custom WiVRn NX fork. The host server, Linux viewer, and Android arm64 client library compile. It keeps NXVC available and follows live bitrate changes. A signed APK was briefly installed for a connection probe, then the previous Pico app was restored with its data. A later [headless Pico decode study](../pyrowave-pico/README.md) corrected a noncoherent-memory bug and measured 8.59/9.23 ms GPU p50/p95 on six moving 2688 × 1344 frames, but 20.35/20.66 ms at native 4352 × 2176. **Live PyroWave streaming and motion-to-photon performance remain unverified.** See the branch's [probe notes](https://github.com/nerdrx/wivrn-nx/blob/pyrowave-probe/docs/PYROWAVE-PROBE.md).
 
 ## Reproduction and scope
 

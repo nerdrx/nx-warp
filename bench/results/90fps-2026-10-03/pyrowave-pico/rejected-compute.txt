@@ -1,0 +1,13 @@
+Corrected PyroWave 4:2:0 Pico readback, Adreno 650 / Vulkan 1.1.
+The decoder was built from WiVRn pyrowave-probe with the input flush fix.
+The fragment path is the WiVRn candidate; the compute path is an experimental alternative.
+
+Size          Path vs desktop       Y MAE/max     Cb MAE/max    Cr MAE/max
+4352x2176     fragment              0.291/12      0.075/7       0.047/6
+4352x2176     compute              25.424/255     7.915/212     5.625/222
+2688x1344     fragment              0.306/16      0.090/10      0.058/7
+2688x1344     compute              25.112/255     6.751/199     4.504/185
+
+Compute failed the correctness gate at both sizes. No compute speed timing was
+collected or used to make a performance claim. This variant used the decoder's
+existing `fragment_path=false` option in the headless readback harness.
