@@ -1,0 +1,121 @@
+{
+  "astc_file": "/tmp/nx-astc-validation-17x9-final.astc",
+  "astc_sha256": "553dc569320341587ff973cfe2f0e96e49056c1e72954b60a75078dee8dbba67",
+  "astc_file_bytes": 112,
+  "astc_header": {
+    "width": 17,
+    "height": 9,
+    "depth": 1,
+    "block_width": 8,
+    "block_height": 8,
+    "block_depth": 1,
+    "block_count": 6,
+    "expected_astc_bytes": 112
+  },
+  "header_and_payload_size_valid": true,
+  "all_blocks_software_decode_valid": true,
+  "decoder": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+  "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+  "decoder_command": [
+    "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+    "/tmp/nx-astc-validation-17x9-final.astc",
+    "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/odd-extent-validation/validation-17x9-final.decoded.rgba"
+  ],
+  "decoder_exit_code": 0,
+  "decoder_stdout": "17x9 RGBA8",
+  "decoder_stderr": "",
+  "decoded_rgba_bytes": 612,
+  "decoded_sha256": "cbf30cb5cc08c78283f14592a17904a9ab7908b34a70697fb2a7978989606f97",
+  "source_rgba": "/tmp/nx-astc-17x9.rgba",
+  "source_rgba_sha256": "1f9ceb742cfa77f5884fe87c93feba9b15339d7b234ab449eb0a69b7cf2d8349",
+  "source_pixel_bytes": 612,
+  "source_to_decoded_rgb_psnr_db": 15.761398997835109,
+  "source_to_decoded_rgb_mae": 30.52069716775599,
+  "source_to_decoded_rgb_max_abs_error": 174,
+  "source_distinct_rgba_colors": 153,
+  "most_common_source_rgba_colors": [
+    [
+      [
+        0,
+        0,
+        0,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        0,
+        16,
+        88,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        2,
+        134,
+        154,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        3,
+        29,
+        11,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        3,
+        45,
+        99,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        5,
+        163,
+        143,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        6,
+        58,
+        22,
+        255
+      ],
+      1
+    ],
+    [
+      [
+        6,
+        74,
+        66,
+        255
+      ],
+      1
+    ]
+  ],
+  "gpu_validation_stdout": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/validation-17x9-final.stdout",
+  "gpu_validation_stdout_sha256": "a1c440b7ffa51974b87cb21eb000003163bd274b5e8fa2f1bee357820d8a282e",
+  "gpu_validation_stderr": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/validation-17x9-final.stderr",
+  "gpu_validation_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "nearest_neighbor_visual": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/odd-extent-validation/validation-17x9-final.nearest24x.png",
+  "nearest_neighbor_scale": 24,
+  "notes": [
+    "Odd extent exercises partial ASTC blocks along right and bottom borders.",
+    "Software decoder return code 0 and successful decode of the complete image validate all six blocks; payload length confirms exactly six standard 16-byte blocks.",
+    "The 17x9 source appears to include solid and ramp regions; visual PNG is enlarged for inspection only."
+  ]
+}

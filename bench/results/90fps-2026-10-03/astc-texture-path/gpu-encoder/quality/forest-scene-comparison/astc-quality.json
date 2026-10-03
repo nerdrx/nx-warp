@@ -1,0 +1,80 @@
+{
+  "description": "Direct host ASTC block decode vs matching RGB8 source; this measures block quality only, not GPU decode correctness.",
+  "baseline_reference": null,
+  "cases": [
+    {
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/forest-ls6-resident.astc",
+      "astc_sha256": "40e1d1defec50c10d6d8a2b72a875c2c1c8daee280d574b33da8daff7732baaa",
+      "width": 4352,
+      "height": 2176,
+      "block_width": 8,
+      "block_height": 8,
+      "source_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/forest-native.png",
+      "source_sha256": "d0f2e500369a425c881ce298ee8d4fda91859cc58e77b6db1678213277ff227f",
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_command": [
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/forest-ls6-resident.astc",
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/forest-scene-comparison/forest-ls6-resident.decoded.rgba"
+      ],
+      "decoder_return_code": 0,
+      "decoded_rgba_bytes": 37879808,
+      "rgb_psnr_db": 41.24800282528389,
+      "rgb_mae": 1.0031937507884587,
+      "delta_psnr_vs_previous_xuastc_8x8_q25_db": null,
+      "lz4_payload_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/forest-ls6-resident.astc.blocks.lz4",
+      "lz4_payload_bytes": 948600,
+      "delta_lz4_bytes_vs_previous_xuastc_8x8_q25": null,
+      "edge_crop_box_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "edge_crop_display_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/forest-scene-comparison/forest-ls6-resident.edge-1to1.png",
+      "edge_crop_display_pixels": [
+        1000,
+        448
+      ],
+      "edge_crop_scale": 1
+    },
+    {
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/forest-flat-ls6-resident.astc",
+      "astc_sha256": "b1e2f544c1c448f91130cbd811c0f397c0ee58a6426feb448a482e71ac582ba4",
+      "width": 4352,
+      "height": 2176,
+      "block_width": 8,
+      "block_height": 8,
+      "source_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/forest-native.png",
+      "source_sha256": "d0f2e500369a425c881ce298ee8d4fda91859cc58e77b6db1678213277ff227f",
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_command": [
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/forest-flat-ls6-resident.astc",
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/forest-scene-comparison/forest-flat-ls6-resident.decoded.rgba"
+      ],
+      "decoder_return_code": 0,
+      "decoded_rgba_bytes": 37879808,
+      "rgb_psnr_db": 40.041794174222076,
+      "rgb_mae": 1.4679050819546569,
+      "delta_psnr_vs_previous_xuastc_8x8_q25_db": null,
+      "lz4_payload_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/forest-flat-ls6-resident.astc.blocks.lz4",
+      "lz4_payload_bytes": 318924,
+      "delta_lz4_bytes_vs_previous_xuastc_8x8_q25": null,
+      "edge_crop_box_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "edge_crop_display_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/forest-scene-comparison/forest-flat-ls6-resident.edge-1to1.png",
+      "edge_crop_display_pixels": [
+        1000,
+        448
+      ],
+      "edge_crop_scale": 1
+    }
+  ]
+}

@@ -1,0 +1,390 @@
+{
+  "title": "GPU ASTC encoder synthetic pan quality check",
+  "motion_scope": "Synthetic edge-clamped source shifts only; this does not prove live-motion stability.",
+  "source_png": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/dark-native.png",
+  "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+  "shift_mapping": "Each 2176px eye is sampled at clamp(x-shift,0,2175), no wrap.",
+  "encoder_outputs": "Fixed fit3 / flat-LS q6 ASTC blocks from the GPU harness; this script ran no GPU/device code.",
+  "crop_geometry": {
+    "per_panel": [
+      500,
+      400
+    ],
+    "scale": 1,
+    "box_per_eye_xyxy": [
+      350,
+      80,
+      850,
+      480
+    ]
+  },
+  "pan_cases": [
+    {
+      "shift_px_per_eye": 0,
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-0-flat-ls6.astc",
+      "astc_sha256": "41c81db269f42a53fbc1e412f8275070354bacce74be757f60ea1e17859eccc2",
+      "astc_file_bytes": 2367504,
+      "dimensions": [
+        4352,
+        2176
+      ],
+      "block_size": [
+        8,
+        8
+      ],
+      "block_grid": [
+        544,
+        272
+      ],
+      "block_count": 147968,
+      "expected_file_bytes": 2367504,
+      "header_payload_valid": true,
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_exit_code": 0,
+      "decoder_stderr": "",
+      "decoded_invalid_blocks": 0,
+      "invalid_block_count_interpretation": "Decoder returned success after visiting the complete block grid; helper exits nonzero immediately on any invalid block.",
+      "decoded_rgba_sha256": "4b91195a0c2f5ea180d704746b3bb059aff064c2c312706c1477a3422bb7b17a",
+      "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "shifted_reference_rgb_sha256": "380af5b8b536234e78750cc03431989fdd51030ce920b8382df5b1cbc178f483",
+      "gpu_input_rgba_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-pan-20261003/inputs/dark-shift-0.rgba",
+      "gpu_input_rgba_sha256": "b197f6cfdf1b53a9fa9f957381cf881172dae0f4afac4d5878603a8ee4dbb77c",
+      "shifted_reference_matches_gpu_input_exactly": true,
+      "rgb_psnr_db_vs_shifted_reference": 31.74091654220166,
+      "rgb_mae_vs_shifted_reference": 2.598581703476427,
+      "rgb_max_abs_error": 200,
+      "lz4_packet_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-0-flat-ls6.astc.blocks.lz4",
+      "lz4_packet_bytes": 508605,
+      "lz4_packet_sha256": "48d196a4de0b1ee0ee4aa86fddb9b8ee795095fb9b181126d9e836956ac722d5",
+      "lz4_decompressed_exactly_to_astc_blocks": true,
+      "source_crop_box_one_eye_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "crop_dimensions_each_panel": [
+        500,
+        400
+      ]
+    },
+    {
+      "shift_px_per_eye": 1,
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-1-flat-ls6.astc",
+      "astc_sha256": "42d940d6979773e3707401f13e05aa72f97fc82f17f950ce67b1c9b6b17ed3fc",
+      "astc_file_bytes": 2367504,
+      "dimensions": [
+        4352,
+        2176
+      ],
+      "block_size": [
+        8,
+        8
+      ],
+      "block_grid": [
+        544,
+        272
+      ],
+      "block_count": 147968,
+      "expected_file_bytes": 2367504,
+      "header_payload_valid": true,
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_exit_code": 0,
+      "decoder_stderr": "",
+      "decoded_invalid_blocks": 0,
+      "invalid_block_count_interpretation": "Decoder returned success after visiting the complete block grid; helper exits nonzero immediately on any invalid block.",
+      "decoded_rgba_sha256": "7ca51e3e9b59d21936f474c7bca635b1c21f6499846a2426eb674c3948298d26",
+      "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "shifted_reference_rgb_sha256": "69c72cbb22dc3dc7331bcbc5c54a1fc5d31d0404f432b007fe00a3c18dfc130a",
+      "gpu_input_rgba_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-pan-20261003/inputs/dark-shift-1.rgba",
+      "gpu_input_rgba_sha256": "9e3763e362f4e4b9ad263944df086f53d6a677f9bb5d01aa735cace39b30b3ed",
+      "shifted_reference_matches_gpu_input_exactly": true,
+      "rgb_psnr_db_vs_shifted_reference": 31.49758842513731,
+      "rgb_mae_vs_shifted_reference": 2.6598499478490845,
+      "rgb_max_abs_error": 213,
+      "lz4_packet_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-1-flat-ls6.astc.blocks.lz4",
+      "lz4_packet_bytes": 516263,
+      "lz4_packet_sha256": "cf7b58d614588095e47e597217c7dc63a75434abba033c177c8e031c89e9e419",
+      "lz4_decompressed_exactly_to_astc_blocks": true,
+      "source_crop_box_one_eye_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "crop_dimensions_each_panel": [
+        500,
+        400
+      ]
+    },
+    {
+      "shift_px_per_eye": 2,
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-2-flat-ls6.astc",
+      "astc_sha256": "820ffb422d9b3766b591187a8de41d063f9ea81ea5d194bf973f8721641ed02a",
+      "astc_file_bytes": 2367504,
+      "dimensions": [
+        4352,
+        2176
+      ],
+      "block_size": [
+        8,
+        8
+      ],
+      "block_grid": [
+        544,
+        272
+      ],
+      "block_count": 147968,
+      "expected_file_bytes": 2367504,
+      "header_payload_valid": true,
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_exit_code": 0,
+      "decoder_stderr": "",
+      "decoded_invalid_blocks": 0,
+      "invalid_block_count_interpretation": "Decoder returned success after visiting the complete block grid; helper exits nonzero immediately on any invalid block.",
+      "decoded_rgba_sha256": "b4fd85584545d5e36f012e185d1925f549f6291b9c2612f1cac62d8dc6fb16d7",
+      "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "shifted_reference_rgb_sha256": "a35e61815601894cc767b110f7e21bc268a1f978b1675693a2c3681553474880",
+      "gpu_input_rgba_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-pan-20261003/inputs/dark-shift-2.rgba",
+      "gpu_input_rgba_sha256": "0f4f6f24e0f422ec55acc9de9ea81c0ce7ee3bf51c69db2f1fba052e818e0611",
+      "shifted_reference_matches_gpu_input_exactly": true,
+      "rgb_psnr_db_vs_shifted_reference": 31.79456756808351,
+      "rgb_mae_vs_shifted_reference": 2.5853697392904773,
+      "rgb_max_abs_error": 192,
+      "lz4_packet_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-2-flat-ls6.astc.blocks.lz4",
+      "lz4_packet_bytes": 507885,
+      "lz4_packet_sha256": "20f5d97fbf10276fbf276ce27115bba22ea65787e15c329c1f3f84b2cf1fa6b3",
+      "lz4_decompressed_exactly_to_astc_blocks": true,
+      "source_crop_box_one_eye_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "crop_dimensions_each_panel": [
+        500,
+        400
+      ]
+    },
+    {
+      "shift_px_per_eye": 3,
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-3-flat-ls6.astc",
+      "astc_sha256": "2f7f5722e4995be8697e61270c1643f0cd6c15557010c62167b9595d2510ecfd",
+      "astc_file_bytes": 2367504,
+      "dimensions": [
+        4352,
+        2176
+      ],
+      "block_size": [
+        8,
+        8
+      ],
+      "block_grid": [
+        544,
+        272
+      ],
+      "block_count": 147968,
+      "expected_file_bytes": 2367504,
+      "header_payload_valid": true,
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_exit_code": 0,
+      "decoder_stderr": "",
+      "decoded_invalid_blocks": 0,
+      "invalid_block_count_interpretation": "Decoder returned success after visiting the complete block grid; helper exits nonzero immediately on any invalid block.",
+      "decoded_rgba_sha256": "2faa989c87146f601d4bfc211f90af4541e83a702e73dd860f11870bba3f1771",
+      "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "shifted_reference_rgb_sha256": "7a605617374a059a7fbd8fb41401590dc64b197d009a814222578f380b1b841b",
+      "gpu_input_rgba_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-pan-20261003/inputs/dark-shift-3.rgba",
+      "gpu_input_rgba_sha256": "8a422582657ef02949582ddd440a5a1c62ec505b8214f37c8d5c7a5edbbff3d7",
+      "shifted_reference_matches_gpu_input_exactly": true,
+      "rgb_psnr_db_vs_shifted_reference": 31.48362407261053,
+      "rgb_mae_vs_shifted_reference": 2.6593561755469652,
+      "rgb_max_abs_error": 208,
+      "lz4_packet_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-3-flat-ls6.astc.blocks.lz4",
+      "lz4_packet_bytes": 515342,
+      "lz4_packet_sha256": "c06db48bda10cf788dc67612c1b418e0ebb0be7921fb71d43c79f60b43719a43",
+      "lz4_decompressed_exactly_to_astc_blocks": true,
+      "source_crop_box_one_eye_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "crop_dimensions_each_panel": [
+        500,
+        400
+      ]
+    },
+    {
+      "shift_px_per_eye": 4,
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-4-flat-ls6.astc",
+      "astc_sha256": "d4f73c70b974f21a5d99538e199fd25f04d6e3ac50a5bb7e1e0e1529a7238b76",
+      "astc_file_bytes": 2367504,
+      "dimensions": [
+        4352,
+        2176
+      ],
+      "block_size": [
+        8,
+        8
+      ],
+      "block_grid": [
+        544,
+        272
+      ],
+      "block_count": 147968,
+      "expected_file_bytes": 2367504,
+      "header_payload_valid": true,
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_exit_code": 0,
+      "decoder_stderr": "",
+      "decoded_invalid_blocks": 0,
+      "invalid_block_count_interpretation": "Decoder returned success after visiting the complete block grid; helper exits nonzero immediately on any invalid block.",
+      "decoded_rgba_sha256": "9653e5552c1c29a7a8bc0d11ec8efbd911d14de7a76298c319cf55911262d4d0",
+      "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "shifted_reference_rgb_sha256": "04a69a637bcd146f41f0db9395c3893eb4d18243d4db2cd6ffc2ad44701dd33c",
+      "gpu_input_rgba_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-pan-20261003/inputs/dark-shift-4.rgba",
+      "gpu_input_rgba_sha256": "1c90d37fa088b21db1b18550c5cb9ed70ba7183ee4444f6f652b6ae9826bf210",
+      "shifted_reference_matches_gpu_input_exactly": true,
+      "rgb_psnr_db_vs_shifted_reference": 31.761487874678963,
+      "rgb_mae_vs_shifted_reference": 2.587677529938906,
+      "rgb_max_abs_error": 214,
+      "lz4_packet_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-4-flat-ls6.astc.blocks.lz4",
+      "lz4_packet_bytes": 507736,
+      "lz4_packet_sha256": "ddd551646e8a403ce9b9167755ce71265e734f7111b006c78e3d7e8d9caeec4d",
+      "lz4_decompressed_exactly_to_astc_blocks": true,
+      "source_crop_box_one_eye_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "crop_dimensions_each_panel": [
+        500,
+        400
+      ]
+    },
+    {
+      "shift_px_per_eye": 8,
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-8-flat-ls6.astc",
+      "astc_sha256": "602948b4ade0283ee87a7aa641f7ce891f91dbb3e5f717bc7367e60c71df14ae",
+      "astc_file_bytes": 2367504,
+      "dimensions": [
+        4352,
+        2176
+      ],
+      "block_size": [
+        8,
+        8
+      ],
+      "block_grid": [
+        544,
+        272
+      ],
+      "block_count": 147968,
+      "expected_file_bytes": 2367504,
+      "header_payload_valid": true,
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "f8de6997e07ff17da7c525e2c99712dfcd06c197f162576643ba3db8bad75401",
+      "decoder_exit_code": 0,
+      "decoder_stderr": "",
+      "decoded_invalid_blocks": 0,
+      "invalid_block_count_interpretation": "Decoder returned success after visiting the complete block grid; helper exits nonzero immediately on any invalid block.",
+      "decoded_rgba_sha256": "29448724e0b3327b69ce1e196f8de9bb6e9bdc1347ea54e40fec7e33f8b22957",
+      "source_png_sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "shifted_reference_rgb_sha256": "385b2be05e4e5090637d0b9e74d0860adf2374f055bfcfb89ce2fc6de7596357",
+      "gpu_input_rgba_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-pan-20261003/inputs/dark-shift-8.rgba",
+      "gpu_input_rgba_sha256": "4312e2edfa5067921a53fbe212d528ea2fc6193f04f45d0aaf5daadb89a03988",
+      "shifted_reference_matches_gpu_input_exactly": true,
+      "rgb_psnr_db_vs_shifted_reference": 31.74089729956226,
+      "rgb_mae_vs_shifted_reference": 2.5983197521310912,
+      "rgb_max_abs_error": 200,
+      "lz4_packet_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-gpu-20261003/runs/dark-pan-shift-8-flat-ls6.astc.blocks.lz4",
+      "lz4_packet_bytes": 508717,
+      "lz4_packet_sha256": "7e2ca0411de12e864583c0bfa15749db7b441c807a814298977ea1a572804b8f",
+      "lz4_decompressed_exactly_to_astc_blocks": true,
+      "source_crop_box_one_eye_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "crop_dimensions_each_panel": [
+        500,
+        400
+      ]
+    }
+  ],
+  "animation": {
+    "path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/pan-shift-sweep/dark-pan-source-vs-flat-ls6-decode-1to1.gif",
+    "sha256": "da4c1cf0e3d447dcae42254755ee2f6db32e983b205425954a4f2b1636871008",
+    "duration_ms_per_frame": 160,
+    "loop": true,
+    "frames": 6,
+    "frame_size": [
+      1000,
+      442
+    ]
+  },
+  "odd_extent_validation": {
+    "astc_sha256": "553dc569320341587ff973cfe2f0e96e49056c1e72954b60a75078dee8dbba67",
+    "astc_file_bytes": 112,
+    "visible_dimensions": [
+      17,
+      9
+    ],
+    "block_size": [
+      8,
+      8
+    ],
+    "block_grid": [
+      3,
+      2
+    ],
+    "blocks": 6,
+    "expected_astc_bytes": 112,
+    "original_dimension_header_and_payload_valid": true,
+    "decoder_exit_code": 0,
+    "decoder_stderr": "",
+    "expanded_to_full_blocks_dimensions": [
+      24,
+      16
+    ],
+    "expanded_decode_rgba_bytes": 1536,
+    "all_blocks_decoded_without_invalid_block": true,
+    "source_rgba_sha256": "1f9ceb742cfa77f5884fe87c93feba9b15339d7b234ab449eb0a69b7cf2d8349",
+    "source_rgba_bytes": 612,
+    "solid_corner_expected_clamped_input_unique_colors": 1,
+    "solid_corner_decoded_unique_colors": 1,
+    "solid_corner_decoded_value_rgba": [
+      40,
+      89,
+      8,
+      255
+    ],
+    "source_bottomright_rgba": [
+      40,
+      88,
+      8,
+      255
+    ],
+    "solid_corner_max_abs_error_vs_edge_color": 1,
+    "right_edge_padding_max_deviation_from_decoded_edge": 0,
+    "right_edge_padding_nonconstant_channel_samples": 0,
+    "bottom_edge_padding_max_deviation_from_decoded_edge": 23,
+    "bottom_edge_padding_nonconstant_channel_samples": 12,
+    "input_padding_rule": "Clamp-to-edge (verified in encode.comp pixel()); expanded block decode inspects out-of-visible-domain texels.",
+    "decoded_output_padding_note": "ASTC quantization can make edge replication approximate; bottom-edge region contains only a few differing decoded channels. Bottom-right constant-input block is exactly constant after decode.",
+    "visual_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/pan-shift-sweep/validation-17x9-final.nearest24x.png",
+    "expanded_padding_visual": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-astc-direct-20261003/gpu-quality/odd-extent-validation/validation-17x9-final.expanded-padding-comparison.png",
+    "expanded_padding_visual_size_px": [
+      768,
+      286
+    ]
+  }
+}

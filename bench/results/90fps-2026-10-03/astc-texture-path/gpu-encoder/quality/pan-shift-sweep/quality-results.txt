@@ -1,0 +1,10 @@
+Synthetic per-eye edge-clamped shifts; this is not live-motion evidence.
+shift px/eye | PSNR dB | MAE | max | LZ4 bytes | exact raw input | decode valid
+  0 | 31.7409 | 2.5986 | 200 |  508605 | True | 0 invalid blocks
+  1 | 31.4976 | 2.6598 | 213 |  516263 | True | 0 invalid blocks
+  2 | 31.7946 | 2.5854 | 192 |  507885 | True | 0 invalid blocks
+  3 | 31.4836 | 2.6594 | 208 |  515342 | True | 0 invalid blocks
+  4 | 31.7615 | 2.5877 | 214 |  507736 | True | 0 invalid blocks
+  8 | 31.7409 | 2.5983 | 200 |  508717 | True | 0 invalid blocks
+
+17x9 validation: 112 B ASTC, [3, 2] blocks; decoder rc=0; solid corner constant=True; right pad max deviation 0; bottom pad max deviation 23.

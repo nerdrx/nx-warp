@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-03",
+  "purpose": "Standalone full-image Vulkan PC encoder for standard ASTC8x8 + raw LZ4 blocks",
+  "live_integration": false,
+  "dimensions": [
+    4352,
+    2176
+  ],
+  "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "cpu": "AMD Ryzen 9 9950X3D",
+  "basis_universal_commit": "99f52d63aa6799cbdaecfe977111dc5ec3b31d47",
+  "lz4_version": "1.10.0",
+  "fit3_flat_threshold": "max channel unnormalized centered sum-of-squares < 1024 (sigma <4 byte levels for 64 texels)",
+  "iterations": {
+    "warmup": 12,
+    "timed": 30
+  },
+  "percentile": "sorted floor((N-1)*p)",
+  "timing_excludes": [
+    "pipeline creation",
+    "allocations",
+    "file I/O",
+    "source PNG decode",
+    "network",
+    "Pico decode",
+    "presentation"
+  ],
+  "source_scope": "4352x2176 full raster; each input duplicates one square source view for stereo, not an actual two-eye capture",
+  "shader_sha256": "481c183b631f3708e53e2017eee14ad2adb5b97a82d4948758de09a8b012f2f1",
+  "inverse_sha256": "fbaab6cf2d2e79e2f5e7d1183266072c5437ce82eb3a7714a414a69faca65bfc",
+  "binary_sha256": "ba632817867e9be7f02e04cb6a1d4997afb5eee8c5c63ed7a805491419c051e9",
+  "sample_scope": "short repeated independent encodes; no inter-frame references or temporal reuse",
+  "published_rebuild": {
+    "binary_matches_measured_sha256": true,
+    "spirv_sha256": "2cbe37f71c4058978dbbe0c9aba43744b907e8a82ceb5debf857bebf08afb240",
+    "tiny_output_matches_validation": true
+  }
+}

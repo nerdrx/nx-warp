@@ -17,9 +17,15 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 3 October: fast native PC ASTC encoder
+
+A new one-dispatch Vulkan encoder emits standard **4352 × 2176 ASTC 8×8** blocks without partition or mode search. The complete dark-scene PC call takes **1.59 / 3.02 ms p50/p95** with GPU-resident input, including readback and LZ4; CPU-upload input takes **4.76 / 5.98 ms**. Low-variance flat blocks cut matched dark-scene payload **53%** against the fitted non-flat encoder, to **366 Mbit/s normalized to 90 updates/s**; forest reaches **230 Mbit/s**. Six synthetic pans stay within **1.44–1.65 ms median PC call**. This is standalone encoder proof: fine text still softens, fast blocks have not been sampled on Pico, and live 90 Hz remains unproven. [Source, sample timings, quality crops and animation](bench/results/90fps-2026-10-03/astc-texture-path/gpu-encoder/report.md).
+
+![Full native PC encoder call and transfer cost](bench/results/90fps-2026-10-03/astc-texture-path/gpu-encoder/encoder-latency.png)
+
 ### 3 October: native texture hardware instead of reconstruction
 
-A standalone ASTC + LZ4 prototype now uploads and samples two changing **4352 × 2176** images on Pico: **2.54 / 3.41 ms GPU p50/p95**, or **4.71 / 5.75 ms** for the full synchronous unpack/upload/sample call. The tested payload implies **457 Mbit/s at 90 updates/s**, excluding transport overhead. Actual Pico readback matches the desktop decode within one colour level. **The PC encoder is still hundreds of milliseconds per frame, q25 has visible text/colour artifacts, and this is not a live 90 Hz stream.** [Source, charts, close-ups, rejected routes and next steps](bench/results/90fps-2026-10-03/astc-texture-path/report.md).
+A standalone ASTC + LZ4 prototype now uploads and samples two changing **4352 × 2176** images on Pico: **2.54 / 3.41 ms GPU p50/p95**, or **4.71 / 5.75 ms** for the full synchronous unpack/upload/sample call. The tested payload implies **457 Mbit/s at 90 updates/s**, excluding transport overhead. Actual Pico readback matches the desktop decode within one colour level. **This decoder check used the original CPU encoder, which takes hundreds of milliseconds per frame; q25 has visible text/colour artifacts, and this is not a live 90 Hz stream.** The newer PC shader encoder above is a separate experiment. [Source, charts, close-ups, rejected routes and next steps](bench/results/90fps-2026-10-03/astc-texture-path/report.md).
 
 ![Measured native Pico texture-path cost](bench/results/90fps-2026-10-03/astc-texture-path/pico-texture-path.png)
 
