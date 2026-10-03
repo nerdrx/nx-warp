@@ -36,6 +36,19 @@ per-frame errors when those inputs are available.
 
 ## Results
 
+### Native follow-up with required Vulkan features enabled
+
+A separate run used twelve warmups, thirty measurements, and no intervening
+readback. At native 4352 × 2176, GPU p50/p95 was **17.847/18.682 ms** and
+synchronous decode-call p50/p95 was **22.254/23.478 ms**. The application now
+enables the supported storage-image features required by the decoder. Device
+state and harness changes prevent treating the difference from the earlier
+20.35 ms result as a measured optimization gain. Native 90 Hz is still outside
+the demonstrated budget. [Samples, graph, reference-decoder comparison and
+rejected experiments](native-optimization/native-profile-results.md).
+
+The following tables retain the earlier runs rather than replacing them.
+
 | Stereo frame | GPU p50 / p95 | CPU call p50 / p95 | DQ p50 | IDWT/output p50 |
 |---|---:|---:|---:|---:|
 | 2688 × 1344 | 8.752 / 8.767 ms | 12.658 / 23.451 ms | 3.746 ms | 4.999 ms |

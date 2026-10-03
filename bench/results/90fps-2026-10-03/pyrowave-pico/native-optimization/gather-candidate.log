@@ -1,0 +1,12 @@
+PICO 4 / Adreno 650, Vulkan 1.1, native 4352x2176 4:2:0, fixture /data/local/tmp/forest-420-500m.pyrowave (one still frame).
+
+Both runs used the same 42-decode harness: 12 warmups, 30 measured decodes, with a frame-0 output readback. Output readback/layout restoration is outside the GPU timestamp interval. Runs were baseline first, then gather candidate.
+
+Baseline: GPU p50 16.8912 ms, p95 18.2751 ms; CPU push/submit/fence p50 19.2852 ms, p95 20.9732 ms.
+Gather candidate: GPU p50 18.4223 ms, p95 19.0031 ms; CPU push/submit/fence p50 21.5284 ms, p95 23.3754 ms.
+
+Candidate delta: GPU p50 +1.5311 ms (+9.1%), p95 +0.7282 ms (+4.0%). CPU p50 +2.2432 ms (+11.6%), p95 +2.4022 ms (+11.5%). This A-then-B run is a negative signal, not a thermally balanced ABBA result; candidate is not worth promoting without a controlled rerun that reverses the result.
+
+Correctness gate: baseline and candidate Y, Cb, Cr output files each compare byte-for-byte equal to `/data/local/tmp/mrt-baseline.frame000.{y,cb,cr}.raw` (candidate patch changes vertical reconstruction only, and the fixture output remains exact). Captures are retained as `gather-baseline.*.raw`, `gather-candidate.*.raw`, and `corrected-reference.*.raw`.
+
+Candidate patch: `gather-candidate.patch` (isolated `/tmp` worktree; includes the gather shader and temporary CMake bench target). Benchmark source: `pyrowave-pico-gather-bench.cpp`. No production checkout files were modified.

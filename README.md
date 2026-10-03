@@ -23,6 +23,8 @@ The opt-in, full-image PyroWave branch now decodes correctly on Pico 4 after a m
 
 ![Pico 4 corrected PyroWave decoder timing](bench/results/90fps-2026-10-03/pyrowave-pico/decode-latency.png)
 
+A newer native probe with the required Vulkan features enabled and no intervening readback measured **17.85 ms GPU / 22.25 ms synchronous decode-call p50**. Native 90 Hz remains unproven. [Retained samples, reference-decoder bottleneck audit and rejected experiments](bench/results/90fps-2026-10-03/pyrowave-pico/native-optimization/native-profile-results.md).
+
 ## Current direction — 23 September 2026
 
 **Native NXVC: spend bandwidth to reduce headset reconstruction work.** The active experimental path uses a Vulkan encoder and custom direct-sampled RGB blocks in WiVRn NX. It does not use HEVC for image compression or dense object-motion prediction. Platform head-pose reprojection remains part of presentation. The HEVC-backed **NXVC Hybrid** work remains an earlier research track. [Naming background](docs/NAMING.md) · [Direct-path integration and configuration](https://github.com/nerdrx/wivrn-nx/blob/atlas-live/docs/DIRECT_BLOCKS.md).
