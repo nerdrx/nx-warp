@@ -1,0 +1,17 @@
+--- /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/pyrowave/shaders/wavelet_dequant.inc	2026-10-03 06:13:21.520806318 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/pyrowave-dq-signscan-20261003/common/pyrowave/shaders/wavelet_dequant.inc	2026-10-03 20:17:02.471039423 +0200
+@@ -325,7 +325,13 @@
+     if (gl_SubgroupInvocationID == gl_SubgroupSize - 1)
+         shared_sign_scan[gl_SubgroupID] = significant_scan;
+ 
+-    if (gl_NumSubgroups <= 8)
++    if (gl_NumSubgroups <= 2)
++    {
++        // The raw subgroup sums are already in shared_sign_scan. With at most
++        // two subgroups, group 0 needs no prefix and group 1 only needs sum 0.
++        barrier();
++    }
++    else if (gl_NumSubgroups <= 8)
+     {
+         barrier();
+ 		if (gl_SubgroupSize <= 32)

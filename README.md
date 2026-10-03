@@ -23,6 +23,8 @@ The optional paired-Haar experiment cuts matched native **4352 × 2176, 4:2:0** 
 
 ![Matched native decoder latency on Pico](bench/results/90fps-2026-10-03/pyrowave-full-image/matched-420-latency.svg)
 
+Band batching now cuts coefficient dispatches from **42 to 13** without changing pixels. The integrated native Pico check measured **12.16 ms GPU p50 / 12.71 ms p95**; six synthetic translated frames measured **12.23 / 12.75 ms** and matched all 18 desktop reference planes exactly. This modest **~2.5%** additional gain still does not reach the 90 Hz decode budget. [New measurements, motion illustration and rejected tweaks](bench/results/90fps-2026-10-03/pyrowave-full-image/dequant-batching/report.md).
+
 ### 3 October: PyroWave Pico decoder probe
 
 The opt-in, full-image PyroWave branch now decodes correctly on Pico 4 after a missing GPU-memory flush was fixed. Six synthetic moving frames at **2688 × 1344 stereo** matched the desktop decode within **0.15 luma byte levels MAE**; 54 timed decodes then measured **8.59 ms GPU p50 / 9.23 ms p95**. At native **4352 × 2176**, isolated decode still takes **20.35 / 20.66 ms**, beyond the 90 Hz frame interval before transport or presentation. This is a headless decoder result, not a live VR or motion-to-photon result. PyroWave remains experimental and does not replace the current NXVC path. [Methods, logs, graphs and Pico readback](bench/results/90fps-2026-10-03/pyrowave-pico/README.md).

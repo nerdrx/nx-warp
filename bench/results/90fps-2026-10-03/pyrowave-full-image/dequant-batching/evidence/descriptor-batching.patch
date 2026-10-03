@@ -1,0 +1,132 @@
+--- a/common/pyrowave/pyrowave_decoder.cpp
++++ b/common/pyrowave/pyrowave_decoder.cpp
+@@ -2130,96 +2130,43 @@
+ 	else if (use_readonly_texel_buffer)
+ 		storage_mode = 1;
+ 	auto & deq = dequant_[storage_mode];
++	std::array buffer_info{
++	        vk::DescriptorBufferInfo{.buffer = input.dequant_offset_buffer, .range = vk::WholeSize},
++	        vk::DescriptorBufferInfo{.buffer = input.payload_data, .range = vk::WholeSize},
++	};
++	std::array image_info{
++	        vk::DescriptorImageInfo{.imageView = *input.r32_imageview, .imageLayout = vk::ImageLayout::eGeneral},
++	        vk::DescriptorImageInfo{.imageView = *input.r16_imageview, .imageLayout = vk::ImageLayout::eGeneral},
++	        vk::DescriptorImageInfo{.imageView = *input.r8_imageview, .imageLayout = vk::ImageLayout::eGeneral},
++	};
++	std::array texel_views{*input.u32_view, *input.u16_view, *input.u8_view};
++	std::array<vk::WriteDescriptorSet, 2 * DecompositionLevels * NumComponents> writes{};
++	size_t write_count = 0;
+ 	for (int level = 0; level < DecompositionLevels; level++)
+ 	{
+ 		for (int component = 0; component < NumComponents; component++)
+ 		{
+-			if (storage_mode == 0)
+-			{
+-				std::array buffer_info{
+-				        vk::DescriptorBufferInfo{
+-				                .buffer = input.dequant_offset_buffer,
+-				                .range = vk::WholeSize,
+-				        },
+-				        vk::DescriptorBufferInfo{
+-				                .buffer = input.payload_data,
+-				                .range = vk::WholeSize,
+-				        },
+-				};
+-
+-				device.updateDescriptorSets(
+-				        vk::WriteDescriptorSet{
+-				                .dstSet = deq.ds[component][level],
+-				                .dstBinding = 1,
+-				                .descriptorCount = buffer_info.size(),
+-				                .descriptorType = vk::DescriptorType::eStorageBuffer,
+-				                .pBufferInfo = buffer_info.data(),
+-				        },
+-				        {});
+-			}
+-			else
+-			{
+-				std::array buffer_info{
+-				        vk::DescriptorBufferInfo{
+-				                .buffer = input.dequant_offset_buffer,
+-				                .range = vk::WholeSize,
+-				        },
+-				};
+-
+-				std::array image_info{
+-				        vk::DescriptorImageInfo{
+-				                .imageView = *input.r32_imageview,
+-				                .imageLayout = vk::ImageLayout::eGeneral,
+-				        },
+-				        vk::DescriptorImageInfo{
+-				                .imageView = *input.r16_imageview,
+-				                .imageLayout = vk::ImageLayout::eGeneral,
+-				        },
+-				        vk::DescriptorImageInfo{
+-				                .imageView = *input.r8_imageview,
+-				                .imageLayout = vk::ImageLayout::eGeneral,
+-				        },
+-				};
+-
+-				auto type = storage_mode == 1 ? vk::DescriptorType::eUniformTexelBuffer : vk::DescriptorType::eSampledImage;
+-				device.updateDescriptorSets(
+-				        std::array{
+-				                vk::WriteDescriptorSet{
+-				                        .dstSet = deq.ds[component][level],
+-				                        .dstBinding = 1,
+-				                        .descriptorCount = buffer_info.size(),
+-				                        .descriptorType = vk::DescriptorType::eStorageBuffer,
+-				                        .pBufferInfo = buffer_info.data(),
+-				                },
+-				                vk::WriteDescriptorSet{
+-				                        .dstSet = deq.ds[component][level],
+-				                        .dstBinding = 2,
+-				                        .descriptorCount = 1,
+-				                        .descriptorType = type,
+-				                        .pImageInfo = &image_info[0],
+-				                        .pTexelBufferView = &*input.u32_view,
+-				                },
+-				                vk::WriteDescriptorSet{
+-				                        .dstSet = deq.ds[component][level],
+-				                        .dstBinding = 3,
+-				                        .descriptorCount = 1,
+-				                        .descriptorType = type,
+-				                        .pImageInfo = &image_info[1],
+-				                        .pTexelBufferView = &*input.u16_view,
+-				                },
+-				                vk::WriteDescriptorSet{
+-				                        .dstSet = deq.ds[component][level],
+-				                        .dstBinding = 4,
+-				                        .descriptorCount = 1,
+-				                        .descriptorType = type,
+-				                        .pImageInfo = &image_info[2],
+-				                        .pTexelBufferView = &*input.u8_view,
+-				                },
+-				        },
+-				        {});
+-			}
+-		}
+-	}
++			writes[write_count++] = {
++			        .dstSet = deq.ds[component][level],
++			        .dstBinding = 1,
++			        .descriptorCount = storage_mode == 0 ? 2u : 1u,
++			        .descriptorType = vk::DescriptorType::eStorageBuffer,
++			        .pBufferInfo = buffer_info.data(),
++			};
++			if (storage_mode != 0)
++			{
++				writes[write_count++] = {
++				        .dstSet = deq.ds[component][level],
++				        .dstBinding = 2,
++				        .descriptorCount = 3,
++				        .descriptorType = storage_mode == 1 ? vk::DescriptorType::eUniformTexelBuffer : vk::DescriptorType::eSampledImage,
++				        .pImageInfo = image_info.data(),
++				        .pTexelBufferView = texel_views.data(),
++				};
++			}
++		}
++	}
++	device.updateDescriptorSets(std::span(writes.data(), write_count), {});
+ 	begin_label(cmd, "Decode uploads");
+ 	{
+ 		if (input.payload_staging)

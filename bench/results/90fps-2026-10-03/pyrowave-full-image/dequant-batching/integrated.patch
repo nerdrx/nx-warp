@@ -1,0 +1,99 @@
+diff --git a/common/pyrowave/pyrowave_decoder.cpp b/common/pyrowave/pyrowave_decoder.cpp
+index 11b09e6f..11f0dabe 100644
+--- a/common/pyrowave/pyrowave_decoder.cpp
++++ b/common/pyrowave/pyrowave_decoder.cpp
+@@ -1539,18 +1539,17 @@ bool Decoder::dequant(vk::raii::CommandBuffer & cmd, size_t storage_mode)
+ 
+ 			begin_label(cmd, std::format("level {} - component {}", level, component).c_str());
+ 
+-			for (int band = (level == DecompositionLevels - 1 ? 0 : 1); band < 4; band++)
+-			{
+-				push.resolution[0] = get_width(wavelet_img_high_res, level);
+-				push.resolution[1] = get_height(wavelet_img_high_res, level);
+-				push.output_layer = band;
+-				push.block_offset_32x32 = block_meta[component][level][band].block_offset_32x32;
+-				push.block_stride_32x32 = block_meta[component][level][band].block_stride_32x32;
+-				cmd.pushConstants<DequantizerPushData>(*p.layout, vk::ShaderStageFlagBits::eCompute, 0, push);
+-
+-				cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *p.layout, 0, p.ds[component][level], {});
+-				cmd.dispatch((push.resolution[0] + 31) / 32, (push.resolution[1] + 31) / 32, 1);
+-			}
++			// init_block_meta packs equal-sized bands consecutively; dispatch Z selects each band.
++			int first_band = level == DecompositionLevels - 1 ? 0 : 1;
++			int band_count = 4 - first_band;
++			push.resolution[0] = get_width(wavelet_img_high_res, level);
++			push.resolution[1] = get_height(wavelet_img_high_res, level);
++			push.output_layer = first_band;
++			push.block_offset_32x32 = block_meta[component][level][first_band].block_offset_32x32;
++			push.block_stride_32x32 = block_meta[component][level][first_band].block_stride_32x32;
++			cmd.pushConstants<DequantizerPushData>(*p.layout, vk::ShaderStageFlagBits::eCompute, 0, push);
++			cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *p.layout, 0, p.ds[component][level], {});
++			cmd.dispatch((push.resolution[0] + 31) / 32, (push.resolution[1] + 31) / 32, band_count);
+ 
+ 			end_label(cmd);
+ 		}
+diff --git a/common/pyrowave/shaders/wavelet_dequant.inc b/common/pyrowave/shaders/wavelet_dequant.inc
+index 5c3120ca..eb9b6f56 100644
+--- a/common/pyrowave/shaders/wavelet_dequant.inc
++++ b/common/pyrowave/shaders/wavelet_dequant.inc
+@@ -221,9 +221,12 @@ void main()
+ {
+     uint local_index = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+ 
+-    int block_index_32x32 = int(registers.block_offset_32x32 +
+-        gl_WorkGroupID.y * registers.block_stride_32x32 +
+-        gl_WorkGroupID.x);
++    // Match init_block_meta's consecutive 32x32 tile ranges, including partial edge tiles.
++    int band_tile_count = registers.block_stride_32x32 * ((registers.resolution.y + 31) / 32);
++    int block_index_32x32 = registers.block_offset_32x32 +
++        int(gl_WorkGroupID.z) * band_tile_count +
++        int(gl_WorkGroupID.y) * registers.block_stride_32x32 +
++        int(gl_WorkGroupID.x);
+ 
+     uint block_local_index = bitfieldExtract(local_index, 0, 3);
+     uint block_x = bitfieldExtract(local_index, 3, 2);
+@@ -243,7 +246,7 @@ void main()
+     {
+         for (int j = 0; j < 2; j++)
+             for (int i = 0; i < 4; i++)
+-                imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer), vec4(0.0));
++                imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer + int(gl_WorkGroupID.z)), vec4(0.0));
+         return;
+     }
+ 
+@@ -387,5 +390,5 @@ void main()
+     // Write output.
+     for (int j = 0; j < 2; j++)
+         for (int i = 0; i < 4; i++)
+-            imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer), vec4(v[j][i]));
++            imageStore(uDequantImg, ivec3(coord + ivec2(i, j), registers.output_layer + int(gl_WorkGroupID.z)), vec4(v[j][i]));
+ }
+diff --git a/docs/NXVC_HAAR.md b/docs/NXVC_HAAR.md
+index 6637e0e6..613fe0de 100644
+--- a/docs/NXVC_HAAR.md
++++ b/docs/NXVC_HAAR.md
+@@ -57,6 +57,24 @@ Pico and desktop Haar output matched byte-for-byte. These isolated static
+ decode timings still exceed the 11.11 ms 90 Hz frame budget and exclude
+ transport, presentation, encoder cost, and photon latency.
+ 
++Band batching subsequently reduced dequantization dispatches from 42 to 13
++for 4:2:0 (48 to 15 for 4:4:4). Each dispatch processes consecutive bands
++through its Z dimension; the payload and reconstruction arithmetic are
++unchanged. This also applies to the standard CDF decoder. Pico CDF output
++matched its previous device baseline exactly.
++
++Three short control/candidate/control runs measured approximately 2.5% less
++GPU time. The integrated Haar build measured **12.16 ms GPU p50 / 12.71 ms
++p95** on the static native fixture. A six-packet synthetic translation test
++measured **12.23 / 12.75 ms**; all 18 Pico readback planes matched the host
++reference byte-for-byte. These timings used 12 warmups and 30 samples, with
++readback tested separately. Synthetic translations are not live VR proof.
++Both Android `wivrn` module builds linked with Haar enabled and disabled;
++no APK was installed. The default remains CDF with Haar disabled.
++
++Descriptor update batching, sign-scan barrier removal, and narrower CPU
++flush ranges showed no convincing repeatable benefit and are not integrated.
++
+ Clearing coefficient images and skipping zero writes made reconstruction
+ slower; it is not integrated. Alternate dispatch layouts and typed final
+ stores showed no convincing benefit. A correct 4x4 output variant was roughly
