@@ -1,0 +1,58 @@
+COMMAND: $XUASTC_SCRATCH/basis_universal/bin/basisu -unpack -ktx_only -format_only 36 -output_path $XUASTC_SCRATCH/unpacked $XUASTC_SCRATCH/dark-xuastc-8x8-q50.ktx2
+WALL_SECONDS: 0.174543
+EXIT: 0
+
+Basis Universal LDR/HDR GPU Texture Supercompression System v2.50.0
+Copyright (C) 2019-2026 Binomial LLC, All rights reserved
+Using SSE 4.1: 1, Multithreading: 1, Zstandard support: 1, OpenCL: 0
+
+Input file "$XUASTC_SCRATCH/dark-xuastc-8x8-q50.ktx2", Format: KTX2
+Resolution: 4352x2176
+Block size: 8x8
+Mipmap Levels: 1
+Texture Array Size (layers): 0
+Total Faces: 1 (2D)
+Is Texture Video: 0
+Deblocking filter ID: 0
+KTX2 Supercompression Scheme: XUASTC_LDR
+Library Supercompression Format: XUASTC_LDR_8x8
+Has Alpha: 0
+
+KTX2 header vk_format: 0x0 (decimal 0)
+
+Data Format Descriptor (DFD):
+DFD length in bytes: 44
+DFD color model: 169
+DFD color primaries: 1 (BT709)
+DFD transfer func: 2 (SRGB)
+DFD flags: 0
+DFD samples: 1
+DFD chan0: RGB
+DFD hex values:
+0x2C,0x0,0x0,0x0,
+0x0,0x0,0x0,0x0,
+0x2,0x0,0x28,0x0,
+0xA9,0x1,0x2,0x0,
+0x7,0x7,0x0,0x0,
+0x10,0x0,0x0,0x0,
+0x0,0x0,0x0,0x0,
+0x0,0x0,0x7F,0x0,
+0x0,0x0,0x0,0x0,
+0x0,0x0,0x0,0x0,
+0xFF,0xFF,0xFF,0xFF
+
+Total key values: 1
+0. Key: "KTXwriter", Value length in bytes: 22 Value String: "Basis Universal 2.50"
+Levels:
+0. Offset: 196, Length: 566235, Uncompressed Length: 0
+Image level info:
+--- Level Index: 0, Layer Index: 0, Face Index: 0
+Orig width/height: 4352x2176
+Width/height: 4352x2176
+Block width/height: 8x8
+Num blocks: 544x272, Total blocks: 147968
+Alpha flag: false, I-frame flag: false
+
+Transcode of layer 0 level 0 face 0 res 4352x2176 format ASTC_LDR_8X8_RGBA succeeded in 24.246 ms
+Wrote .KTX file "$XUASTC_SCRATCH/unpacked/dark-xuastc-8x8-q50_transcoded_ASTC_LDR_8X8_RGBA_layer_0000.ktx"
+Success

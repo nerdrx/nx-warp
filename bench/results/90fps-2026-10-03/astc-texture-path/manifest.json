@@ -1,0 +1,564 @@
+{
+  "title": "ASTC texture path, 90 Hz screening",
+  "date": "2026-10-03",
+  "frame": {
+    "width": 4352,
+    "height": 2176,
+    "layout": "duplicated square view, side-by-side stereo"
+  },
+  "encoder": {
+    "name": "Basis Universal",
+    "version": "2.50.0",
+    "commit": "99f52d63aa6799cbdaecfe977111dc5ec3b31d47",
+    "license": "Apache-2.0",
+    "profile": "XUASTC LDR, Zstd",
+    "effort": 0,
+    "blur_candidates": "disabled by default; -xuastc_blurring omitted"
+  },
+  "host": {
+    "cpu": "AMD Ryzen 9 9950X3D 16-Core Processor",
+    "os_arch": "Linux x86_64",
+    "build": "Release; BASISU_SSE=ON; BASISU_ZSTD=ON; BASISU_OPENCL=OFF; BASISU_BUILD_PYTHON=OFF; BASISU_EXAMPLES=OFF"
+  },
+  "source_fixtures": {
+    "dark": {
+      "sha256": "b2d08a36a284d5df467a5aaa119132e1358764fc595acdc12cd9db91723d94d3",
+      "description": "Full-range BT.709 YCbCr420 upsampled to RGB8; the same view is duplicated into both eyes."
+    },
+    "forest": {
+      "sha256": "d0f2e500369a425c881ce298ee8d4fda91859cc58e77b6db1678213277ff227f",
+      "description": "Independent VRChat forest scene; centre-cropped and duplicated to match the native frame."
+    },
+    "haar_reference": {
+      "sha256": "3f56643bbfc35bc2a78402a7cbbcc13f58c80e0bb4c0bfffb06e65256bd70364",
+      "bytes": 1522393,
+      "packet_bytes_reported": 694260,
+      "rgb_psnr_vs_dark_native_db": 34.213001502098464,
+      "rgb_mae_vs_dark_native": 2.3260280868723866,
+      "description": "Paired-Haar probe420 host-plane frame 0, full-range BT.709, nearest UV, rounded RGB8."
+    }
+  },
+  "rate_assumption": {
+    "frames_per_second": 90,
+    "formula": "payload_bytes * 8 * 90 / 1e6",
+    "excludes": [
+      "LZ4 frame metadata",
+      "network framing",
+      "headers",
+      "transport overhead"
+    ],
+    "frame_budget_ms": 11.11111111111111
+  },
+  "quality_method": {
+    "reference": "matching native RGB8 image",
+    "metric": "full-frame RGB PSNR",
+    "pixel_format": "sRGB RGB8",
+    "image_metric_note": "Dark and forest PSNR values are not compared across different images."
+  },
+  "cases": [
+    {
+      "id": "dark-xuastc-12x12-q25",
+      "fixture": "dark",
+      "block": "12x12",
+      "quality": 25,
+      "effort": 0,
+      "profile": "zstd",
+      "resolution": [
+        4352,
+        2176
+      ],
+      "ktx2_bytes": 343048,
+      "astc_block_payload_bytes": 1057056,
+      "lz4_payload_bytes": 659500,
+      "lz4_payload_rate_at_90fps_mbps": 474.84,
+      "source_rgb_psnr_db": 31.71101374237115,
+      "source_rgb_rmse_channels": [
+        6.53517031176421,
+        6.099815427919947,
+        7.18586422961035
+      ],
+      "encode_wall_seconds_including_png_io": 0.36216138300005696,
+      "host_astc_transcode_ms": 9.549,
+      "host_lz4_compress_ms": 1.034154000080889,
+      "host_lz4_decompress_ms": 0.37087199962115847,
+      "astc_sha256": "ab5fad297210ed9fb372e7b06fd2890eaf76e8df87f380b9c2ab74802f7e733e",
+      "lz4_sha256": "d47f4295d31fbd2ae50d1f0de05870228018f5f8ab217e9531c69214acd48daf",
+      "decoded_thumbnail": "thumbnails/dark-xuastc-12x12-q25.png",
+      "decoded_thumbnail_sha256": "f708a1722389d371b1e13da01a5ea1b9700d30b3a51dd579b590a68c8380d4d5",
+      "psnr_delta_vs_current_haar_db": -2.5019877597273137
+    },
+    {
+      "id": "dark-xuastc-12x12-q50",
+      "fixture": "dark",
+      "block": "12x12",
+      "quality": 50,
+      "effort": 0,
+      "profile": "zstd",
+      "resolution": [
+        4352,
+        2176
+      ],
+      "ktx2_bytes": 483204,
+      "astc_block_payload_bytes": 1057056,
+      "lz4_payload_bytes": 870184,
+      "lz4_payload_rate_at_90fps_mbps": 626.53248,
+      "source_rgb_psnr_db": 32.67399703446249,
+      "source_rgb_rmse_channels": [
+        5.9560257062648825,
+        5.44170453006359,
+        6.348560318736914
+      ],
+      "encode_wall_seconds_including_png_io": 0.4074858019994281,
+      "host_astc_transcode_ms": 14.412,
+      "host_lz4_compress_ms": 1.0903339989454253,
+      "host_lz4_decompress_ms": 0.284791000012774,
+      "astc_sha256": "24452fe3f1ee4dec1f79b47f034806a2b649d38733ccccd238e0f7cc3865c60d",
+      "lz4_sha256": "81bf2ac572b53e2ff43f534ab79575c26b471c2513a1b40b6a8284a1edea567e",
+      "decoded_thumbnail": "thumbnails/dark-xuastc-12x12-q50.png",
+      "decoded_thumbnail_sha256": "7668275f73a30dd9512fa30113049f9f2821e58ebe9d69b5683f3f109b1c734f",
+      "psnr_delta_vs_current_haar_db": -1.5390044676359764
+    },
+    {
+      "id": "dark-xuastc-12x12-q75",
+      "fixture": "dark",
+      "block": "12x12",
+      "quality": 75,
+      "effort": 0,
+      "profile": "zstd",
+      "resolution": [
+        4352,
+        2176
+      ],
+      "ktx2_bytes": 623053,
+      "astc_block_payload_bytes": 1057056,
+      "lz4_payload_bytes": 1000356,
+      "lz4_payload_rate_at_90fps_mbps": 720.25632,
+      "source_rgb_psnr_db": 33.19107740468079,
+      "source_rgb_rmse_channels": [
+        5.664325001747372,
+        5.10539706688312,
+        5.95072533122835
+      ],
+      "encode_wall_seconds_including_png_io": 0.39654324100047234,
+      "host_astc_transcode_ms": 17.197,
+      "host_lz4_compress_ms": 0.7237730005726917,
+      "host_lz4_decompress_ms": 0.25079100123548415,
+      "astc_sha256": "e5348beb699ec3854eb2583116833e9f2d45b1cffff604a003247118cf2d0a36",
+      "lz4_sha256": "1558869df3c010444a37333323d3a22a8581b9d9d5eb6a9385c3fceb5b02dfe9",
+      "decoded_thumbnail": "thumbnails/dark-xuastc-12x12-q75.png",
+      "decoded_thumbnail_sha256": "73ce032a516f4a7d5e10524e503e99780f9d493995980e82d32f6dd6cc964ddb",
+      "psnr_delta_vs_current_haar_db": -1.0219240974176742
+    },
+    {
+      "id": "dark-xuastc-8x8-q25",
+      "fixture": "dark",
+      "block": "8x8",
+      "quality": 25,
+      "effort": 0,
+      "profile": "zstd",
+      "resolution": [
+        4352,
+        2176
+      ],
+      "ktx2_bytes": 359128,
+      "astc_block_payload_bytes": 2367488,
+      "lz4_payload_bytes": 634704,
+      "lz4_payload_rate_at_90fps_mbps": 456.98688,
+      "source_rgb_psnr_db": 33.253395034651845,
+      "source_rgb_rmse_channels": [
+        5.45195814337524,
+        5.050706041397747,
+        6.0823002836296345
+      ],
+      "encode_wall_seconds_including_png_io": 0.3887781930006895,
+      "host_astc_transcode_ms": 15.25,
+      "host_lz4_compress_ms": 1.34699400041427,
+      "host_lz4_decompress_ms": 0.2884210007323418,
+      "astc_sha256": "c191ebfbc5ce68172a6668ec1d8dcaa187423f465ad1e419ef0f3d4f055dfad3",
+      "lz4_sha256": "9b163035efc25c5569d8de10ae8a3e934162cbffa4b13ee2e620a6457213bf78",
+      "decoded_thumbnail": "thumbnails/dark-xuastc-8x8-q25.png",
+      "decoded_thumbnail_sha256": "845ddbe696a1a43a918c1803e960f96e379392c1b3b9532737b86c77b383ebef",
+      "psnr_delta_vs_current_haar_db": -0.9596064674466191
+    },
+    {
+      "id": "dark-xuastc-8x8-q50",
+      "fixture": "dark",
+      "block": "8x8",
+      "quality": 50,
+      "effort": 0,
+      "profile": "zstd",
+      "resolution": [
+        4352,
+        2176
+      ],
+      "ktx2_bytes": 566431,
+      "astc_block_payload_bytes": 2367488,
+      "lz4_payload_bytes": 910735,
+      "lz4_payload_rate_at_90fps_mbps": 655.7292,
+      "source_rgb_psnr_db": 34.48359657200653,
+      "source_rgb_rmse_channels": [
+        4.78242170051068,
+        4.345217063484956,
+        5.265422630598587
+      ],
+      "encode_wall_seconds_including_png_io": 1.5782145150005817,
+      "host_astc_transcode_ms": 24.246,
+      "host_lz4_compress_ms": 1.2731150000035996,
+      "host_lz4_decompress_ms": 0.36355100019136444,
+      "astc_sha256": "14c2f71a56e6d17a607afd6da0585c322bd2a826783062b2afd9f13913145cc6",
+      "lz4_sha256": "da5ca4e9c067ec01ee00226b0f25e93a9326a9acc50e495fe39c3e26bd68966d",
+      "decoded_thumbnail": "thumbnails/dark-xuastc-8x8-q50.png",
+      "decoded_thumbnail_sha256": "aa847a0824211218b861f9f2389c50283bcf6591abfbb77c16c70bacc4abc1bb",
+      "psnr_delta_vs_current_haar_db": 0.2705950699080688
+    },
+    {
+      "id": "forest-xuastc-12x12-q50",
+      "fixture": "forest",
+      "block": "12x12",
+      "quality": 50,
+      "effort": 0,
+      "profile": "zstd",
+      "resolution": [
+        4352,
+        2176
+      ],
+      "ktx2_bytes": 295901,
+      "astc_block_payload_bytes": 1057056,
+      "lz4_payload_bytes": 653851,
+      "lz4_payload_rate_at_90fps_mbps": 470.77272,
+      "source_rgb_psnr_db": 38.95742152640455,
+      "source_rgb_rmse_channels": [
+        3.3689656492130373,
+        2.4738581840008007,
+        2.70749709786488
+      ],
+      "encode_wall_seconds_including_png_io": 0.32319704899964563,
+      "host_astc_transcode_ms": 9.234,
+      "host_lz4_compress_ms": 0.9155829993687803,
+      "host_lz4_decompress_ms": 0.24223099899245426,
+      "astc_sha256": "8a7544e14041b71dba6c7ad3aeb4fd22f352feb8d54e2265d4e1ac942ef5f802",
+      "lz4_sha256": "f5b2cb3a4157aeb4c893a0e20eb614d03efcc38a9233c1ed66774708777a60ce",
+      "decoded_thumbnail": "thumbnails/forest-xuastc-12x12-q50.png",
+      "decoded_thumbnail_sha256": "70dcc2652e093ea4367ab6f0c2fed460cf026a8fc155c3e4ced31b35e8372b11"
+    }
+  ],
+  "pico_status": {
+    "xuastc_cpu_full_call_p50_ms": 29.882,
+    "xuastc_cpu_full_call_p95_ms": 30.461,
+    "xuastc_cpu_decode_status": "Rejected; native CPU transcode alone exceeds 90 Hz interval. Retained rerun logs.",
+    "lz4_astc8_two_frame_cpu_call_p50_ms": 4.70547,
+    "lz4_astc8_two_frame_cpu_call_p95_ms": 5.75193,
+    "lz4_astc8_two_frame_gpu_total_p50_ms": 2.53792,
+    "lz4_astc8_two_frame_gpu_total_p95_ms": 3.40818,
+    "standalone_lz4_cpu_p50_ms": 0.458,
+    "standalone_lz4_cpu_p95_ms": 0.603,
+    "scope": "Offscreen sample/write and fence, two synthetic changing images. Not live encoder, network, compositor, or photon latency.",
+    "primary_trace": "evidence/pico-astc/logs/q25-alternating-samples.csv"
+  },
+  "generated_files": {
+    "astc-quality-contact-sheet.png": {
+      "bytes": 1041424,
+      "sha256": "5671acf8dcefbf174b7844d4f350a5f65f703bc401db2d11ffb5e2175aad618f"
+    },
+    "astc-texture-path-metrics.png": {
+      "bytes": 298580,
+      "sha256": "0d0dde2a00ddccc7e0491cd8c511b1ac84199d3d68c969f1463d1a55d59e27d9"
+    },
+    "astc-texture-path-metrics.svg": {
+      "bytes": 120994,
+      "sha256": "a8a5ba199bbf14c5fbe4c5d21632bed6f075118041fcaceb83adf56c3f5844fe"
+    },
+    "dark-source-vs-astc8-q25-blink.gif": {
+      "bytes": 877054,
+      "sha256": "e377c013b9b4d4f224b664bd4bf3b490c0e0ddef48927aa9729ab708dab5f663"
+    },
+    "dark-text-edge-detail-strip-2x.png": {
+      "bytes": 629475,
+      "sha256": "43c6e240a77d476c851e75466d1e4a29f7746513271dc2b54f3c11b10471dc32"
+    },
+    "evidence/logs/dark-xuastc-12x12-q25.encode.log": {
+      "bytes": 496,
+      "sha256": "f58713d5e8fee52e774beaa788e5a61af14a49003edbd0fe5fa0855a5fdbc463"
+    },
+    "evidence/logs/dark-xuastc-12x12-q25.transcode.log": {
+      "bytes": 1834,
+      "sha256": "ef6cd06b62e1c18be332ed68d02f49d4aa49d6668126a5bc4684a80e68facade"
+    },
+    "evidence/logs/dark-xuastc-12x12-q50.encode.log": {
+      "bytes": 496,
+      "sha256": "e758b3decedba88f69306058789c56c40f2df04e59d787e18f7676ac712afa7c"
+    },
+    "evidence/logs/dark-xuastc-12x12-q50.transcode.log": {
+      "bytes": 1835,
+      "sha256": "42c4186854845a26efa17f3a65c0d4cf74abfddc0d24d4d632e7f4c14c44e0ec"
+    },
+    "evidence/logs/dark-xuastc-12x12-q75.encode.log": {
+      "bytes": 496,
+      "sha256": "2fb426d437f0c4ce747cec503eb7e7f1967e193abb27cdf91c595fd776e6cd19"
+    },
+    "evidence/logs/dark-xuastc-12x12-q75.transcode.log": {
+      "bytes": 1835,
+      "sha256": "685400706548671a07161938725b174dabdf6d784fcaf849e37c158b4df20163"
+    },
+    "evidence/logs/dark-xuastc-8x8-q25.encode.log": {
+      "bytes": 492,
+      "sha256": "73c6520b1326f99ad5ae042f53d37cee5b7a20f8f64af390f75bff454fc737ec"
+    },
+    "evidence/logs/dark-xuastc-8x8-q25.transcode.log": {
+      "bytes": 1750,
+      "sha256": "574782ad869167e60e28c9d8e5df097758fa4400f3fb1839c5f8b2620037aed1"
+    },
+    "evidence/logs/dark-xuastc-8x8-q50.encode.log": {
+      "bytes": 492,
+      "sha256": "776ad375291d417c56770c9ec10b749b57351c35d6d5df29ba2c7cb90102edc6"
+    },
+    "evidence/logs/dark-xuastc-8x8-q50.transcode.log": {
+      "bytes": 1750,
+      "sha256": "f3e1585a35ce379d0f0a611d83c493890e6e4cc9f3eb18afa571fef9b553e6ca"
+    },
+    "evidence/logs/forest-xuastc-12x12-q50.encode.log": {
+      "bytes": 500,
+      "sha256": "45903eb8f8545e59d80e3428e2a4e978f16fb2da69d10690cebaa3618f92d6d3"
+    },
+    "evidence/logs/forest-xuastc-12x12-q50.transcode.log": {
+      "bytes": 1840,
+      "sha256": "129a4a77479b0606ebce42bb4f8fd32c3ef1909e8cfe03bff6d2f6663833b159"
+    },
+    "evidence/lz4-cpu/CMakeLists.txt": {
+      "bytes": 446,
+      "sha256": "1ae41c85c13b2a648ad9e3f0700043bdc2f96521c127ca91aea93fd301c3eacc"
+    },
+    "evidence/lz4-cpu/README.md": {
+      "bytes": 1915,
+      "sha256": "7b8551a54b3a56b98efb1675defa85538b691c72f9fb60b2e31adc5f430aee67"
+    },
+    "evidence/lz4-cpu/lz4_payload.h": {
+      "bytes": 493,
+      "sha256": "048ca2c6077e2f935c8ade2d7d27dc500314c780ad8edc6b365f55c3881e983a"
+    },
+    "evidence/lz4-cpu/main.cpp": {
+      "bytes": 2995,
+      "sha256": "1e93da11050814d7aba36cba957c1bad9b3f5829b8e66d94a212a1bc919af6ed"
+    },
+    "evidence/pico-astc/CMakeLists.txt": {
+      "bytes": 638,
+      "sha256": "d4e31920abb077372c79e32fd19bc03f48d86dc571ffc91a7f6bf0037fb747c2"
+    },
+    "evidence/pico-astc/INPUT-SHA256SUMS": {
+      "bytes": 907,
+      "sha256": "727837498908245a1baecc3b3cd68811a5aa2c2e061b86803e86f8c9076300ba"
+    },
+    "evidence/pico-astc/README.md": {
+      "bytes": 2656,
+      "sha256": "87b53d7adfcb263c93a489f0f7d0449c1d596a7d2c96c7f328a5ed78bb9d6999"
+    },
+    "evidence/pico-astc/RESULTS.md": {
+      "bytes": 2100,
+      "sha256": "aa9f19b09bb08c469b010cd212f96ec5d79c833b97b4daabd91cbf2795ed1672"
+    },
+    "evidence/pico-astc/build.sh": {
+      "bytes": 2186,
+      "sha256": "df1983c0e204febb6334020543a6ee6c06a8f059a342f90fe1fe3615dd0fa21b"
+    },
+    "evidence/pico-astc/fixtures/README.md": {
+      "bytes": 311,
+      "sha256": "09327e636fbbfc1ac96b2bcfac8713e4657bf329a1c231a8fd4efeba1e1b4a3f"
+    },
+    "evidence/pico-astc/logs/q25-alternating-result.txt": {
+      "bytes": 681,
+      "sha256": "43c3f7d7df48c141be38759abd42a63a32b4d8b181eeaf8ef5c6db52767b1331"
+    },
+    "evidence/pico-astc/logs/q25-alternating-samples.csv": {
+      "bytes": 4751,
+      "sha256": "b6673b179dc1eaf4b7da4fc70f5ee17b0224ee0b4e33e90cec911c3c8f10fdb3"
+    },
+    "evidence/pico-astc/logs/q25-alternating-stdout.txt": {
+      "bytes": 966,
+      "sha256": "97d21d63cbaaab63046ead0e71cc57b6fa2fd1b5ac79e0bfc81f9e13fc3780d9"
+    },
+    "evidence/pico-astc/logs/q50-lz4-result.txt": {
+      "bytes": 615,
+      "sha256": "e82b5df081e1e23d920cb58ff14ec48cbe757b0e66cb9bfbce991dbb188df197"
+    },
+    "evidence/pico-astc/logs/q50-lz4-stdout.txt": {
+      "bytes": 1066,
+      "sha256": "6a1bff3c3841776e09f422aef9ef42d6634b29013f32edbb550380c88b3c59ed"
+    },
+    "evidence/pico-astc/shaders/sample.comp": {
+      "bytes": 427,
+      "sha256": "1b5f0ef33dbb9f272a629634d46f658530291c12ffa38b343303278b6526e40b"
+    },
+    "evidence/pico-astc/spv/sample.spv": {
+      "bytes": 1396,
+      "sha256": "9fa7f6a2f0b68e35dca2bf8b2ead054d3eebede857bd02c3cbcb64b17e159c3e"
+    },
+    "evidence/pico-astc/src/lz4_payload.h": {
+      "bytes": 493,
+      "sha256": "048ca2c6077e2f935c8ade2d7d27dc500314c780ad8edc6b365f55c3881e983a"
+    },
+    "evidence/pico-astc/src/main.cpp": {
+      "bytes": 24272,
+      "sha256": "ca6d5f71c5a0f55c5240c03e759d3f8cb2de86ab9a601ffbad90b1f69b5cfca0"
+    },
+    "evidence/pico-astc/third_party/lz4/LICENSE": {
+      "bytes": 646,
+      "sha256": "4bc9c403f6b679cc076dee210e0e21c27b4e8f6d3fb43d85364c76657bfaaac5"
+    },
+    "evidence/pico-astc/third_party/lz4/PROVENANCE.md": {
+      "bytes": 412,
+      "sha256": "e615753fb1d3f8e94a8d4c934a6441667ff8cb9fbdcd8003eeb221736df7f6a5"
+    },
+    "evidence/pico-astc/third_party/lz4/lz4.c": {
+      "bytes": 118145,
+      "sha256": "9396f7de527bc8435de9c7569fb7998e56545a84b4f3c2d808c0235c01774539"
+    },
+    "evidence/pico-astc/third_party/lz4/lz4.h": {
+      "bytes": 46014,
+      "sha256": "26b82efc53d1570f3b54eef02e9c4764c1ad374ff03cac04e2ced5ea4d4c552f"
+    },
+    "evidence/thread-check/environment.txt": {
+      "bytes": 239,
+      "sha256": "2f40d443f9058e4b270a88671b066d7fe54318874788e868ff77d2825ba7dadb"
+    },
+    "evidence/thread-check/hash-manifest.txt": {
+      "bytes": 557,
+      "sha256": "f15a14316c5ed7d8f0f8dbd1024a8eb146638b7b6e7b274b951d01f282b702f2"
+    },
+    "evidence/thread-check/results.md": {
+      "bytes": 1694,
+      "sha256": "d56d6a8a5fe64d5b4070cec28284fea2c2c85c3b61df1e2e9793e4a6c7f2cf23"
+    },
+    "evidence/thread-check/threads-1/run.log": {
+      "bytes": 1841,
+      "sha256": "131f77db38ffdc528f816197b0eb479169cd0e42eada54e59425519d57015beb"
+    },
+    "evidence/thread-check/threads-16/run.log": {
+      "bytes": 1845,
+      "sha256": "94381d02fa70a3b5adcd4a2039bf69998c5c965f68d5fd4ebb9748b836ce7fa3"
+    },
+    "evidence/thread-check/threads-4/run.log": {
+      "bytes": 1841,
+      "sha256": "a36bda7a3a7f3f66d35f43affa02d888057912f1254ee2a4c82e04a3fae5f3d7"
+    },
+    "evidence/thread-check/threads-8/run.log": {
+      "bytes": 1841,
+      "sha256": "970cbf436a4af5c2d84e3dcb209efab8dbd70840246acff24cff7ca3d2a932a0"
+    },
+    "evidence/transcoder/CMakeLists.txt": {
+      "bytes": 669,
+      "sha256": "6523ab595ab182adc4be098d4192584b194008fedabc7362506b2139fedb0b8a"
+    },
+    "evidence/transcoder/README.md": {
+      "bytes": 1932,
+      "sha256": "97744c80cdf0527537eca190785a5b78a1dde4b7834478c7bc037a51ebcbf0e9"
+    },
+    "evidence/transcoder/main.cpp": {
+      "bytes": 6251,
+      "sha256": "d69689c3085969211b5408089e6bec83ebe045db613422cc57105039277d65f2"
+    },
+    "evidence/transcoder/rerun/hash-manifest.txt": {
+      "bytes": 938,
+      "sha256": "9976df587cc73b40ba6e567d824b33fc2a8c65db74b89d8a837e5be3d67653f5"
+    },
+    "evidence/transcoder/rerun/host-transcode.log": {
+      "bytes": 420,
+      "sha256": "440146071f42a4e498e75153c1ad0bf7165d4d26f67a3e63196efb919a4b295e"
+    },
+    "evidence/transcoder/rerun/pico-lz4.log": {
+      "bytes": 335,
+      "sha256": "0f58bc8b9f6c2ec5958ce5dbc9ea4833733ff823d2e6d31c90c758b1270673db"
+    },
+    "evidence/transcoder/rerun/pico-transcode.log": {
+      "bytes": 397,
+      "sha256": "da83e39ac27a56d1df5e9b6795d8a04d0cb654ec4f8c717d3bec8d2c4270f8d3"
+    },
+    "evidence/transcoder/rerun/results.md": {
+      "bytes": 1368,
+      "sha256": "35b4d38e978e3a9ae46e3a9a6e5aa1271145c50679b2c2342eb638dded65512d"
+    },
+    "generate_artifacts.py": {
+      "bytes": 18559,
+      "sha256": "430a3f80133298994cf21ea876eac6228f60d11faa8b68e8301baef0d0d71981"
+    },
+    "generate_readback.py": {
+      "bytes": 1954,
+      "sha256": "b90f65bdb7f58cee87721ad91e3003f30862ba733c606194447dab47ce901776"
+    },
+    "generate_runtime.py": {
+      "bytes": 3416,
+      "sha256": "43d9bba8c1ae1535ccc45118ae6e603a309a9335704bd29df8ef3f13699621a5"
+    },
+    "licenses/BasisUniversal-LICENSE.txt": {
+      "bytes": 11347,
+      "sha256": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c"
+    },
+    "licenses/BasisUniversal-NOTICE.txt": {
+      "bytes": 998,
+      "sha256": "a710c77f53231533f19fbc00e04a7109077f2dec74232b62a96f2ac1a1c04c85"
+    },
+    "metrics.csv": {
+      "bytes": 1125,
+      "sha256": "39bdf42c0da8cde1f9915641923d357511001359f9e7d15f842c132b3e9ad7c1"
+    },
+    "pico-readback-detail.png": {
+      "bytes": 228810,
+      "sha256": "0c714aeaf44dde40fa118c01c2fa08cbfb253f3d4710a73238c71fb5b6acec21"
+    },
+    "pico-readback.json": {
+      "bytes": 447,
+      "sha256": "59fd084af11d03f8fd1a9897ea04618701ff5d4f67c981e3b20ee2f215a3f3b3"
+    },
+    "pico-summary.json": {
+      "bytes": 1071,
+      "sha256": "7b3e176c72aa102bb3dcfcf687c73bc7c5e3fab02e765637c34db7ac45559e0e"
+    },
+    "pico-texture-path.png": {
+      "bytes": 140458,
+      "sha256": "c607f9463490aecc9295d2db800066de6aebbfbea779248213b9b8cf8abc51c8"
+    },
+    "pico-texture-path.svg": {
+      "bytes": 19542,
+      "sha256": "8d828dff491dd7ef4222b4b9ffe874654323a62787fe826a7e64260b70e808f1"
+    },
+    "report.md": {
+      "bytes": 10632,
+      "sha256": "90bcd7fe6156a07fc730d2c65b52de85f6ac32a1aa56d133233bf4c4fbac6ed7"
+    },
+    "thumbnails/dark-native-detail.png": {
+      "bytes": 867773,
+      "sha256": "fbe4565ef2d54e1e38027b0770830df4704a71666ba30a25192e60e93746a498"
+    },
+    "thumbnails/dark-xuastc-12x12-q25.png": {
+      "bytes": 104726,
+      "sha256": "f708a1722389d371b1e13da01a5ea1b9700d30b3a51dd579b590a68c8380d4d5"
+    },
+    "thumbnails/dark-xuastc-12x12-q50.png": {
+      "bytes": 115414,
+      "sha256": "7668275f73a30dd9512fa30113049f9f2821e58ebe9d69b5683f3f109b1c734f"
+    },
+    "thumbnails/dark-xuastc-12x12-q75.png": {
+      "bytes": 123358,
+      "sha256": "73ce032a516f4a7d5e10524e503e99780f9d493995980e82d32f6dd6cc964ddb"
+    },
+    "thumbnails/dark-xuastc-8x8-q25.png": {
+      "bytes": 110612,
+      "sha256": "845ddbe696a1a43a918c1803e960f96e379392c1b3b9532737b86c77b383ebef"
+    },
+    "thumbnails/dark-xuastc-8x8-q50.png": {
+      "bytes": 123303,
+      "sha256": "aa847a0824211218b861f9f2389c50283bcf6591abfbb77c16c70bacc4abc1bb"
+    },
+    "thumbnails/forest-native-detail.png": {
+      "bytes": 595538,
+      "sha256": "7df58cf2fea47a41ec6c3f5677b90d2bd9aca2f3cf96ee53b0abd64ab1d57761"
+    },
+    "thumbnails/forest-xuastc-12x12-q50.png": {
+      "bytes": 66827,
+      "sha256": "70dcc2652e093ea4367ab6f0c2fed460cf026a8fc155c3e4ced31b35e8372b11"
+    },
+    "thumbnails/haar-native-detail.png": {
+      "bytes": 497660,
+      "sha256": "8d380b5ef2fa0688943274dbe3b76bbd946d1056c937c7ffbd69787fbd3806cd"
+    }
+  }
+}

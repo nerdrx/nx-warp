@@ -1,0 +1,20 @@
+command=/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/basis_universal/bin/basisu /run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/dark-native.png -ldr_8x8i -quality 25 -effort 0 -xuastc_zstd -ktx2_zstandard_level 6 -max_threads 8 -output_file /run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-transcode-20261003/thread-check/threads-8/dark-8x8-q25.ktx2
+returncode=0
+cli_wall_seconds=0.539498
+Basis Universal LDR/HDR GPU Texture Supercompression System v2.50.0
+Copyright (C) 2019-2026 Binomial LLC, All rights reserved
+Using SSE 4.1: 1, Multithreading: 1, Zstandard support: 1, OpenCL: 0
+Processing 1 total file(s)
+Processing source file "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/dark-native.png"
+Read source image "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/dark-native.png", 4352x2176
+Total slices: 1
+Slice: 0, alpha: 0, orig width/height: 4352x2176, width/height: 4352x2176, first_block: 0, image_index: 0, mip_level: 0, iframe: 0
+Mode: XUASTC LDR 8x8, Effort Level (0-10): 0, Disable Subsets: false, Disable RGB Dual Plane: false
+Weight grid DCT: true, DCT quality level (1-100): 25, Lossy supercompression: true
+sRGB8 ASTC decode profile: true, Syntax: 2, Channel weights: 9 11 1 11
+Prefiltering/blurring: false, Sharpening: false (Amount: 1.100000), SCD/Deblocking Passes: false (Factor in CPU/GPU Post-Filtering: false), Heavy subset usage: false, Compressor: 0
+Encoding slice 0
+Wrote compressed output file "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-transcode-20261003/thread-check/threads-8/dark-8x8-q25.ktx2"
+basis_compressor::process: Success
+Compression succeeded to file "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-transcode-20261003/thread-check/threads-8/dark-8x8-q25.ktx2" size 359128 bytes in 0.471 secs, 0.303 bits/texel
+Total successes: 1 failures: 0

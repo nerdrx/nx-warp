@@ -1,0 +1,5 @@
+ASTC=12x12 input=4352x2176 framebuffer=4352x2176 lz4=1 alternate=0
+astc_raw_payload n=30 gpu_upload_median_us=79.2708 gpu_sample_median_us=2612.03 gpu_total_median_us=2690.1 gpu_total_p95_us=4363.96 cpu_call_median_us=4130.57
+raw_rgba n=30 gpu_upload_median_us=2034.43 gpu_sample_median_us=5017.71 gpu_total_median_us=7067.92 gpu_total_p95_us=7964.53 cpu_call_median_us=13960.6
+astc_lz4_decompress_plus_upload n=30 gpu_upload_median_us=78.5417 gpu_sample_median_us=2340.99 gpu_total_median_us=2419.53 gpu_total_p95_us=3688.02 cpu_call_median_us=4045.42
+max_error=1 mae=0.0290683 over_tolerance_pixels=0 tolerance=2

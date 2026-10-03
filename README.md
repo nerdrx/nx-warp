@@ -17,6 +17,12 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 3 October: native texture hardware instead of reconstruction
+
+A standalone ASTC + LZ4 prototype now uploads and samples two changing **4352 × 2176** images on Pico: **2.54 / 3.41 ms GPU p50/p95**, or **4.71 / 5.75 ms** for the full synchronous unpack/upload/sample call. The tested payload implies **457 Mbit/s at 90 updates/s**, excluding transport overhead. Actual Pico readback matches the desktop decode within one colour level. **The PC encoder is still hundreds of milliseconds per frame, q25 has visible text/colour artifacts, and this is not a live 90 Hz stream.** [Source, charts, close-ups, rejected routes and next steps](bench/results/90fps-2026-10-03/astc-texture-path/report.md).
+
+![Measured native Pico texture-path cost](bench/results/90fps-2026-10-03/astc-texture-path/pico-texture-path.png)
+
 ### 3 October: less native reconstruction work
 
 The optional paired-Haar experiment cuts matched native **4352 × 2176, 4:2:0** Pico decode from **16.85 to 12.42 ms GPU p50** (26% less), at approximately the same **694 kB frame payload**. It reconstructs the coefficient pyramid directly in three dispatches, avoiding intermediate image passes. Desktop and Pico Haar pixels match exactly; source error is slightly higher than CDF. **This is isolated decoder proof, still above the 11.11 ms 90 Hz budget—not a live frame-rate or photon-latency claim.** [Methods, graphs, animation and rejected experiments](bench/results/90fps-2026-10-03/pyrowave-full-image/report.md).
