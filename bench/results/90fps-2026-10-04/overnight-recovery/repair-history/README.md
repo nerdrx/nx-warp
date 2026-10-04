@@ -22,3 +22,7 @@ A separately tested client stale-NACK suppression was rejected before commit bec
 ## Reproduce
 
 Configure the source checkout at `6d8970d2` first. Compile `probe.cpp` twice with C++23/O2, selecting `-I baseline` or `-I candidate` before the source include paths; also include source/common, source/external, configured-build/common and BoostPFR include directories. Link source/common/smp.cpp and libcrypto. Run each executable to CSV. Both use the same current serializer, including the zero-byte copy fix; only history capacity/disable diagnostics differ. `plot.py` rebuilds the figure. No private image, packet payload or binary is published.
+
+## Lookup cost of the larger ring
+
+A matched CPU3/O2 five-block ABBA check adds **0.54 µs** for a current-frame64-hit lookup and **0.71 µs** for an absent-frame miss, using identical requested blobs. These are observed loop-mean deltas; larger retained history requires a longer scan. PC cost is small in this fixture and is accepted for repair availability. [Exact lookup source and40rows](lookup-cost/README.md).
