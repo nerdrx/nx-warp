@@ -1,0 +1,90 @@
+{
+  "input_model": "direct RGBA8 SSBO validation proxy; not production texture sampling",
+  "fit": 3,
+  "quality": 6,
+  "gpu_samples": "1 warmup + 3 samples per case",
+  "gpu_device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "ramp4_physical_unpack": "4x4 weightLevels=8 endpointLevels=256 dualPlane=0 partitions=1 CEM=8 endpoints=0,255,0,255,0,255",
+  "cases": [
+    {
+      "scene": "dark",
+      "block": "4x4",
+      "blocks": 129600,
+      "header_mode": "0x10053",
+      "physical_unpack_first_block": "4x4 weightLevels=8 endpointLevels=256 dualPlane=0 partitions=1 CEM=8 endpoints=147,157,53,102,36,43",
+      "decoded": "all blocks accepted by external LDR decoder",
+      "payload_bytes": 2073600,
+      "raw_bpp": 8.0,
+      "lz4_payload_bytes": 904373,
+      "full_psnr_db": 34.5063,
+      "roi_psnr_db": 34.5773
+    },
+    {
+      "scene": "dark",
+      "block": "6x6",
+      "blocks": 57600,
+      "header_mode": "0x10442",
+      "physical_unpack_first_block": "4x4 weightLevels=4 endpointLevels=160 dualPlane=1 partitions=1 CEM=8 endpoints=122,57,102,120,8,106",
+      "decoded": "all blocks accepted by external LDR decoder",
+      "payload_bytes": 921600,
+      "raw_bpp": 3.5555555555555554,
+      "lz4_payload_bytes": 396523,
+      "full_psnr_db": 32.6022,
+      "roi_psnr_db": 31.948
+    },
+    {
+      "scene": "dark",
+      "block": "8x8",
+      "blocks": 32400,
+      "header_mode": "0x10442",
+      "physical_unpack_first_block": "4x4 weightLevels=4 endpointLevels=160 dualPlane=1 partitions=1 CEM=8 endpoints=104,57,6,120,8,106",
+      "decoded": "all blocks accepted by external LDR decoder",
+      "payload_bytes": 518400,
+      "raw_bpp": 2.0,
+      "lz4_payload_bytes": 250484,
+      "full_psnr_db": 30.8213,
+      "roi_psnr_db": 30.0746,
+      "matches_prior_8x8_decoded_fixture": true
+    },
+    {
+      "scene": "forest",
+      "block": "4x4",
+      "blocks": 129600,
+      "header_mode": "0x10053",
+      "physical_unpack_first_block": "4x4 weightLevels=8 endpointLevels=256 dualPlane=0 partitions=1 CEM=8 endpoints=141,141,154,154,198,198",
+      "decoded": "all blocks accepted by external LDR decoder",
+      "payload_bytes": 2073600,
+      "raw_bpp": 8.0,
+      "lz4_payload_bytes": 656824,
+      "full_psnr_db": 44.1717,
+      "roi_psnr_db": 39.0237
+    },
+    {
+      "scene": "forest",
+      "block": "6x6",
+      "blocks": 57600,
+      "header_mode": "0x100f3",
+      "physical_unpack_first_block": "5x5 weightLevels=8 endpointLevels=64 dualPlane=0 partitions=1 CEM=8 endpoints=35,35,38,38,49,49",
+      "decoded": "all blocks accepted by external LDR decoder",
+      "payload_bytes": 921600,
+      "raw_bpp": 3.5555555555555554,
+      "lz4_payload_bytes": 280112,
+      "full_psnr_db": 38.9115,
+      "roi_psnr_db": 33.8734
+    },
+    {
+      "scene": "forest",
+      "block": "8x8",
+      "blocks": 32400,
+      "header_mode": "0x100f3",
+      "physical_unpack_first_block": "5x5 weightLevels=8 endpointLevels=64 dualPlane=0 partitions=1 CEM=8 endpoints=35,35,38,38,49,49",
+      "decoded": "all blocks accepted by external LDR decoder",
+      "payload_bytes": 518400,
+      "raw_bpp": 2.0,
+      "lz4_payload_bytes": 177783,
+      "full_psnr_db": 36.7674,
+      "roi_psnr_db": 31.3161,
+      "matches_prior_8x8_decoded_fixture": true
+    }
+  ]
+}

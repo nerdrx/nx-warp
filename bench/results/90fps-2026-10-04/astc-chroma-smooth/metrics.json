@@ -1,0 +1,55 @@
+{
+  "title": "ASTC q6 decoded crop CPU preview of peripheral_smooth=6",
+  "dimensions": [
+    1920,
+    1080
+  ],
+  "fixtures": {
+    "dark-purple-hair": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-partition-rate-neutral-20261004/qpolicy-reconstructed/dark.rgba",
+      "sha256": "848ab7ae58bcaa8dcff767577519bbbc9aab2970e7682ad940df8c5ad9d4085a",
+      "roi_xywh": [
+        320,
+        240,
+        512,
+        512
+      ],
+      "preview": "dark-purple-hair-512-before-after.png",
+      "preview_sha256": "094463ec0545babb2c9f4fc5ed25bb69b3557d29c09b3732e804e8d25dfbf07a",
+      "max_abs_luma_delta_float": 7.35744833946228e-08,
+      "max_abs_luma_delta_code_after_unorm": 0.5,
+      "float_channels_outside_gamut_by_more_than_1e-6": 0,
+      "max_float_gamut_overshoot": 7.450580596923828e-09,
+      "unorm8_output_in_range": true,
+      "alpha_changed_pixels": 0,
+      "changed_rgb_pixels": 1257143,
+      "mean_abs_rgb_change_code": 1.0852570533752441
+    },
+    "forest-white-hair": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-partition-rate-neutral-20261004/qpolicy-reconstructed/forest.rgba",
+      "sha256": "63a45ed0b1ca11c1350accae04c06b29bd2873a135bbff40c7006a082ca94798",
+      "roi_xywh": [
+        704,
+        128,
+        512,
+        512
+      ],
+      "preview": "forest-white-hair-512-before-after.png",
+      "preview_sha256": "b6bec5d650260048f303266df252f823c04cb39c63c846bb3a43890bf80d4ccd",
+      "max_abs_luma_delta_float": 4.4587068259716034e-08,
+      "max_abs_luma_delta_code_after_unorm": 0.4986000061035156,
+      "float_channels_outside_gamut_by_more_than_1e-6": 0,
+      "max_float_gamut_overshoot": 3.725290298461914e-09,
+      "unorm8_output_in_range": true,
+      "alpha_changed_pixels": 0,
+      "changed_rgb_pixels": 1037200,
+      "mean_abs_rgb_change_code": 0.4356113374233246
+    }
+  },
+  "method": "CPU reference of current client/shaders/reprojection.glsl mode 6: two diagonal taps at +/-3 texels, centre .5 and taps .25 each; subtract BT.709 encoded-RGB luma from delta; gamut-scale before UNORM8 output.",
+  "limits": [
+    "CPU preview only; no GPU readback or device validation",
+    "Only local 512x512 crops are emitted",
+    "No PSNR or quality-win claim"
+  ]
+}

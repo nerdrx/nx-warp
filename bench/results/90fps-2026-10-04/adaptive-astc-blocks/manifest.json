@@ -1,0 +1,15 @@
+{
+  "source_validation_sha256": "43a7bfc1aae9e6cf0ccda05663e30db6d8de010bc4c108a642da1b05bb6d6df8",
+  "source_crop_sha256": {
+    "dark-footprint-roi.png": "5d77d181e8434ac3e2256965c0bb4901ec783469a8cc7afabe957ae29b7c726c",
+    "forest-footprint-roi.png": "dcee6b804fdfbabe3bb70b9eb8a76df985dfb8d43341b5b7788e904ff7f4aa9c"
+  },
+  "source_commits": {
+    "blur": "bf5477382fc14dd3a7db9025d636269523c02600",
+    "adaptive_astc_blocks": "af913d4eef1164e30455631db6b24386f0ec0bfe",
+    "footprint_probe_prediction": "25e008cb29597103c74ea3b688ad51c64fd1f33a"
+  },
+  "validation_input": "direct RGBA8 SSBO proxy at 1920x1080; not production texture sampling",
+  "gpu_samples": "1 warmup + 3 samples per case; insufficient for latency conclusions",
+  "public_validation_json": "harness timing strings removed; quality and packet metrics retained"
+}
