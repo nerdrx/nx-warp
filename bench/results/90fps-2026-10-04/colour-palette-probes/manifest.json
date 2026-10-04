@@ -1,0 +1,150 @@
+{
+  "created_date": "2026-10-04",
+  "purpose": "Offline matched-source comparison of ASTC palette/partition probes; no production/runtime claims.",
+  "source_identity": {
+    "dark": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/dark-native-1920x1080.png",
+      "png_sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "dimensions": "1920x1080",
+      "origin_manifest": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/manifest.json"
+    },
+    "forest": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/forest-native-1920x1080.png",
+      "png_sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "dimensions": "1920x1080",
+      "origin_manifest": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/manifest.json"
+    }
+  },
+  "compression_normalization": {
+    "tool": "*** Zstandard CLI (64-bit) v1.5.7, by Yann Collet ***",
+    "level": 3,
+    "input": "complete .astc file including 16-byte header",
+    "used_for_cross-probe_metrics": true
+  },
+  "mode_verification": [
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-projected-line-20261004/results/dark-projected-q6.astc",
+      "mode_counts": {
+        "0x0F3": 32400
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-partition-queue-20261004/results/exact-user-final/dark-queue.astc",
+      "mode_counts": {
+        "0x053": 82,
+        "0x0F3": 32318
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-coarse-grid-20261004/results/dark-coarse-grid-fallback.astc",
+      "mode_counts": {
+        "0x0F3": 32088,
+        "0x1BF": 312
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/dark-threshold-20.astc",
+      "mode_counts": {
+        "0x0F3": 12843,
+        "0x442": 19557
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/dark-dualplane.astc",
+      "mode_counts": {
+        "0x442": 32400
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/dark-q2-4x4-top5.astc",
+      "mode_counts": {
+        "0x0F3": 31169,
+        "0x442": 1231
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/dark-q4-4x4-top5.astc",
+      "mode_counts": {
+        "0x0F3": 31571,
+        "0x442": 829
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/dark-q6-4x4-top5.astc",
+      "mode_counts": {
+        "0x0F3": 31643,
+        "0x442": 757
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-projected-line-20261004/results/forest-projected-q6.astc",
+      "mode_counts": {
+        "0x0F3": 32400
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-partition-queue-20261004/results/exact-user-final/forest-queue.astc",
+      "mode_counts": {
+        "0x053": 17,
+        "0x0F3": 32383
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-coarse-grid-20261004/results/forest-coarse-grid-fallback.astc",
+      "mode_counts": {
+        "0x0F3": 32342,
+        "0x1BF": 58
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/forest-threshold-20.astc",
+      "mode_counts": {
+        "0x0F3": 9985,
+        "0x442": 22415
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/forest-dualplane.astc",
+      "mode_counts": {
+        "0x442": 32400
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/forest-q2-4x4-top5.astc",
+      "mode_counts": {
+        "0x0F3": 31429,
+        "0x442": 971
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/forest-q4-4x4-top5.astc",
+      "mode_counts": {
+        "0x0F3": 32049,
+        "0x442": 351
+      }
+    },
+    {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/results/forest-q6-4x4-top5.astc",
+      "mode_counts": {
+        "0x0F3": 32293,
+        "0x442": 107
+      }
+    }
+  ],
+  "crowd_limit": "Queue crowd-old-512 row is smoke-only. Source/origin and foveation status are unresolved; excluded from matched-photo chart.",
+  "timing_limits": {
+    "gpu": "Historical queue probe only: RX 7900 XTX, 12 warmups, 30 samples. Later review found undefined padding-grid accesses; measurements do not validate a corrected shader.",
+    "cpu": "Coarse-grid and dual-plane probes have no measured CPU wall time or GPU-port cost."
+  },
+  "limits": [
+    "q6 cross-probe PSNR scores are from external Basis ASTC LDR decoding against the exact full-resolution source photo.",
+    "Chroma top-5% q2/q4/q6 points use the q-specific projected baseline and external decode.",
+    "CPU prototype quality and counts do not establish GPU speed or live bitrate.",
+    "No source photos, full decoded frames, ASTC fixtures, executables, builds, or runtime artifacts are included; only small photo crops and report outputs are saved."
+  ],
+  "inputs_checksums": "checksums.csv",
+  "metrics_csv": "metrics.csv",
+  "methods": "README.md"
+}
