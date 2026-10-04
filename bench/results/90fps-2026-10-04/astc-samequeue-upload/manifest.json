@@ -1,0 +1,83 @@
+{
+  "scope": "Pico same-queue upload-to-sample ordering correctness check; no throughput claim",
+  "device": {
+    "model": "A8110",
+    "build_fingerprint": "Pico/Phoenix_ovs/PICOA8110:10/5.13.8/smartcm.1788350898:user/dev-keys"
+  },
+  "queue_flow": "fence-less upload command A, then sample command B on same queue; no CPU wait or semaphore between; B render fence gates readback and reuse",
+  "protocol": {
+    "order": [
+      "baseline-a",
+      "all-0x442",
+      "baseline-b"
+    ],
+    "warmup": 12,
+    "timed_samples_per_run": 30,
+    "framebuffer": [
+      2176,
+      2176
+    ]
+  },
+  "correctness": {
+    "all_runs_exit_zero": true,
+    "max_channel_error": 1,
+    "pixels_over_tolerance_2": 0,
+    "baseline_a_b_output_byte_identical": true
+  },
+  "binary": {
+    "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176-same-queue/build/astc-pico",
+    "bytes": 6629504,
+    "sha256": "22e7d2b5ff2d4d79d78f945afa4c90474944c7765cec57222d5b0c45e2861cec"
+  },
+  "source": {
+    "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176-same-queue/src/main.cpp",
+    "bytes": 25194,
+    "sha256": "7d3971aa1d8eda4221df9900072274c937a7db5fa9ca4f0990ecc7eb41ea2627"
+  },
+  "fixture_manifest_source": {
+    "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176-same-queue/fixture-manifest.json",
+    "bytes": 2003,
+    "sha256": "ba3b8b5e57e2f9bff1415ed9a3de558995273878b4012c7b1f5816c695f8580e"
+  },
+  "source_inputs": {
+    "baseline-a": {
+      "astc_sha256": "39b2cfe80b818a4716fd59c2ffe2041a81cbcea5ff94dcecef7d3a1ddbaba0fb",
+      "external_reference_rgba_sha256": "35884704ff975118bb9b3dd69c77ffd3e0f6f617e05fd456887db7aaf347a68a",
+      "device_output_rgba_sha256": "797ed8d257ac80e428683ab48b1ed9a58f698e4333d6bb610d88d8ea7e2e092d"
+    },
+    "all-0x442": {
+      "astc_sha256": "570c619941456e6f5a04cd0006fa967e389d0b2e4b9bfdc8e3fcb9ecd0355835",
+      "external_reference_rgba_sha256": "7d7ecc4e97e77474b0de5d2d3dd22b717d992e079bfa2e8c866574b44b1fc7b9",
+      "device_output_rgba_sha256": "25c63dd77b628c60e4093f135b9e032d8845d9873b4440b572b610c822d5f287"
+    },
+    "baseline-b": {
+      "astc_sha256": "39b2cfe80b818a4716fd59c2ffe2041a81cbcea5ff94dcecef7d3a1ddbaba0fb",
+      "external_reference_rgba_sha256": "35884704ff975118bb9b3dd69c77ffd3e0f6f617e05fd456887db7aaf347a68a",
+      "device_output_rgba_sha256": "797ed8d257ac80e428683ab48b1ed9a58f698e4333d6bb610d88d8ea7e2e092d"
+    }
+  },
+  "thermal": {
+    "before": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176-same-queue/results/thermal-before.txt",
+      "bytes": 1681,
+      "sha256": "c69e848678603ffa4d3c541433822a5da69df7c707290e6a0cff00c174a21488"
+    },
+    "after": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176-same-queue/results/thermal-after.txt",
+      "bytes": 1670,
+      "sha256": "ca8ea62ea6bf6abc7e2d77aabe9e6918ee21236f88439d0e43af61834bfd31e3"
+    }
+  },
+  "artifacts": {
+    "README.md": "903578ee707d3f8c7b81a9f8dfca9c7d5b2e9df624dc837a5fab7e722641147f",
+    "fixture-manifest.json": "ba3b8b5e57e2f9bff1415ed9a3de558995273878b4012c7b1f5816c695f8580e",
+    "run-manifest.json": "8c99d6edf048bdc70b969c8af3bbdfe00968595a3a001aed2078d2bc300397d5",
+    "samples.csv": "bc47cd505486605724d6c23b3dcf5dc211bda266db631fa1ce34da8f652ee723",
+    "thermal-after.txt": "ca8ea62ea6bf6abc7e2d77aabe9e6918ee21236f88439d0e43af61834bfd31e3",
+    "thermal-before.txt": "c69e848678603ffa4d3c541433822a5da69df7c707290e6a0cff00c174a21488"
+  },
+  "limits": [
+    "synthetic repeated-block fixtures only; not native-pixel quality or natural-image sampler behavior",
+    "correctness and same-queue handoff only; no speedup, throughput, photon-latency, or live-VR claim"
+  ]
+}

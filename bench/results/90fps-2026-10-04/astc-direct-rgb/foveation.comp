@@ -1,0 +1,201 @@
+/*
+ * WiVRn VR streaming
+ * Copyright (C) 2026  Patrick Nicolas <patricknicolas@laposte.net>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// Copyright 2021-2022, Collabora Ltd.
+// Author: Jakob Bornecrantz <jakob@collabora.com>
+// SPDX-License-Identifier: BSL-1.0
+
+#version 460
+#extension GL_KHR_shader_subgroup_basic: require
+#extension GL_KHR_shader_subgroup_shuffle_relative: require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#define MAX_DIM 4097
+#define MAX_SAMPLES 4
+// The lens mask: one bit per 64x64 tile, per eye. Must match FOVEATION_MASK_WORDS and the
+// tail of ubo_data in foveation.cpp.
+#define MASK_WORDS 128
+
+layout(set = 0, binding = 0) uniform sampler2D source[2];
+layout(set = 0, binding = 1, std430) buffer restrict Config
+{
+	// foveation parameters
+	uint x[2*MAX_DIM];
+	uint y[2*MAX_DIM];
+	// The lens mask. A tile whose whole area falls outside what the optics can show is
+	// written as a constant mid grey instead of the resampled picture: it is never seen,
+	// and a tile that does not change from frame to frame is a skip in every encoder on
+	// the stream. mask_on is 0 when nothing is masked, which is the common case under
+	// strong foveation, and then this costs one uniform branch per invocation.
+	uint mask[2*MASK_WORDS];
+	uint mask_cols;
+	uint mask_on;
+	uint mask_pad[2];
+	uint native_center_on;
+	uint native_center_origin_x;
+	uint native_center_origin_y;
+	uint native_center_size;
+	uint astc_direct_rgb_on;
+} ubo;
+
+layout(set = 0, binding = 2) uniform writeonly restrict image2DArray luma;
+layout(set = 0, binding = 3) uniform writeonly restrict image2DArray chroma;
+layout(set = 0, binding = 4, std430) buffer NativeCenter { uint rgb[]; } native_center;
+
+layout(constant_id = 0) const int alpha_width = 0;
+
+const mat3 color_space = mat3(
+//         R        G        B
+/* Y */ 0.2126,  0.7152,  0.0722,
+/* Cb*/-0.1146, -0.3854,  0.5,
+/* Cr*/ 0.5   , -0.4542, -0.0458);
+
+vec3 rgb_to_ycbcr(vec3 color)
+{
+	return transpose(color_space) * color + vec3(0, 0.5, 0.5);
+}
+
+float from_linear_to_srgb_channel(float value)
+{
+	if (value < 0.0031308) {
+		return 12.92 * value;
+	} else {
+		return 1.055 * pow(value, 1.0 / 2.4) - 0.055;
+	}
+}
+
+vec3 from_linear_to_srgb(vec3 linear_rgb)
+{
+	return vec3(
+		from_linear_to_srgb_channel(linear_rgb.r),
+		from_linear_to_srgb_channel(linear_rgb.g),
+		from_linear_to_srgb_channel(linear_rgb.b)
+	);
+}
+
+uint ABfe(uint src,uint off,uint bits){return bitfieldExtract(src,int(off),int(bits));}
+uint ABfiM(uint src,uint ins,uint bits){return bitfieldInsert(src,ins,0,int (bits));}
+ // More complex remap 64x1 to 8x8 which is necessary for 2D wave reductions.
+ //  543210
+ //  ======
+ //  .xx..x
+ //  y..yy.
+ // Details,
+ //  LANE TO 8x8 MAPPING
+ //  ===================
+ //  00 01 08 09 10 11 18 19
+ //  02 03 0a 0b 12 13 1a 1b
+ //  04 05 0c 0d 14 15 1c 1d
+ //  06 07 0e 0f 16 17 1e 1f
+ //  20 21 28 29 30 31 38 39
+ //  22 23 2a 2b 32 33 3a 3b
+ //  24 25 2c 2d 34 35 3c 3d
+ //  26 27 2e 2f 36 37 3e 3f
+ uint ARmpRed8x8_x(uint a){return ABfiM(ABfe(a,2u,3u),a,1u);}
+ uint ARmpRed8x8_y(uint a){return ABfiM(ABfe(a,3u,3u),ABfe(a,1u,2u),2u);}
+ //uvec2 ARmpRed8x8(uint32_t a){return uvec2(ABfiM(ABfe(a,2u,3u),a,1u),ABfiM(ABfe(a,3u,3u),ABfe(a,1u,2u),2u));}
+
+void main()
+{
+	uint iz = gl_GlobalInvocationID.z;
+
+	// In order to know how subgroup are mapped, we have to do the swizzling ourselves
+	// in the work group.
+	uint id = gl_SubgroupID * gl_SubgroupSize + gl_SubgroupInvocationID;
+	uint iy = gl_WorkGroupID.y * gl_WorkGroupSize.y + ARmpRed8x8_y(id);
+	uint ix = gl_WorkGroupID.x * gl_WorkGroupSize.x + ARmpRed8x8_x(id);
+
+	uint ymin = ubo.y[MAX_DIM * iz + iy];
+	uint ymax = ubo.y[MAX_DIM * iz + iy + 1];
+	if (ymin > ymax)
+	{
+		uint tmp = ymin;
+		ymin = ymax;
+		ymax = tmp;
+	}
+
+	uint xmin = ubo.x[MAX_DIM * iz + ix];
+	uint xmax = ubo.x[MAX_DIM * iz + ix + 1];
+
+	uint xstep = (xmax - xmin + MAX_SAMPLES - 1) / MAX_SAMPLES;
+	uint ystep = (ymax - ymin + MAX_SAMPLES - 1) / MAX_SAMPLES;
+
+	vec4 colour = vec4(0);
+	uint count = 0;
+	for (uint y = ymin ; y < ymax; y += ystep) {
+		for (uint x = xmin ; x < xmax; x += xstep) {
+			colour += texelFetch(source[iz], ivec2(x, y), 0);
+			++count;
+		}
+	}
+	colour /= max(count, 1);
+	vec3 encoded_rgb = from_linear_to_srgb(colour.rgb);
+	if (ubo.native_center_on != 0u &&
+	    ix >= ubo.native_center_origin_x &&
+	    iy >= ubo.native_center_origin_y &&
+	    ix < ubo.native_center_origin_x + ubo.native_center_size &&
+	    iy < ubo.native_center_origin_y + ubo.native_center_size)
+	{
+		vec3 native_rgb = clamp(encoded_rgb, 0.0, 1.0);
+		uint cx = ix - ubo.native_center_origin_x;
+		uint cy = iy - ubo.native_center_origin_y;
+		native_center.rgb[iz * ubo.native_center_size * ubo.native_center_size + cy * ubo.native_center_size + cx] =
+			(uint(round(native_rgb.r * 255.0)) << 16u) | (uint(round(native_rgb.g * 255.0)) << 8u) | uint(round(native_rgb.b * 255.0));
+	}
+	// A 64x64 tile is 64 whole 8x8 workgroups, so this branch is uniform across the
+	// workgroup AND across every subgroup in it -- which is what makes it safe to take
+	// after the sampling loop and before the chroma reduction below, whose
+	// subgroupShuffleDown would be undefined if some lanes of a subgroup had left.
+	// Overriding the value rather than skipping the fetches also keeps the alpha channel
+	// genuine: only the picture is replaced.
+	bool masked = false;
+	if (ubo.mask_on != 0u)
+	{
+		uint tile = (iy >> 6) * ubo.mask_cols + (ix >> 6);
+		uint word = ubo.mask[MASK_WORDS * iz + (tile >> 5)];
+		masked = (word & (1u << (tile & 31u))) != 0u;
+	}
+	if (ubo.astc_direct_rgb_on != 0u)
+	{
+		vec3 rgb = masked ? vec3(0.5) : encoded_rgb;
+		imageStore(luma, ivec3(ix, iy, iz), vec4(rgb, 1.0));
+		return;
+	}
+	colour.xyz = rgb_to_ycbcr(encoded_rgb);
+	if (masked)
+		colour.xyz = vec3(0.5); // neutral grey: Y, Cb and Cr all mid scale
+
+	imageStore(luma, ivec3(ix, iy, iz), vec4(colour.x));
+
+	vec4 sum = colour + subgroupShuffleDown(colour, 1) + subgroupShuffleDown(colour, 2) + subgroupShuffleDown(colour, 3);
+
+	if ((id % 4)== 0)
+	{
+		// actual chroma
+		imageStore(chroma, ivec3(ix/2, iy/2, iz), vec4(sum.y, sum.z, 0, 0) / 4);
+
+		if (alpha_width > 0)
+		{
+			// alpha in luma
+			int offset = alpha_width * int(iz);
+			imageStore(luma, ivec3(offset + ix/2, iy/2, 2), vec4(sum.w, 0, 0, 0) / 4);
+			imageStore(chroma, ivec3(offset + ix/2, iy/2, 2), vec4(0.5, 0.5, 0, 0));
+		}
+	}
+}

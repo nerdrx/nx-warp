@@ -1,0 +1,42 @@
+{
+  "worktree": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe",
+  "commit": "6d03c6334fa40f63d957194f400744999e1ce7db",
+  "build_dir": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server",
+  "target": "wivrn-server",
+  "build_result": "pass",
+  "source_profile_guard": "WIVRN_ASTC_DIRECT_RGB=1; streams 0/1 enabled nxastc; no enabled streams at indices >=2; RGBA8 device format properties check passes before marker selection",
+  "shader_source_sha256": "fcd688632c75db1bf64e09cce25e64571fc82c0c45766636d54a0c03600c6459",
+  "shader_spirv_optimized_sha256": "583f8f71deb73629ff8857339a04595c888dafa922b49463534151878783f1fc",
+  "server_binary_sha256": "02c7048d224137489a8d3c647678e8e10c813f47585be2ca0355e55fb8170f11",
+  "harness_source_sha256": "93b8eb2558a4fbabf7faff7131356c0e43030fec84238e22c155273642382047",
+  "harness_binary_sha256": "e380dd1352bad5b7fa20a8cf9edfb4560d1ff1e8c23f1bb2eff153a1b72a3fe0",
+  "test": {
+    "input": [
+      320,
+      320
+    ],
+    "output": [
+      128,
+      128,
+      2
+    ],
+    "source_format": "R8G8B8A8_SRGB",
+    "output_format": "R8G8B8A8_UNORM",
+    "remap": "nonuniform source coordinate arrays",
+    "y_map": "eye1 descending then shader swaps endpoints",
+    "mask": "eye0 tile3 and eye1 tile1",
+    "max_channel_error": 1,
+    "channels_over_1": 0,
+    "mae": 0.023735,
+    "exit_code": 0,
+    "gpu": "local PC Vulkan; no live streamer"
+  },
+  "limits": [
+    "synthetic fixture, not photo quality",
+    "not performance evidence",
+    "not live compositor/stream evidence",
+    "not Pico/headset evidence",
+    "GPU readback pixels not retained; crop is CPU reference only"
+  ],
+  "bad_initial_attempt": "Before Vulkan init, harness rejected the generated text-array .spv as a non-binary size; rerun with the optimized binary .spv-opt passed."
+}

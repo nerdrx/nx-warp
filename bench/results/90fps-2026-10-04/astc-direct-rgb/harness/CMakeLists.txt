@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(astc_direct_rgb_check LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+find_package(Vulkan REQUIRED)
+add_executable(astc-direct-rgb-check src/main.cpp)
+target_link_libraries(astc-direct-rgb-check PRIVATE Vulkan::Vulkan)
+target_compile_options(astc-direct-rgb-check PRIVATE -Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
