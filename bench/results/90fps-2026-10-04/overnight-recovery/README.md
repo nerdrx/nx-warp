@@ -211,3 +211,11 @@ This report separates measured payload, calculated bandwidth, standalone GPU
 work, standalone policy checks and unimplemented live behavior. The next tests
 target independent-region delivery under packet loss rather than assuming an
 incomplete whole frame must freeze every pixel.
+
+## Combined stereo candidate and actual Pico CPU cost
+
+A matched 150-row same-device Vulkan probe combines parallel eye packing with level1 and optional compact records. Offscreen native stereo wall p50/p95 falls **4.956/5.657 →2.634/3.137 ms**, and selected packet bytes fall **2.97%** versus ordinary serial level3 in that run. Exact ASTC output is retained within the run. This includes GPU/readback/packet preparation, excludes uploads/network/presentation, and is not production fresh FPS. [Source, load telemetry and graph](combined-stereo/README.md).
+
+On the idle Pico, a separate300-row production strict CPU decode check of the pinned CPU probe's native ASTC fixtures gives **1.865/1.936 →2.041/2.150 ms** for sequential paired decode with compactlevel1. Added median cost is0.176ms; ordinarylevel1 is near baseline. CPU clocks changed between before/after snapshots. [Pico method, exactness checks and graph](fast-zstd-pico/README.md). Stage timings and sizes from different fixture-generation runs are not one end-to-end measurement.
+
+The upload-fence audit rejected six per-image command buffers/fences for now: the median prior-upload wait across180-frame window means is only0.8us. It could move the wait into GPU backlog without worthwhile savings. [Decision and actual window statistics](upload-fence-audit/README.md).

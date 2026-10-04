@@ -17,6 +17,10 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: combined stereo candidate checked on PC and Pico
+
+The matched native offscreen PC stage improves **4.956/5.657 to 2.634/3.137 ms p50/p95** with parallel eyes, fast Zstd and compact records; packet bytes fall **2.97%** within that run. Decoded texture data is identical. A separate strict Pico CPU check measures compact's added cost: **0.176 ms** for sequential paired decode. The experimental options remain off; the installed live client is unchanged. These stage checks do not prove displayed FPS or photon latency. [Graphs and exact methods](bench/results/90fps-2026-10-04/overnight-recovery/combined-stereo/README.md) · [Pico check](bench/results/90fps-2026-10-04/overnight-recovery/fast-zstd-pico/README.md).
+
 ### 4 October: faster packet preparation without changing the texture
 
 The latest pinned native q6 CPU probe reduces two-eye packet preparation **3.812/4.597 to 2.505/2.913 ms p50/p95** and packet bytes **2.95%**, combining compact records with Zstd level 1. Decoded ASTC blocks match exactly. The fast option stays off by default; compact packets require a v4 client and its extra Pico decode cost. Bounded assembler recycling and direct-span FEC recovery remove more allocation/copy work; server and Android native-client builds pass. A shorter ASTC reassembly tolerance is available for guarded trials. **These are stage/component checks; the installed client and live profile remain unchanged.** [All graphs, methods and remaining gates](bench/results/90fps-2026-10-04/overnight-recovery/README.md).
