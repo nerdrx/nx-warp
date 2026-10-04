@@ -17,6 +17,10 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: fewer receive allocations, same packet bytes
+
+The production UDP batch pool cuts approximately 40 KiB allocations **95.7%** in a matched desktop loopback probe, with receive time effectively unchanged. A single-shard handoff avoids its temporary vector allocation. Lifetime/order tests and sanitizers pass; PC/server and Android native-client builds pass. Source is pushed, without a new headset installation or live restart. **This is allocator work removed, not proof of fresh FPS or photon latency.** [Raw runs, graph and reproduction](bench/results/90fps-2026-10-04/overnight-recovery/udp-reuse/README.md).
+
 ### 4 October: parallel eye packing and exact independent records
 
 Two source experiments now preserve native **2176² ASTC 8×8** detail. Packing independent eyes concurrently reduces a CPU-only two-eye batch from **3.516 / 4.096 to 2.130 / 2.474 ms p50/p95**. Removing fixed mode bits saves **5.01–5.77% payload**, with **0.055–0.126 ms extra Pico CPU decode per eye** in isolated checks. Both options are **off by default**; PC/Android builds and byte-exact checks pass. These are stage measurements, not live FPS, HEVC parity or photon latency. [Graphs, source, compatibility and limits](bench/results/90fps-2026-10-04/overnight-recovery/README.md).

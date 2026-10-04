@@ -111,6 +111,34 @@ prevent backwards selection; its age cannot prove content or photon latency.
   Current readiness transitions already have fixes; it is not evidence that
   font loading caused the present delivery problem.
 
+## Receive buffers: less allocation work
+
+The production UDP receive path now reuses a bounded 32-slot batch pool. In
+40 matched desktop loopback runs, approximately 40 KiB allocations fall from
+**376 to 16 per 400 batches (95.7% fewer)**. Receive/drain p50 stays around
+**1.94–1.97 µs per 20-datagram batch**, with **2.56 µs p95** for both versions.
+A one-shard handoff also uses a stack span. Packet contents and ordering are
+unchanged; retained owners keep their bytes alive even after cache eviction.
+
+Actual UDP lifetime/order/move/oversize tests pass normally and with ASan/UBSan;
+server/OpenXR and Android native-client builds pass. Source commit
+`27026bbd` is pushed, but no APK was installed and the live processes were not
+restarted. This removes allocator work; it is not a measured headset FPS win.
+[Matched protocol, raw runs, source hashes and reproduction](udp-reuse/README.md).
+
+![UDP allocation counts and matched receive timings](udp-reuse/udp-reuse.png)
+
+## Rejected sender overlap
+
+Preparing the next independent ASTC packet while the previous one sends was
+not a robust tail-latency win. The faithful same-device FIFO simulation submits
+both eyes before either backend wait, matching production. At500Mbps cycle
+p50 improved0.653ms, but p95 worsened0.203ms; at250Mbps median was essentially
+unchanged. These runs had99–100% observed GPU activity and modeled pacing,
+without actual Wi-Fi/Pico delivery. The shared-base production prototype was
+removed after its successful build; the experiment is retained for inspection.
+[Code, sample counts and full comparison](sender-overlap/README.md).
+
 ## Small context-reuse probe
 
 Reusing a strict Zstd decode context saves **33–36 microseconds per eye** on
@@ -123,8 +151,9 @@ production option by itself. The live decoder is unchanged.
 A calibrated GPU/CPU timestamp diagnostic failed its own ordering sanity check:
 its mapped GPU completion appeared after the host fence had already returned,
 beyond the reported calibration uncertainty. Its derived queue-delay numbers
-are discarded. The independent wall-clock and GPU-duration measurements above
-remain separate measurements; they do not identify a driver cause. A later
+are discarded. [The tiny empty/compute probe](gpu-wait-diagnostic/README.md) reproduced
+the failed ordering check. The independent wall-clock and GPU-duration
+measurements above remain separate measurements; they do not identify a driver cause. A later
 read-only snapshot found99% GPU activity while probes were active; it cannot
 separate test work from other applications. Upcoming wait probes serialize
 our own GPU jobs and record load between runs, leaving user apps untouched.
