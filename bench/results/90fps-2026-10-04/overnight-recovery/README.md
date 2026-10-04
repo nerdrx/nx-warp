@@ -111,6 +111,51 @@ prevent backwards selection; its age cannot prove content or photon latency.
   Current readiness transitions already have fixes; it is not evidence that
   font loading caused the present delivery problem.
 
+## Faster packet preparation with the same texture data
+
+A pinned four-condition native q6 CPU probe combines compact records with
+Zstd level 1. Against ordinary level 3, two-eye packet work falls from
+**3.812/4.597 to 2.505/2.913 ms p50/p95**, and combined packet bytes fall
+**2.95%**. Every tested representation expands to identical ASTC blocks.
+Calculated serial CPU-plus-wire cost also falls at 250 and 500 Mbit/s;
+those byte-transfer calculations do not measure network latency or overlap.
+The private fast-Zstd source option is default off. Compact records require a
+v4 client and add the separately measured Pico decode work documented above.
+[Matched source, 800 samples, hashes and limits](zstd-level/README.md).
+
+![Measured packet CPU and calculated transfer cost](zstd-level/results/zstd-level-comparison.png)
+
+## Bounded packet recycling and cheaper FEC recovery
+
+A single spare vector now removes repeated ASTC assembler growth while
+preserving payload inserts and CPU-to-staging copies. In a production-helper
+component probe, growths fall **10,000 to 20 across 1,000 packets** with a
+one-frame-late worker return. Normal, ASan/UBSan and threaded checks pass;
+the full Vulkan lifecycle is not measured. [Ownership checks, counts and
+reproduction](packet-recycle/README.md).
+
+![Packet component growth and logical relocation counts](packet-recycle/packet-recycle.png)
+
+FEC recovery now XORs existing serialized spans directly, without another
+full present-shard blob. A matched host probe reduces median cost across
+condition/block loop averages **1.844 to 1.665 µs** and requested bytes
+**6,135 to 4,727 per recovery**. Malformed testing exposed an existing invalid
+boolean load; checked decoding now rejects it while preserving protocol
+hashes and valid wire bytes. **4,292 production FEC checks** pass normally and
+with halt-on-error ASan/UBSan. This work only applies when recovering losses;
+it is not a measured per-frame saving. [Final source, wire comparisons and
+matched measurements](fec-span-xor/README.md).
+
+## Shorter reassembly tolerance — trial off by default
+
+The generic window can keep a complete ASTC successor behind an incomplete
+older frame until a frame four indices newer is complete. An ASTC-only Android
+property now permits one or zero indices of tolerance, while other codecs keep
+three. Production window tests pass **188 checks** normally and under sanitizers.
+Shorter waits can lose FEC/NACK repairs or reduce matching stereo pairs; no
+headset property was set. Frame indices are not display deadlines, especially
+when source updates slow down. [Policy, arithmetic graph and live test gate](reassembly-trial/README.md).
+
 ## Receive buffers: less allocation work
 
 The production UDP receive path now reuses a bounded 32-slot batch pool. In

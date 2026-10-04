@@ -1,0 +1,86 @@
+{
+  "probe": "native-q6-astc-packet-compression",
+  "source_revision": "27026bbd9b2a3703b7acdffc6e49b88f81b9ab35",
+  "source_tree": "wt-pyrowave-probe",
+  "build": {
+    "standard": "C++20",
+    "optimization": "-O2"
+  },
+  "inputs": [
+    {
+      "role": "dark",
+      "format": "ASTC 8x8",
+      "width": 2176,
+      "height": 2176,
+      "fit": 3,
+      "quality_bits": 6,
+      "astc_sha256": "65acc7e748d3152cbf3c7a2b660cf71f6ca30093215b024c6b495181563edc63",
+      "sidecar_sha256": "13f44d8700d99d11c55ef17d2b02425b3e38e4cb8fb7c62951429a0738deb8b8"
+    },
+    {
+      "role": "forest",
+      "format": "ASTC 8x8",
+      "width": 2176,
+      "height": 2176,
+      "fit": 3,
+      "quality_bits": 6,
+      "astc_sha256": "facfe5271375cb0dd1dca58c5f2ae90076d2e2658f0abd201ba3e91fdc7f9840",
+      "sidecar_sha256": "e5fe66bd8f84e0bcfa395ad4f8bdcd6556eadcea33dcd30850db12c9fa82d9fc"
+    }
+  ],
+  "conditions": [
+    "ordinary_l3",
+    "ordinary_l1",
+    "compact_l1",
+    "compact_l3"
+  ],
+  "warmups_per_condition": 20,
+  "measured_samples_per_condition": 200,
+  "interleave": [
+    "ordinary_l3",
+    "ordinary_l1",
+    "compact_l1",
+    "compact_l3",
+    "compact_l3",
+    "compact_l1",
+    "ordinary_l1",
+    "ordinary_l3"
+  ],
+  "packet_selection": "production q6 Zstd-first; LZ4 on raw only when Zstd errors, is zero, or exceeds half raw size; select Zstd at >=10% saving; compact output must fit compact input",
+  "cpu_affinity": {
+    "pinned_cpu": 3,
+    "logical_cpus": 32,
+    "verified_per_measured_sample": true
+  },
+  "run_utc": {
+    "start": "2026-10-04T18:59:21Z",
+    "end": "2026-10-04T18:59:24Z"
+  },
+  "loadavg_1m": {
+    "before": 8.62,
+    "after": 8.62
+  },
+  "validation": {
+    "production_decode_payload": "all 8 condition-eye outputs exact",
+    "lz4_fallback_calls": 0
+  },
+  "limitations": [
+    "CPU-only",
+    "no GPU/device/network/compositor/headset timing",
+    "wire time is calculated, not measured"
+  ],
+  "artifact_sha256": {
+    "CMakeLists.txt": "53cbe34200d60190c78b14b02ac0278cb7cd1a6ad2bc9ca04b4fdebaee567ae1",
+    "README.md": "03a332dd2a63b543f61ab0b0e554306c82cfa252520fe016309c33e7dc0041d6",
+    "plot.py": "5b913f7c86c60f773806596c3fd5d98179c991fccbda5e01ad336ef1861e772e",
+    "src/main.cpp": "86c4245177bb0ba0d6a7f303b357359957e986aa4970058bb1897e75fdc89570",
+    "include/nxastc_compact.h": "de18cd1eadbebfb4e10f4a9cc8996acce96a7b8e33d0ca83b919455e56479c85",
+    "include/nxastc_motion.h": "1a7bb27ce7f41eccab4e216fe6ae2416a38ab558c2cff4876c7cf57f05c1daaa",
+    "include/nxastc_packet.h": "347c9333a1919905aed93df48a9dd0b77db8a5d0e795bf4f886cd787d5deb4ea",
+    "include/nxastc_packet_decode.h": "ffdfca157c585787377ee001d2c624543cbf40edd14cfd316d8973fc63ac4cb7",
+    "results/run.log": "07f6c43a31b562fbf7fb508fdadd53033805955ff6b8fe37dcb52fe3d71d74af",
+    "results/zstd-compact.csv": "07cffe4eafeeba42e3b433df55ce2518c3f0e95a81e9ac5e94be374b841e5a68",
+    "results/zstd-level-comparison.png": "793022a1ea87d60e6ce9f3320902b0a1fb4fa2a3ad603e52439539ad291a11e3",
+    "results/zstd-level-comparison.svg": "9776bb18868beb36dae476d2c01fb1408e45fc08ccb722423bb53ce46b724ae0"
+  }
+}

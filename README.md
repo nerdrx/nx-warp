@@ -17,6 +17,10 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: faster packet preparation without changing the texture
+
+The latest pinned native q6 CPU probe reduces two-eye packet preparation **3.812/4.597 to 2.505/2.913 ms p50/p95** and packet bytes **2.95%**, combining compact records with Zstd level 1. Decoded ASTC blocks match exactly. The fast option stays off by default; compact packets require a v4 client and its extra Pico decode cost. Bounded assembler recycling and direct-span FEC recovery remove more allocation/copy work; server and Android native-client builds pass. A shorter ASTC reassembly tolerance is available for guarded trials. **These are stage/component checks; the installed client and live profile remain unchanged.** [All graphs, methods and remaining gates](bench/results/90fps-2026-10-04/overnight-recovery/README.md).
+
 ### 4 October: fewer receive allocations, same packet bytes
 
 The production UDP batch pool cuts approximately 40 KiB allocations **95.7%** in a matched desktop loopback probe, with receive time effectively unchanged. A single-shard handoff avoids its temporary vector allocation. Lifetime/order tests and sanitizers pass; PC/server and Android native-client builds pass. Source is pushed, without a new headset installation or live restart. **This is allocator work removed, not proof of fresh FPS or photon latency.** [Raw runs, graph and reproduction](bench/results/90fps-2026-10-04/overnight-recovery/udp-reuse/README.md).
