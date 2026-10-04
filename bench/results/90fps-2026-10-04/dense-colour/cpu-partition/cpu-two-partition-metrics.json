@@ -1,0 +1,60 @@
+{
+  "method": "CPU two-partition probe vs the 512x512 crowd-centre reference; adaptive fallback chooses candidate 8x8 tiles only when squared RGB error improves by at least 5%. Metrics independently recomputed from the supplied decoded outputs.",
+  "source": {
+    "name": "crowd-centre-512.png",
+    "width": 512,
+    "height": 512,
+    "full_extent": {
+      "kind": "entire 512x512 centre crop",
+      "xyxy": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "pixels": [
+        512,
+        512
+      ]
+    },
+    "focus_crop": {
+      "kind": "displayed focus crop",
+      "xyxy": [
+        0,
+        12,
+        512,
+        512
+      ],
+      "pixels": [
+        512,
+        500
+      ]
+    }
+  },
+  "records": [
+    {
+      "variant": "one-partition baseline",
+      "zstd3_block_bytes": 29240,
+      "full_psnr_db": 24.851655281549277,
+      "full_mae": 6.922756195068359,
+      "display_crop_psnr_db": 24.79692945588111,
+      "display_crop_mae": 6.9902786458333335
+    },
+    {
+      "variant": "two-partition candidate",
+      "zstd3_block_bytes": 31270,
+      "full_psnr_db": 25.094804153806965,
+      "full_mae": 8.135938008626303,
+      "display_crop_psnr_db": 25.039656528833113,
+      "display_crop_mae": 8.208807291666666
+    },
+    {
+      "variant": "5% tile-gated fallback",
+      "zstd3_block_bytes": 32975,
+      "full_psnr_db": 25.648660192524638,
+      "full_mae": 6.698778788248698,
+      "display_crop_psnr_db": 25.59559257574672,
+      "display_crop_mae": 6.7627747395833335
+    }
+  ]
+}

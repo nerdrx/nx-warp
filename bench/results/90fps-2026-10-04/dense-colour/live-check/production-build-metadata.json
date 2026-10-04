@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-04",
+  "runtime": {
+    "server_pid": "1551212",
+    "server_executable": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/server/wivrn-server",
+    "running_executable_path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/server/wivrn-server",
+    "server_sha256": "fa8d04f5ef60732b9598c520067d06c775eedd5316d9d2a078b046a7a3f7b5c7",
+    "running_process_sha256": "fa8d04f5ef60732b9598c520067d06c775eedd5316d9d2a078b046a7a3f7b5c7",
+    "wayvr_pid": "1551761",
+    "wayvr_executable": "/usr/bin/wayvr",
+    "initial_start": "first WayVR launch hit a startup race; retry process is the running PID recorded above",
+    "android_apk": "unchanged per root report"
+  },
+  "build_validation": {
+    "commit": "668eea70 (root-reported)",
+    "spirv": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/server/astc_encode.spv",
+    "spirv_sha256": "2a8425eaccbd36590794f7bad23814e92a9c605bc8928b260f2c181124055d5b",
+    "spirv_validation": "spirv-val --target-env vulkan1.3 passed",
+    "shader_source": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/shaders/astc_encode.comp",
+    "shader_sha256": "6a5f7bdfb43d4a9e785b93193658079db989f0ad6b68adeb5cf6451391b8c7f1",
+    "inverse_include": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/shaders/astc_encode_inverse.glsl",
+    "inverse_sha256": "fbaab6cf2d2e79e2f5e7d1183266072c5437ce82eb3a7714a414a69faca65bfc",
+    "pinned_vulkan_include_dir": "/run/media/nerdrx/Lex/claude/tools/local/include",
+    "header_version": 309,
+    "headers": {
+      "vulkan_core.h": "39f358bb99f7be5206524d119de4a5b5ab5c515c329c2857ff395d37e6387b4c",
+      "vulkan.h": "c3c0635de74ae3dd38268d6a4cb767b36e07135e68fa6f64b777e2d4d2db7d1a",
+      "vk_platform.h": "2fa47dd60cd94eb6fd8d7615953878f5664eb57fdff3b1b9b856c1d8f1496737"
+    },
+    "cmake_vulkan_include_dir": "/run/media/nerdrx/Lex/claude/tools/local/include"
+  },
+  "validation_note": "Build binary hash matches /proc server executable. Header core version is 1.4.309. Excerpts are bounded; full source logs are not copied.",
+  "production_source": {
+    "commit": "668eea70 (root-reported, pushed)",
+    "algorithm": "projected PCA line endpoint selection in astc_encode.comp; minimal shader change; baseline uses source-pixel endpoint min/max",
+    "reference_harness": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-projected-line-20261004",
+    "quality_results": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-projected-line-20261004/results/quality.json"
+  },
+  "live_capture": "See paired/metadata.json and bounded paired log extracts; no full logs included."
+}

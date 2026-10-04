@@ -1,0 +1,94 @@
+{
+  "title": "ASTC two-partition CEM6 RGB-scale probe",
+  "generated": "2026-10-04",
+  "scope": "Offline PC Vulkan only; no production, headset, or runtime changes.",
+  "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "settings": {
+    "ASTC block": "8x8, raw 128-bit",
+    "quality": 6,
+    "fit": 3,
+    "resident input": true,
+    "warmup": 12,
+    "timed samples": 30,
+    "candidate partitions": "fixed seeds 1, 2, 3",
+    "decode validation": "Basis ASTC host decoder; all outputs decoded successfully"
+  },
+  "basis_mode_facts": {
+    "mode_name": "RGB-scale is endpoint mode 6 in Basis decoder; literal mode 4 is luminance-alpha.",
+    "block_bits": {
+      "two_partition_shared_CEM6_config": 29,
+      "4x4x3bit_weights": 48,
+      "endpoint_payload_available": 51
+    },
+    "endpoint_values": 8,
+    "basis_auto_range": "computeMaximumRangeISEParams(51,8) selects quint4: ceil(8*7/3)+8*4 = 19+32 = 51 bits; 80 codes per value.",
+    "packing": "Basis g_astc_quint_encode mapping and exact quint4 unquantize formula; two complete 3-value groups use 19 bits each, final 2-value group uses 13 bits."
+  },
+  "sources": {
+    "dark": {
+      "origin": "/home/nerdrx/.local/share/Steam/steamapps/compatdata/438100/pfx/drive_c/users/steamuser/Pictures/VRChat/2026-08/VRChat_2026-08-05_04-26-36.944_1920x1080.png",
+      "png": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/dark-native-1920x1080.png",
+      "png_sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-rgb-scale-20261004/results/dark-1920x1080.rgba",
+      "rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "dimensions": "1920x1080 RGBA8",
+      "conversion": "RGB source PNG decoded and alpha=255 appended per pixel"
+    },
+    "forest": {
+      "origin": "/home/nerdrx/.local/share/Steam/steamapps/compatdata/438100/pfx/drive_c/users/steamuser/Pictures/VRChat/2026-09/VRChat_2026-09-17_19-23-01.564_1920x1080.png",
+      "png": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/forest-native-1920x1080.png",
+      "png_sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-rgb-scale-20261004/results/forest-1920x1080.rgba",
+      "rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "dimensions": "1920x1080 RGBA8",
+      "conversion": "RGB source PNG decoded and alpha=255 appended per pixel"
+    }
+  },
+  "results": {
+    "dark": {
+      "projected-line": {
+        "rgb_mse": 61.13573,
+        "rgb_psnr_db": 30.2679,
+        "rgb_mae": 2.89811,
+        "full_astc_zstd3_bytes": 208269,
+        "gpu_encode_median_ms": 0.0156,
+        "gpu_encode_p95_ms": 0.0202,
+        "mode_0x053_blocks": 0,
+        "mode_0x0f3_blocks": 32400
+      },
+      "two-partition-CEM6": {
+        "rgb_mse": 60.89748,
+        "rgb_psnr_db": 30.2848,
+        "rgb_mae": 2.89563,
+        "full_astc_zstd3_bytes": 208557,
+        "gpu_encode_median_ms": 0.42996,
+        "gpu_encode_p95_ms": 0.44756,
+        "mode_0x053_blocks": 96,
+        "mode_0x0f3_blocks": 32304
+      }
+    },
+    "forest": {
+      "projected-line": {
+        "rgb_mse": 13.95778,
+        "rgb_psnr_db": 36.6826,
+        "rgb_mae": 1.73418,
+        "full_astc_zstd3_bytes": 151145,
+        "gpu_encode_median_ms": 0.02652,
+        "gpu_encode_p95_ms": 0.02704,
+        "mode_0x053_blocks": 0,
+        "mode_0x0f3_blocks": 32400
+      },
+      "two-partition-CEM6": {
+        "rgb_mse": 13.94838,
+        "rgb_psnr_db": 36.6856,
+        "rgb_mae": 1.73378,
+        "full_astc_zstd3_bytes": 151157,
+        "gpu_encode_median_ms": 0.36156,
+        "gpu_encode_p95_ms": 0.36436,
+        "mode_0x053_blocks": 4,
+        "mode_0x0f3_blocks": 32396
+      }
+    }
+  },
+  "decision": "Reject: only +0.017dB dark and +0.003dB forest versus projected-line; GPU encode +0.404ms dark and +0.335ms forest. Zstd3 grows 288/12 bytes."
+}

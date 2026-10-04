@@ -1,0 +1,89 @@
+{
+  "method": "Projected-line q6 decoded output hashes and full-frame quality scored against exact native inputs. q6 Zstd3 byte counts use the paired production-mode encoder results/quality.json rows. GPU timing excluded.",
+  "records": [
+    {
+      "scene": "dark",
+      "variant": "baseline",
+      "quality": 6,
+      "source": "full native 1920x1080 photo",
+      "source_sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "source_rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "astc_sha256": "6d11e45521f51b966dc1e471d24e758aa486a7cbb7f19212164e56801ecd94c5",
+      "decoded_rgba_sha256": "0de67ea8ea16f7944cf2e681d7f1cded3e1cfd1a38bc69a416f328b2ffdea429",
+      "block": "8x8 CEM8",
+      "extent_xyxy": [
+        0,
+        0,
+        1920,
+        1080
+      ],
+      "psnr_db": 29.195891092113637,
+      "mae": 3.198928433641975,
+      "zstd3_block_bytes": 207835,
+      "zstd3_method": "Encoder results/quality.json Zstd3 block-payload count; raw ASTC file header excluded."
+    },
+    {
+      "scene": "dark",
+      "variant": "projected_line",
+      "quality": 6,
+      "source": "full native 1920x1080 photo",
+      "source_sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "source_rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "astc_sha256": "cc1441f64b92adc46f6243107f32fe51d743adb4cb20a92eac61bb4d78bb1e9a",
+      "decoded_rgba_sha256": "9c529e536b01c796634088302554deade0d9a297a4fa62c7c167f73702d2832d",
+      "block": "8x8 CEM8",
+      "extent_xyxy": [
+        0,
+        0,
+        1920,
+        1080
+      ],
+      "psnr_db": 30.267852610326376,
+      "mae": 2.8981081211419752,
+      "zstd3_block_bytes": 208254,
+      "zstd3_method": "Encoder results/quality.json Zstd3 block-payload count; raw ASTC file header excluded."
+    },
+    {
+      "scene": "forest",
+      "variant": "baseline",
+      "quality": 6,
+      "source": "full native 1920x1080 photo",
+      "source_sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "source_rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "astc_sha256": "7bb64b3ba91eeae5735590a8d22aa1a50427b44e6411c63bb0a6358933b4c64b",
+      "decoded_rgba_sha256": "90e8c0e7b8a38800ed45f55dd21b62c05c64213dc4b8836b6dcce80d5b601d42",
+      "block": "8x8 CEM8",
+      "extent_xyxy": [
+        0,
+        0,
+        1920,
+        1080
+      ],
+      "psnr_db": 35.95494268561086,
+      "mae": 1.822263213734568,
+      "zstd3_block_bytes": 151075,
+      "zstd3_method": "Encoder results/quality.json Zstd3 block-payload count; raw ASTC file header excluded."
+    },
+    {
+      "scene": "forest",
+      "variant": "projected_line",
+      "quality": 6,
+      "source": "full native 1920x1080 photo",
+      "source_sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "source_rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "astc_sha256": "fdb43ae211b477c3e02c45fefcc3a025f0127b6af40fc9ee5f5ff7a3a5c59fab",
+      "decoded_rgba_sha256": "621204e791f152ea19669bbe71d4ee59ce7f43c5051098ed31f21dbdc61f4636",
+      "block": "8x8 CEM8",
+      "extent_xyxy": [
+        0,
+        0,
+        1920,
+        1080
+      ],
+      "psnr_db": 36.68263986205982,
+      "mae": 1.7341806520061729,
+      "zstd3_block_bytes": 151125,
+      "zstd3_method": "Encoder results/quality.json Zstd3 block-payload count; raw ASTC file header excluded."
+    }
+  ]
+}

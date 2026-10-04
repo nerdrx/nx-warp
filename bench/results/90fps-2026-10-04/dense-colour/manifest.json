@@ -1,0 +1,389 @@
+{
+  "title": "Dense-colour ASTC study draft",
+  "date": "2026-10-04",
+  "status": "PC colour fit integrated; bounded offline and stationary checks; moving-scene quality unverified",
+  "inputs": [
+    {
+      "cohort": "dense block-size and chroma",
+      "name": "crowd-500-reference.png",
+      "sha256": "3505d829c28eb39b3ef18b8eed18d3dc4f39470d4e40d49d419c18e652b6888f",
+      "dimensions": [
+        2176,
+        800
+      ],
+      "origin": "undocumented; requested temp original absent; prior foveation unknown",
+      "used_in_report": true
+    },
+    {
+      "cohort": "legacy dense metrics only; excluded from chart",
+      "name": "dark-left.png",
+      "sha256": "d77294def81c5cff2f203655198a160ad0aac930170f293af94c4485967bd024",
+      "dimensions": [
+        2176,
+        2176
+      ],
+      "status": "legacy source; replaced by exact native photo inputs",
+      "used_in_report": false
+    },
+    {
+      "cohort": "legacy dense metrics only; excluded from chart",
+      "name": "forest-left.png",
+      "sha256": "81f6adcf561f7cc88b5687ba9ce5deb590c8b1951cc68504218b893b870280cf",
+      "dimensions": [
+        2176,
+        2176
+      ],
+      "status": "legacy source; replaced by exact native photo inputs",
+      "used_in_report": false
+    },
+    {
+      "cohort": "CPU two-partition",
+      "name": "crowd-centre-512.png",
+      "sha256": "e11ebbf159b5ef058dc330cc99fb9528e68681b22316d0a2594ca80f72a36b2c",
+      "dimensions": [
+        512,
+        512
+      ],
+      "origin": "separate centre-crop source; relationship to original crowd capture not established",
+      "used_in_report": true
+    },
+    {
+      "cohort": "exact native photo; projected-line q2/q4/q6 and partition q6",
+      "name": "VRChat_2026-08-05_04-26-36.944_1920x1080.png",
+      "sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "operation": "byte-for-byte copy; no crop, resize, foveation, or padding",
+      "used_in_report": true
+    },
+    {
+      "cohort": "exact native photo; projected-line q2/q4/q6 and partition q6",
+      "name": "VRChat_2026-09-17_19-23-01.564_1920x1080.png",
+      "sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "operation": "byte-for-byte copy; no crop, resize, foveation, or padding",
+      "used_in_report": true
+    }
+  ],
+  "crop_extents": [
+    {
+      "asset": "dense-colour/crowd-q6-fair-crop.png",
+      "source": "crowd-500-reference.png",
+      "xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "pixels": [
+        500,
+        400
+      ],
+      "display": "1:1"
+    },
+    {
+      "asset": "chroma-probe/crowd-chroma-edge-1to1.png",
+      "source": "crowd-500-reference.png",
+      "xyxy": [
+        928,
+        250,
+        1248,
+        470
+      ],
+      "pixels": [
+        320,
+        220
+      ],
+      "display": "1:1"
+    },
+    {
+      "asset": "cpu-partition/crowd-crop-compare.png",
+      "source": "crowd-centre-512.png",
+      "xyxy": [
+        0,
+        12,
+        512,
+        512
+      ],
+      "pixels": [
+        512,
+        500
+      ],
+      "display": "1:1"
+    },
+    {
+      "asset": "cpu-partition/crowd-q6-fallback.png",
+      "source": "crowd-centre-512.png",
+      "xyxy": [
+        0,
+        12,
+        512,
+        512
+      ],
+      "pixels": [
+        512,
+        500
+      ],
+      "display": "1:1"
+    },
+    {
+      "asset": "exact-q6/dark-q6-comparison.png",
+      "source": "dark exact native 1920x1080 photo",
+      "xyxy": "comparison crop coordinates not recorded in source harness",
+      "display": "source, current-fit decode, projected-line decode"
+    },
+    {
+      "asset": "exact-q6/forest-q6-comparison.png",
+      "source": "forest exact native 1920x1080 photo",
+      "xyxy": "comparison crop coordinates not recorded in source harness",
+      "display": "source, current-fit decode, projected-line decode"
+    }
+  ],
+  "cohort_policy": "Original three-panel crowd/chroma/CPU figure keeps cohorts separate. Exact native dark/forest q2/q4/q6 measurements use their own two-panel full-source chart. q6 multi-variant figures use full ASTC-file Zstd3 counts including the 16-byte header; they are kept separate from block-payload counts.",
+  "pending_inputs": {
+    "native_crowd": "direct original absent; source origin and prior foveation unresolved",
+    "headset_motion_and_quality": "fresh paired check was stationary with no scene; active motion and perceived-image validation remain open",
+    "pacing_audit": "root review pending"
+  },
+  "included_assets": [
+    {
+      "path": "NEXT.md",
+      "bytes": 1119,
+      "sha256": "31ec9193ef156f4f16cbf038cc990a55fd7f35356584b05dcd78c73603d86566"
+    },
+    {
+      "path": "README.md",
+      "bytes": 14571,
+      "sha256": "1c6b510cb73f34e77dcf360b2492480ccf34e9a57a0b9442dfa643094bbf4527"
+    },
+    {
+      "path": "build_report.py",
+      "bytes": 9557,
+      "sha256": "20a89dcdb9022ac624e1417cb8d359437967f800c7b4124dad54f5fab4b41be2"
+    },
+    {
+      "path": "chroma-probe/README.md",
+      "bytes": 2824,
+      "sha256": "71a6c026d3b2fffd1aed168f0aec7916d444b42ae29f3c93a891ab9c8b98fe41"
+    },
+    {
+      "path": "chroma-probe/compare_source_chroma.py",
+      "bytes": 7006,
+      "sha256": "36d212521c6154ab14d94806cd21efb939ba0f03126ff2286b7900093f7b4298"
+    },
+    {
+      "path": "chroma-probe/crowd-chroma-edge-1to1.png",
+      "bytes": 412638,
+      "sha256": "1e3be8715590c6d909cae7dbae515d8317730b067e0b347faa95fbc28a6e2cd2"
+    },
+    {
+      "path": "chroma-probe/source-chroma.csv",
+      "bytes": 1648,
+      "sha256": "9dececee88cceed1ebeadb9bb1a3c1b58f899f9e64c146458c18765407fa3993"
+    },
+    {
+      "path": "cpu-partition/baseline.astc.csv",
+      "bytes": 485,
+      "sha256": "db14c3dd73da8336f111266b995a216788a5542145c7467ee1eb8bb01c580941"
+    },
+    {
+      "path": "cpu-partition/baseline.astc.json",
+      "bytes": 606,
+      "sha256": "c1be884393fd3339969558db71905ceca769863b02de982a98ca8989163c553f"
+    },
+    {
+      "path": "cpu-partition/cpu-two-partition-metrics.csv",
+      "bytes": 365,
+      "sha256": "2a7ae2f98104fd858dd7cf29b4e27d85e98dcf4edf82f0cd49a2c22167c4fb79"
+    },
+    {
+      "path": "cpu-partition/cpu-two-partition-metrics.json",
+      "bytes": 1532,
+      "sha256": "ab7f9890b605862cdd47e28495ddfbc081d37f1a652eedfd99fc4f500feccdc8"
+    },
+    {
+      "path": "cpu-partition/crowd-crop-compare.png",
+      "bytes": 548204,
+      "sha256": "95635fc910c3c0afd07545b95baa97b49c0d176e438874c8b9cab68a390421fa"
+    },
+    {
+      "path": "cpu-partition/crowd-q6-fallback.png",
+      "bytes": 382798,
+      "sha256": "c3af31a5cd579988dbf572957cccb5771acc37fd34dc443cfe042177970deb79"
+    },
+    {
+      "path": "cpu-partition/partition-lut.txt",
+      "bytes": 1270,
+      "sha256": "b6d64dd97ce01556c1f1f00517aa61fd60ae50530336dc277cacbe47e7492b6c"
+    },
+    {
+      "path": "cpu-partition/probe.cpp",
+      "bytes": 6493,
+      "sha256": "c3737b8a4148397427cadbdb524443fe2e5e2bb74a488a0945b2bef89453319f"
+    },
+    {
+      "path": "cpu-partition/score.py",
+      "bytes": 1173,
+      "sha256": "70112301ce56b3a8b4f67272db1fe3496840a19dc477f46c08964c35dad51f7d"
+    },
+    {
+      "path": "dense-colour/crowd-q6-fair-crop.png",
+      "bytes": 277039,
+      "sha256": "45338b592377dc21131e844f06453b42cc120348c37d9be2db90734bdc2ade7d"
+    },
+    {
+      "path": "dense-colour/fair-results.json",
+      "bytes": 6107,
+      "sha256": "9b5e57047f6cc84c9271e809a32f32ebd75e7cba96c066032046c667bca01b77"
+    },
+    {
+      "path": "dense-colour/generate_inverse.py",
+      "bytes": 1310,
+      "sha256": "f7bfc123a1180e0f7c660bd799040b0d76206247fb726ff605f7ca1bfd78d29c"
+    },
+    {
+      "path": "dense-colour/run_fair.py",
+      "bytes": 3048,
+      "sha256": "873077089ae46d38c2307c5dd51c07c94bbc3a2d6143c4cf6ed348b1ec12d431"
+    },
+    {
+      "path": "endpoint-refit/README.md",
+      "bytes": 1241,
+      "sha256": "82014e0f6a5ddf576a605c47f4c6bd1d486948dbfe92068f1662b17e0b626055"
+    },
+    {
+      "path": "endpoint-refit/comparison.csv",
+      "bytes": 726,
+      "sha256": "4d6887a461332740be17162ef608ca05b540252f1f27639b14253d6ddb20c6e4"
+    },
+    {
+      "path": "exact-q6/dark-q6-comparison.png",
+      "bytes": 833188,
+      "sha256": "54c49607b5ddb27365ed90bf6d83cb004a3fcd5d2a06205b4972a7bafd8a6846"
+    },
+    {
+      "path": "exact-q6/forest-q6-comparison.png",
+      "bytes": 680159,
+      "sha256": "d681972db9a891db44238c9f05892cfa745dc484bd970607808527047ea59991"
+    },
+    {
+      "path": "exact-q6/gpu-partition-comparison.csv",
+      "bytes": 1064,
+      "sha256": "de330c0f3961eeeb705130d09f37657525f91216e9a9332f84faec19c9aa2178"
+    },
+    {
+      "path": "exact-q6/gpu-partition-manifest.json",
+      "bytes": 3907,
+      "sha256": "67a91754f4185fad1beb94696e6686032c4a7c01586c3fc5306efdb98ea73ac9"
+    },
+    {
+      "path": "exact-q6/results.csv",
+      "bytes": 2031,
+      "sha256": "e837eaaa874d2495a588475c93edc3a230178aaa89c0cda730d6ee7fdb77fa29"
+    },
+    {
+      "path": "exact-q6/results.json",
+      "bytes": 3572,
+      "sha256": "7850b6a8a703ba5670729276449f19c0f49a735764c58ad9a820db42066f9506"
+    },
+    {
+      "path": "exact-q6/validate_motion.py",
+      "bytes": 6765,
+      "sha256": "54f7101280d58a9e40e4322f1ad67838ea494635d9db2b98b1982b127dddd1af"
+    },
+    {
+      "path": "exact-q6/validation.json",
+      "bytes": 11040,
+      "sha256": "21967545f793cf64d2597a0f9efd6bd90ae9f5b41e85864196b43864b5674a9e"
+    },
+    {
+      "path": "figures/endpoint-refit-quality-vs-zstd3.csv",
+      "bytes": 322,
+      "sha256": "0316b13c36cda80c9c7eb029cdb70537741387fb1755a7073c6ce97c8ca01adb"
+    },
+    {
+      "path": "figures/endpoint-refit-quality-vs-zstd3.png",
+      "bytes": 108504,
+      "sha256": "eee02b55d72abb65dcbb4df39583201067aef1a4dfc8736128567f3221f597da"
+    },
+    {
+      "path": "figures/native-photo-quality-vs-zstd3.png",
+      "bytes": 154715,
+      "sha256": "47d2892e75a7741fd83288bc1451e91ff6a16a8a3190bffbd7893577e0bf0ae9"
+    },
+    {
+      "path": "figures/quality-vs-zstd3.csv",
+      "bytes": 1855,
+      "sha256": "5440a268bffaffe77ec12cf1b7b2e954ec74ec3c7022d6211ce6891334087457"
+    },
+    {
+      "path": "figures/quality-vs-zstd3.png",
+      "bytes": 177296,
+      "sha256": "db0a2000f50d37568a5ad6d0124ddc22a0f1bea4f57be512e6d8e3c1f08f699d"
+    },
+    {
+      "path": "live-check/README.md",
+      "bytes": 841,
+      "sha256": "0c8110e8e75658bbd55c0f396ad3dd70dde4ae12923e2cde5c553b1f063f969d"
+    },
+    {
+      "path": "live-check/paired/client-extract.txt",
+      "bytes": 13832,
+      "sha256": "c400be2a3c757869ee176d80cd0dd64542f05b714b50e36ce9603589f081aae6"
+    },
+    {
+      "path": "live-check/paired/metadata.json",
+      "bytes": 2072,
+      "sha256": "ac9a924bc6e3264ac244d8aeb71cc99ef7a8a41c9274218cd848971d9a880343"
+    },
+    {
+      "path": "live-check/paired/server-extract.txt",
+      "bytes": 1472,
+      "sha256": "1fd030119a759aa304979a623b7c9f2a0d380c07ef649f753a698cbd29bd0864"
+    },
+    {
+      "path": "live-check/production-build-metadata.json",
+      "bytes": 2676,
+      "sha256": "f5f47aa73d85a296a9c59338c46ee610225b32c119b3111f9353bf8859a5d9f4"
+    },
+    {
+      "path": "rgb-scale/README.md",
+      "bytes": 1467,
+      "sha256": "8edcf9d4f91bc5ffcee3836173f127442f0d78c0ed057dd8026b9119a23537dd"
+    },
+    {
+      "path": "rgb-scale/comparison.csv",
+      "bytes": 798,
+      "sha256": "ae9cb07e771174938cb15fdd99fe6c4acc15919b5e2ab6ca9371312e27c5fb8e"
+    },
+    {
+      "path": "exact-q6/all-quality-rungs.json",
+      "bytes": 3628,
+      "sha256": "8bc3323ebe7388132e10290f4f89dd3d8aea9a4062e5297606b95af37c689b29"
+    },
+    {
+      "path": "exact-q6/all-quality-rungs.csv",
+      "bytes": 1867,
+      "sha256": "beb2a13ab3f0509a2402b2352629d98b2d75fc5746163f9ba74ebe804568640b"
+    }
+  ],
+  "runtime_status": {
+    "pc_fit": "projected PCA line endpoint selection in root-reported pushed WiVRn 668eea70",
+    "desktop_server": "built with pinned Vulkan headers 1.4.309, Vulkan 1.3 SPIR-V passed validation, server restarted; live executable hash matches on-disk binary",
+    "live_capture": "four stationary wakeups; 5 short client windows and 12 untimestamped non-black server encoder means; no motion/quality proof",
+    "android_apk": "unchanged per root report"
+  },
+  "live_capture": {
+    "metadata": "live-check/paired/metadata.json",
+    "client_excerpt": "live-check/paired/client-extract.txt",
+    "server_excerpt": "live-check/paired/server-extract.txt",
+    "note": "server U_LOG has no wall clock and is not aligned to individual client render windows"
+  }
+}

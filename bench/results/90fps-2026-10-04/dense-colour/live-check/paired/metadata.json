@@ -1,0 +1,59 @@
+{
+  "start_utc": "2026-10-04T02:14:52.870907+00:00",
+  "end_utc": "2026-10-04T02:15:05.861960+00:00",
+  "protocol": "Four wakeups at3s intervals, stationary existingWayVR; no scene launch; headset sleeps offhead",
+  "server_nonblack_windows": 12,
+  "server_idle_black_windows": 0,
+  "client_pid": 24823,
+  "limits": "Four wakeups at 3-second intervals; headset stationary and asleep off-head between wakeups; no scene launched. Not motion, complex-scene 90 FPS, photon latency, or image-quality proof.",
+  "render_windows": [
+    {
+      "time_local": "04:14:53.941",
+      "iterations_2s": 180,
+      "render_hz": 89.8,
+      "fresh_source_frames": 173,
+      "app_gpu_ms": 1.8
+    },
+    {
+      "time_local": "04:14:55.945",
+      "iterations_2s": 179,
+      "render_hz": 89.3,
+      "fresh_source_frames": 178,
+      "app_gpu_ms": 1.9
+    },
+    {
+      "time_local": "04:14:57.948",
+      "iterations_2s": 179,
+      "render_hz": 89.4,
+      "fresh_source_frames": 175,
+      "app_gpu_ms": 2.2
+    },
+    {
+      "time_local": "04:14:59.954",
+      "iterations_2s": 180,
+      "render_hz": 89.7,
+      "fresh_source_frames": 180,
+      "app_gpu_ms": 2.7
+    },
+    {
+      "time_local": "04:15:01.960",
+      "iterations_2s": 179,
+      "render_hz": 89.2,
+      "fresh_source_frames": 178,
+      "app_gpu_ms": 2.7
+    }
+  ],
+  "source_excerpt_sha256": {
+    "client-extract.txt": "c400be2a3c757869ee176d80cd0dd64542f05b714b50e36ce9603589f081aae6",
+    "server-extract.txt": "1fd030119a759aa304979a623b7c9f2a0d380c07ef649f753a698cbd29bd0864"
+  },
+  "paired_capture_note": "The client render logs carry local time; U_LOG server means have no wall-clock timestamps, so individual packet means cannot be aligned to individual app windows.",
+  "server_packet_summary": {
+    "windows": 12,
+    "nonblack_windows": 12,
+    "idle_black_windows": 0,
+    "representative_q6_zstd_bytes_per_eye": "about 125k during most active sample; later transition about 81k",
+    "wall_clock_timestamps": false,
+    "source": "paired server-extract.txt and supplied U_LOG aggregate"
+  }
+}

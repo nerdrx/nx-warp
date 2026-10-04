@@ -1,0 +1,437 @@
+{
+  "purpose": "offline synthetic pan phase and endpoint edge validation",
+  "photos_are_private_inputs": true,
+  "motion_alignment_excludes_border_px": 16,
+  "scenes": {
+    "dark": {
+      "motion": [
+        {
+          "mode": "base",
+          "quality": 2,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 26.34374
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 26.34516
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 26.33189
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 26.36725
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 26.35876
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 26.36066
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 26.33271
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 26.35001
+            }
+          ],
+          "mean_psnr_rgb_db": 26.34877,
+          "motion_aligned_adjacent_rms_rgb": 7.27724,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 127941.75
+        },
+        {
+          "mode": "projected",
+          "quality": 2,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 26.85726
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 26.86061
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 26.85062
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 26.86205
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 26.84452
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 26.86316
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 26.8558
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 26.85959
+            }
+          ],
+          "mean_psnr_rgb_db": 26.8567,
+          "motion_aligned_adjacent_rms_rgb": 6.82,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 128864.62
+        },
+        {
+          "mode": "base",
+          "quality": 6,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 29.19589
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 29.19239
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 29.17694
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 29.22508
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 29.21318
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 29.22817
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 29.1747
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 29.20341
+            }
+          ],
+          "mean_psnr_rgb_db": 29.20122,
+          "motion_aligned_adjacent_rms_rgb": 5.34138,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 208528.88
+        },
+        {
+          "mode": "projected",
+          "quality": 6,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 30.26785
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 30.26649
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 30.25024
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 30.27499
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 30.24658
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 30.2776
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 30.2657
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 30.25721
+            }
+          ],
+          "mean_psnr_rgb_db": 30.26333,
+          "motion_aligned_adjacent_rms_rgb": 4.54276,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 208951.88
+        }
+      ],
+      "approx_420_q6": [
+        {
+          "mode": "base",
+          "input_vs_original_psnr_rgb_db": 33.87805,
+          "decoded_vs_original_psnr_rgb_db": 29.15732,
+          "decoded_vs_420_input_psnr_rgb_db": 30.51519,
+          "raw_astc_payload_bytes": 518400,
+          "zstd3_bytes": 203424
+        },
+        {
+          "mode": "projected",
+          "input_vs_original_psnr_rgb_db": 33.87805,
+          "decoded_vs_original_psnr_rgb_db": 30.00092,
+          "decoded_vs_420_input_psnr_rgb_db": 31.63797,
+          "raw_astc_payload_bytes": 518400,
+          "zstd3_bytes": 202241
+        }
+      ]
+    },
+    "forest": {
+      "motion": [
+        {
+          "mode": "base",
+          "quality": 2,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 28.6712
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 28.65648
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 28.66075
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 28.67084
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 28.67271
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 28.66972
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 28.66759
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 28.67011
+            }
+          ],
+          "mean_psnr_rgb_db": 28.66742,
+          "motion_aligned_adjacent_rms_rgb": 4.29831,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 80627.38
+        },
+        {
+          "mode": "projected",
+          "quality": 2,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 28.78373
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 28.76749
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 28.765
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 28.78007
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 28.76142
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 28.77616
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 28.76692
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 28.76927
+            }
+          ],
+          "mean_psnr_rgb_db": 28.77126,
+          "motion_aligned_adjacent_rms_rgb": 4.20829,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 80846.12
+        },
+        {
+          "mode": "base",
+          "quality": 6,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 35.95494
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 35.89041
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 35.87268
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 35.95768
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 35.98313
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 35.94639
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 35.93664
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 35.92833
+            }
+          ],
+          "mean_psnr_rgb_db": 35.93377,
+          "motion_aligned_adjacent_rms_rgb": 2.77735,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 151377.0
+        },
+        {
+          "mode": "projected",
+          "quality": 6,
+          "phases": [
+            {
+              "phase": 0,
+              "psnr_rgb_db": 36.68264
+            },
+            {
+              "phase": 1,
+              "psnr_rgb_db": 36.59834
+            },
+            {
+              "phase": 2,
+              "psnr_rgb_db": 36.56615
+            },
+            {
+              "phase": 3,
+              "psnr_rgb_db": 36.66737
+            },
+            {
+              "phase": 4,
+              "psnr_rgb_db": 36.57294
+            },
+            {
+              "phase": 5,
+              "psnr_rgb_db": 36.63609
+            },
+            {
+              "phase": 6,
+              "psnr_rgb_db": 36.57216
+            },
+            {
+              "phase": 7,
+              "psnr_rgb_db": 36.58766
+            }
+          ],
+          "mean_psnr_rgb_db": 36.61042,
+          "motion_aligned_adjacent_rms_rgb": 2.61135,
+          "synthetic_grid_stability_only": true,
+          "mean_raw_astc_payload_bytes": 518400.0,
+          "mean_zstd3_payload_bytes": 151547.62
+        }
+      ],
+      "approx_420_q6": [
+        {
+          "mode": "base",
+          "input_vs_original_psnr_rgb_db": 45.8194,
+          "decoded_vs_original_psnr_rgb_db": 36.00034,
+          "decoded_vs_420_input_psnr_rgb_db": 36.38965,
+          "raw_astc_payload_bytes": 518400,
+          "zstd3_bytes": 130268
+        },
+        {
+          "mode": "projected",
+          "input_vs_original_psnr_rgb_db": 45.8194,
+          "decoded_vs_original_psnr_rgb_db": 36.4755,
+          "decoded_vs_420_input_psnr_rgb_db": 36.88674,
+          "raw_astc_payload_bytes": 518400,
+          "zstd3_bytes": 129805
+        }
+      ]
+    }
+  },
+  "edge_cases": [
+    {
+      "case": "constant-1x1-q0",
+      "mode": "base",
+      "valid": true,
+      "decoded_pixel_rgb": [
+        130,
+        130,
+        130
+      ],
+      "raw_payload_bytes": 16,
+      "zstd3_bytes": 29
+    },
+    {
+      "case": "constant-1x1-q0",
+      "mode": "projected",
+      "valid": true,
+      "decoded_pixel_rgb": [
+        130,
+        130,
+        130
+      ],
+      "raw_payload_bytes": 16,
+      "zstd3_bytes": 29
+    },
+    {
+      "case": "odd-17x9-q6",
+      "mode": "base",
+      "valid": true,
+      "psnr_rgb_db": 16.7325,
+      "raw_payload_bytes": 96,
+      "zstd3_bytes": 109
+    },
+    {
+      "case": "odd-17x9-q6",
+      "mode": "projected",
+      "valid": true,
+      "psnr_rgb_db": 17.46702,
+      "raw_payload_bytes": 96,
+      "zstd3_bytes": 109
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "title": "ASTC q6 fixed-grid partition probe \u2014 exact user sources",
+  "generated": "2026-10-04",
+  "scope": "Offline desktop Vulkan harness only; no production shader or Pico validation.",
+  "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "settings": {
+    "block": "ASTC 8x8, raw 128-bit blocks",
+    "quality": 6,
+    "fit": 3,
+    "workload": "resident input, 1920x1080",
+    "samples": 30,
+    "warmup": 12,
+    "decoder": "Basis ASTC host decoder; all reported ASTC outputs decoded successfully"
+  },
+  "sources": {
+    "dark": {
+      "origin": "/home/nerdrx/.local/share/Steam/steamapps/compatdata/438100/pfx/drive_c/users/steamuser/Pictures/VRChat/2026-08/VRChat_2026-08-05_04-26-36.944_1920x1080.png",
+      "png": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/dark-native-1920x1080.png",
+      "png_sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-partition-gpu-20261004/results/exact-user/sources/dark-1920x1080.rgba",
+      "rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "dimensions": "1920x1080",
+      "conversion": "RGB source PNG decoded and alpha=255 appended per pixel"
+    },
+    "forest": {
+      "origin": "/home/nerdrx/.local/share/Steam/steamapps/compatdata/438100/pfx/drive_c/users/steamuser/Pictures/VRChat/2026-09/VRChat_2026-09-17_19-23-01.564_1920x1080.png",
+      "png": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/forest-native-1920x1080.png",
+      "png_sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-partition-gpu-20261004/results/exact-user/sources/forest-1920x1080.rgba",
+      "rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "dimensions": "1920x1080",
+      "conversion": "RGB source PNG decoded and alpha=255 appended per pixel"
+    }
+  },
+  "comparison": {
+    "dark": {
+      "legacy-one-partition": {
+        "psnr_rgb_db": 29.1959,
+        "mse_rgb": 78.25125,
+        "gpu_encode_median_ms": 0.03096,
+        "gpu_encode_p95_ms": 0.03124,
+        "full_astc_zstd3_bytes": 207856,
+        "blocks_0x053": 0
+      },
+      "projected-line": {
+        "psnr_rgb_db": 30.2679,
+        "mse_rgb": 61.13573,
+        "gpu_encode_median_ms": 0.0156,
+        "gpu_encode_p95_ms": 0.0202,
+        "full_astc_zstd3_bytes": 208269,
+        "blocks_0x053": 0
+      },
+      "fixed-3-pattern-rejected": {
+        "psnr_rgb_db": 30.3245,
+        "mse_rgb": 60.34343,
+        "gpu_encode_median_ms": 0.36228,
+        "gpu_encode_p95_ms": 0.37344,
+        "full_astc_zstd3_bytes": 208487,
+        "blocks_0x053": 201
+      }
+    },
+    "forest": {
+      "legacy-one-partition": {
+        "psnr_rgb_db": 35.9549,
+        "mse_rgb": 16.50388,
+        "gpu_encode_median_ms": 0.03084,
+        "gpu_encode_p95_ms": 0.03108,
+        "full_astc_zstd3_bytes": 151095,
+        "blocks_0x053": 0
+      },
+      "projected-line": {
+        "psnr_rgb_db": 36.6826,
+        "mse_rgb": 13.95778,
+        "gpu_encode_median_ms": 0.02652,
+        "gpu_encode_p95_ms": 0.02704,
+        "full_astc_zstd3_bytes": 151145,
+        "blocks_0x053": 0
+      },
+      "fixed-3-pattern-rejected": {
+        "psnr_rgb_db": 36.7018,
+        "mse_rgb": 13.89632,
+        "gpu_encode_median_ms": 0.30612,
+        "gpu_encode_p95_ms": 0.32748,
+        "full_astc_zstd3_bytes": 151178,
+        "blocks_0x053": 25
+      }
+    }
+  },
+  "decision": "Reject partition branch: three-pattern probe improved PSNR by only 0.019 dB (forest) and 0.057 dB (dark) over projected-line baseline while costing 0.306\u20130.362 ms vs 0.016\u20130.027 ms GPU encode. Parent owns any production change.",
+  "disabled_search_gpu_encode_median_ms": {
+    "dark": 0.04852,
+    "forest": 0.03492
+  }
+}

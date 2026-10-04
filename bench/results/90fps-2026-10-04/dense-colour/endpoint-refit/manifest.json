@@ -1,0 +1,75 @@
+{
+  "title": "ASTC q6 endpoint least-squares refit probe",
+  "generated": "2026-10-04",
+  "device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "scope": "Offline PC Vulkan harness only. No client/Pico integration or runtime validation.",
+  "settings": {
+    "ASTC_block": "8x8 raw 128-bit",
+    "q": 6,
+    "fit": 3,
+    "resident": true,
+    "warmup": 12,
+    "timed_samples": 30,
+    "host_decoder": "Basis ASTC decoder; all q6 outputs decoded successfully"
+  },
+  "sources": {
+    "dark": {
+      "origin": "/home/nerdrx/.local/share/Steam/steamapps/compatdata/438100/pfx/drive_c/users/steamuser/Pictures/VRChat/2026-08/VRChat_2026-08-05_04-26-36.944_1920x1080.png",
+      "png": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/dark-native-1920x1080.png",
+      "png_sha256": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-endpoint-refit-20261004/results/dark-1920x1080.rgba",
+      "rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "dimensions": "1920x1080 RGBA8",
+      "conversion": "RGB source PNG decoded and alpha=255 appended per pixel"
+    },
+    "forest": {
+      "origin": "/home/nerdrx/.local/share/Steam/steamapps/compatdata/438100/pfx/drive_c/users/steamuser/Pictures/VRChat/2026-09/VRChat_2026-09-17_19-23-01.564_1920x1080.png",
+      "png": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/forest-native-1920x1080.png",
+      "png_sha256": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-endpoint-refit-20261004/results/forest-1920x1080.rgba",
+      "rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "dimensions": "1920x1080 RGBA8",
+      "conversion": "RGB source PNG decoded and alpha=255 appended per pixel"
+    }
+  },
+  "results": {
+    "dark": {
+      "projected-line": {
+        "rgb_mse": 61.13573,
+        "rgb_psnr_db": 30.2679,
+        "rgb_mae": 2.89811,
+        "full_astc_zstd3_bytes": 208269,
+        "gpu_encode_median_ms": 0.0156,
+        "gpu_encode_p95_ms": 0.0202
+      },
+      "endpoint-refit": {
+        "rgb_mse": 60.15256,
+        "rgb_psnr_db": 30.3383,
+        "rgb_mae": 2.8679,
+        "full_astc_zstd3_bytes": 208105,
+        "gpu_encode_median_ms": 0.05564,
+        "gpu_encode_p95_ms": 0.05644
+      }
+    },
+    "forest": {
+      "projected-line": {
+        "rgb_mse": 13.95778,
+        "rgb_psnr_db": 36.6826,
+        "rgb_mae": 1.73418,
+        "full_astc_zstd3_bytes": 151145,
+        "gpu_encode_median_ms": 0.02652,
+        "gpu_encode_p95_ms": 0.02704
+      },
+      "endpoint-refit": {
+        "rgb_mse": 13.59093,
+        "rgb_psnr_db": 36.7983,
+        "rgb_mae": 1.73627,
+        "full_astc_zstd3_bytes": 151630,
+        "gpu_encode_median_ms": 0.05548,
+        "gpu_encode_p95_ms": 0.05568
+      }
+    }
+  },
+  "algorithm": "Keep projected-PCA endpoints and fitted 5x5 3-bit weight symbols. Interpolate the dequantized symbols at all 64 texel centers using the exact decoder coefficient LUT; solve a 2x2 least-squares system for RGB endpoints; quantize to the existing endpoint precision. If quantized endpoint order reverses, swap endpoints and complement each 3-bit weight symbol.",
+  "decision": "Small/mixed benefit does not justify GPU cost in this probe; no q2 or temporal follow-up run."
+}

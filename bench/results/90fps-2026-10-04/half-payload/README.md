@@ -1,5 +1,12 @@
 # Native ASTC: smaller payloads and cheaper presentation
 
+> Fixture provenance correction (Oct 4): these older screenshot-derived fixtures
+> are not verified raw, unfoveated images. The crowd reference visibly contains
+> prior spatial preprocessing, and the original clipboard image is unavailable.
+> Native dimensions describe output geometry only. Byte/quality comparisons
+> remain valid for the same processed inputs; do not generalize them to raw
+> full-detail VR scenes. The separate live Pico timings are unaffected.
+
 ## Per-eye quality follow-up and live presentation check (Oct 4)
 
 The earlier experiment below uses a separate **4352×2176 stereo fixture**. This
@@ -63,7 +70,7 @@ fixture tree and are not copied into this report.
 ## Earlier stereo experiment
 
 The lower-bandwidth candidate meets the size goal on two offline fixtures:
-**50.6% fewer bytes on dark, 58.1% fewer on forest**, keeping the same native image
+**50.6% fewer bytes on dark, 58.1% fewer on forest**, keeping the same output image
 dimensions. The quality loss is visible. This is not a general guarantee across
 scenes, sustained 90 FPS proof, or a photon-latency measurement.
 
