@@ -1,0 +1,46 @@
+{
+  "artifact": "nx-scratch/astc-weight-refine-20261004/coherent-packaging/presentation-release.apk",
+  "artifact_sha256": "a2fafb1a4f36acd6ee879896702271434acb525f51a0ec5adb8f591c89d3ea99",
+  "native_sha256": "0a693b34ae9adb1207f74a45faba233c812f6cddc3b759aee961b997b5d93383",
+  "base_sha256": "430ae866e7820783b5bd5382cd123864b6b484ad99a421426764c9e94f191e8b",
+  "certificate_sha256": "fb6a4688fd7c9234f42ba6c2c9efe5922e6a804c805ab0982b04b6c02afbc150",
+  "all_other_entry_contents_unchanged": true,
+  "native_entries": [
+    {
+      "entry": "lib/arm64-v8a/libopenxr_loader.so",
+      "stored": true,
+      "offset_mod_16384": 0
+    },
+    {
+      "entry": "lib/arm64-v8a/libssl.so",
+      "stored": true,
+      "offset_mod_16384": 0
+    },
+    {
+      "entry": "lib/arm64-v8a/libktx.so",
+      "stored": true,
+      "offset_mod_16384": 0
+    },
+    {
+      "entry": "lib/arm64-v8a/libwivrn.so",
+      "stored": true,
+      "offset_mod_16384": 0
+    },
+    {
+      "entry": "lib/arm64-v8a/libcrypto.so",
+      "stored": true,
+      "offset_mod_16384": 0
+    }
+  ],
+  "verification": "Verifies\nVerified using v1 scheme (JAR signing): false\nVerified using v2 scheme (APK Signature Scheme v2): false\nVerified using v3 scheme (APK Signature Scheme v3): true\nVerified using v3.1 scheme (APK Signature Scheme v3.1): false\nVerified using v4 scheme (APK Signature Scheme v4): false\nVerified for SourceStamp: false\nNumber of signers: 1\nSigner #1 certificate DN: CN=WiVRn NX\nSigner #1 certificate SHA-256 digest: fb6a4688fd7c9234f42ba6c2c9efe5922e6a804c805ab0982b04b6c02afbc150\nSigner #1 certificate SHA-1 digest: 099537376d71476d0c4d5b86c8ae49c358fef0f2\nSigner #1 certificate MD5 digest: dfed1bf0fb548ed5fd405ecab9424112\nSigner #1 key algorithm: RSA\nSigner #1 key size (bits): 4096\nSigner #1 public key SHA-256 digest: 8142af5d029d5f5e48d7b82643b492dfcf83cba9d08e2bb4e133f7e921324880\nSigner #1 public key SHA-1 digest: 55ed25e63e7737b8e5c94992fec991d53593af33\nSigner #1 public key MD5 digest: 105fc4b67e2b5513b3725b1076b7e42f\n",
+  "source_commit": "7d9624f3abbb4c81ebeda83d9a77a54e01c6a33b",
+  "source_dirty": false,
+  "client_source_sha256": {
+    "client/scenes/stream.cpp": "5091c65cb230a8284c2cb372b1fe3458f6c4226d1d127b70b504f5a9d9ef18cb",
+    "client/scenes/stream.h": "9ca3f55bc33f9c03a7049d55f8462cad366333974a421058bb0a3b14ae744846",
+    "client/decoder/astc/decoder.cpp": "3b347cb961b935daaef66a5c5aa742d914b12b60ee2c5abc7495315f01ee26ed",
+    "client/decoder/astc/decoder.h": "d9fc67d2e6243f254070c24ce4174562b44852c5da6ae5868ba057b3700ceccb",
+    "client/utils/fresh_frame.h": "327ef956a2624c1640ed90a1c02834383eec083e4d7c68d1619e3a639b702f35"
+  },
+  "source_sha256": "5091c65cb230a8284c2cb372b1fe3458f6c4226d1d127b70b504f5a9d9ef18cb"
+}

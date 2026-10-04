@@ -1,0 +1,104 @@
+{
+  "block_grid": [
+    240,
+    135
+  ],
+  "block_bytes": 16,
+  "selector_order": "dy=-1..1, dx=-1..1; clamped edges; strict-less tie break favors lower selector",
+  "zstd_level": 3,
+  "roundtrip_exact": true,
+  "reference_ack_protocol": "absent; this measures payload only and assumes phase-0 reference is already available and synchronized",
+  "pan_model": "synthetic horizontal numpy.roll; wrapped source scene is not general motion or VR proof",
+  "scenes": {
+    "dark": {
+      "1": {
+        "raw_zstd3_bytes": 210122,
+        "prefix_delta_zstd3_bytes": 159574,
+        "interleaved17_zstd3_bytes": 170639,
+        "saving_bytes_prefix": 50548,
+        "saving_pct_prefix": 24.06,
+        "saving_bytes_interleaved": 39483,
+        "saving_pct_interleaved": 18.79,
+        "transform_ms_host_median3": 13.966,
+        "encode_ms_host_one": 14.392,
+        "decode_gather_xor_ms_host_median3": 0.483,
+        "exact_roundtrip": true
+      },
+      "4": {
+        "raw_zstd3_bytes": 209132,
+        "prefix_delta_zstd3_bytes": 186273,
+        "interleaved17_zstd3_bytes": 196160,
+        "saving_bytes_prefix": 22859,
+        "saving_pct_prefix": 10.93,
+        "saving_bytes_interleaved": 12972,
+        "saving_pct_interleaved": 6.2,
+        "transform_ms_host_median3": 12.948,
+        "encode_ms_host_one": 13.467,
+        "decode_gather_xor_ms_host_median3": 0.496,
+        "exact_roundtrip": true
+      },
+      "8": {
+        "raw_zstd3_bytes": 208273,
+        "prefix_delta_zstd3_bytes": 7165,
+        "interleaved17_zstd3_bytes": 10289,
+        "saving_bytes_prefix": 201108,
+        "saving_pct_prefix": 96.56,
+        "saving_bytes_interleaved": 197984,
+        "saving_pct_interleaved": 95.06,
+        "transform_ms_host_median3": 12.625,
+        "encode_ms_host_one": 12.428,
+        "decode_gather_xor_ms_host_median3": 0.481,
+        "exact_roundtrip": true,
+        "pan8_interior_check": {
+          "interior_selector3_fraction": 0.637846,
+          "interior_zero_residual_fraction": 1.0
+        }
+      }
+    },
+    "forest": {
+      "1": {
+        "raw_zstd3_bytes": 151105,
+        "prefix_delta_zstd3_bytes": 122286,
+        "interleaved17_zstd3_bytes": 131965,
+        "saving_bytes_prefix": 28819,
+        "saving_pct_prefix": 19.07,
+        "saving_bytes_interleaved": 19140,
+        "saving_pct_interleaved": 12.67,
+        "transform_ms_host_median3": 12.648,
+        "encode_ms_host_one": 12.726,
+        "decode_gather_xor_ms_host_median3": 0.482,
+        "exact_roundtrip": true
+      },
+      "4": {
+        "raw_zstd3_bytes": 151803,
+        "prefix_delta_zstd3_bytes": 140460,
+        "interleaved17_zstd3_bytes": 149248,
+        "saving_bytes_prefix": 11343,
+        "saving_pct_prefix": 7.47,
+        "saving_bytes_interleaved": 2555,
+        "saving_pct_interleaved": 1.68,
+        "transform_ms_host_median3": 13.054,
+        "encode_ms_host_one": 12.719,
+        "decode_gather_xor_ms_host_median3": 0.495,
+        "exact_roundtrip": true
+      },
+      "8": {
+        "raw_zstd3_bytes": 151187,
+        "prefix_delta_zstd3_bytes": 6924,
+        "interleaved17_zstd3_bytes": 10141,
+        "saving_bytes_prefix": 144263,
+        "saving_pct_prefix": 95.42,
+        "saving_bytes_interleaved": 141046,
+        "saving_pct_interleaved": 93.29,
+        "transform_ms_host_median3": 13.011,
+        "encode_ms_host_one": 12.737,
+        "decode_gather_xor_ms_host_median3": 0.475,
+        "exact_roundtrip": true,
+        "pan8_interior_check": {
+          "interior_selector3_fraction": 0.481637,
+          "interior_zero_residual_fraction": 1.0
+        }
+      }
+    }
+  }
+}

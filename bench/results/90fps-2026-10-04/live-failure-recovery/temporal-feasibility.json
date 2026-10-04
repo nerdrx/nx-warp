@@ -1,0 +1,252 @@
+{
+  "raw_astc_bytes": 518400,
+  "shift_model": "numpy.roll horizontally (wraps edges)",
+  "scenes": {
+    "dark": {
+      "0": {
+        "gpu": {
+          "gpu_median_ms": 0.23808,
+          "gpu_p95_ms": 0.296
+        },
+        "reference_zstd3_bytes": 208321
+      },
+      "1": {
+        "gpu": {
+          "gpu_median_ms": 0.23728,
+          "gpu_p95_ms": 0.26384
+        },
+        "compression": {
+          "raw_zstd3": {
+            "bytes": 210122,
+            "mean_comp_ms": 0.9952,
+            "median_comp_ms": 0.9817,
+            "mean_decomp_ms": 0.2308,
+            "median_decomp_ms": 0.219,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "dict_zstd3": {
+            "bytes": 202477,
+            "mean_comp_ms": 1.7414,
+            "median_comp_ms": 1.7047,
+            "mean_decomp_ms": 0.2529,
+            "median_decomp_ms": 0.2502,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "xor_zstd3": {
+            "bytes": 160862,
+            "mean_comp_ms": 0.8708,
+            "median_comp_ms": 0.8396,
+            "mean_decomp_ms": 0.2132,
+            "median_decomp_ms": 0.2142,
+            "xor_prepare_ms": 0.0236,
+            "xor_restore_ms": 0.1114,
+            "exact": true
+          }
+        }
+      },
+      "4": {
+        "gpu": {
+          "gpu_median_ms": 0.23852,
+          "gpu_p95_ms": 0.29764
+        },
+        "compression": {
+          "raw_zstd3": {
+            "bytes": 209132,
+            "mean_comp_ms": 0.9078,
+            "median_comp_ms": 0.9003,
+            "mean_decomp_ms": 0.2201,
+            "median_decomp_ms": 0.2193,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "dict_zstd3": {
+            "bytes": 208015,
+            "mean_comp_ms": 1.7139,
+            "median_comp_ms": 1.7125,
+            "mean_decomp_ms": 0.2777,
+            "median_decomp_ms": 0.2529,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "xor_zstd3": {
+            "bytes": 217469,
+            "mean_comp_ms": 0.9289,
+            "median_comp_ms": 0.9269,
+            "mean_decomp_ms": 0.2347,
+            "median_decomp_ms": 0.2334,
+            "xor_prepare_ms": 0.0179,
+            "xor_restore_ms": 0.0174,
+            "exact": true
+          }
+        }
+      },
+      "8": {
+        "gpu": {
+          "gpu_median_ms": 0.2376,
+          "gpu_p95_ms": 0.28896
+        },
+        "compression": {
+          "raw_zstd3": {
+            "bytes": 208273,
+            "mean_comp_ms": 0.8878,
+            "median_comp_ms": 0.887,
+            "mean_decomp_ms": 0.2145,
+            "median_decomp_ms": 0.2154,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "dict_zstd3": {
+            "bytes": 332,
+            "mean_comp_ms": 0.136,
+            "median_comp_ms": 0.1351,
+            "mean_decomp_ms": 0.008,
+            "median_decomp_ms": 0.008,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "xor_zstd3": {
+            "bytes": 237845,
+            "mean_comp_ms": 0.9559,
+            "median_comp_ms": 0.9549,
+            "mean_decomp_ms": 0.2405,
+            "median_decomp_ms": 0.2392,
+            "xor_prepare_ms": 0.0174,
+            "xor_restore_ms": 0.0178,
+            "exact": true
+          }
+        }
+      }
+    },
+    "forest": {
+      "0": {
+        "gpu": {
+          "gpu_median_ms": 0.20076,
+          "gpu_p95_ms": 0.22016
+        },
+        "reference_zstd3_bytes": 151114
+      },
+      "1": {
+        "gpu": {
+          "gpu_median_ms": 0.20092,
+          "gpu_p95_ms": 0.3238
+        },
+        "compression": {
+          "raw_zstd3": {
+            "bytes": 151105,
+            "mean_comp_ms": 0.6622,
+            "median_comp_ms": 0.6608,
+            "mean_decomp_ms": 0.1653,
+            "median_decomp_ms": 0.1664,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "dict_zstd3": {
+            "bytes": 147021,
+            "mean_comp_ms": 1.4043,
+            "median_comp_ms": 1.397,
+            "mean_decomp_ms": 0.1777,
+            "median_decomp_ms": 0.1784,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "xor_zstd3": {
+            "bytes": 122876,
+            "mean_comp_ms": 0.5776,
+            "median_comp_ms": 0.5753,
+            "mean_decomp_ms": 0.1629,
+            "median_decomp_ms": 0.1627,
+            "xor_prepare_ms": 0.0181,
+            "xor_restore_ms": 0.0182,
+            "exact": true
+          }
+        }
+      },
+      "4": {
+        "gpu": {
+          "gpu_median_ms": 0.20032,
+          "gpu_p95_ms": 0.22944
+        },
+        "compression": {
+          "raw_zstd3": {
+            "bytes": 151803,
+            "mean_comp_ms": 0.6759,
+            "median_comp_ms": 0.6717,
+            "mean_decomp_ms": 0.1676,
+            "median_decomp_ms": 0.1658,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "dict_zstd3": {
+            "bytes": 151329,
+            "mean_comp_ms": 1.3993,
+            "median_comp_ms": 1.3994,
+            "mean_decomp_ms": 0.1731,
+            "median_decomp_ms": 0.1728,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "xor_zstd3": {
+            "bytes": 162285,
+            "mean_comp_ms": 0.6909,
+            "median_comp_ms": 0.6902,
+            "mean_decomp_ms": 0.1783,
+            "median_decomp_ms": 0.1778,
+            "xor_prepare_ms": 0.0197,
+            "xor_restore_ms": 0.018,
+            "exact": true
+          }
+        }
+      },
+      "8": {
+        "gpu": {
+          "gpu_median_ms": 0.19848,
+          "gpu_p95_ms": 0.22988
+        },
+        "compression": {
+          "raw_zstd3": {
+            "bytes": 151187,
+            "mean_comp_ms": 0.6482,
+            "median_comp_ms": 0.6473,
+            "mean_decomp_ms": 0.1635,
+            "median_decomp_ms": 0.1625,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "dict_zstd3": {
+            "bytes": 382,
+            "mean_comp_ms": 0.1366,
+            "median_comp_ms": 0.137,
+            "mean_decomp_ms": 0.0083,
+            "median_decomp_ms": 0.0083,
+            "xor_prepare_ms": 0.0,
+            "xor_restore_ms": 0.0,
+            "exact": true
+          },
+          "xor_zstd3": {
+            "bytes": 174034,
+            "mean_comp_ms": 0.7267,
+            "median_comp_ms": 0.7287,
+            "mean_decomp_ms": 0.1829,
+            "median_decomp_ms": 0.1864,
+            "xor_prepare_ms": 0.0193,
+            "xor_restore_ms": 0.0176,
+            "exact": true
+          }
+        }
+      }
+    }
+  }
+}

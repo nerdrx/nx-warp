@@ -1,0 +1,143 @@
+{
+  "validation": {
+    "dark-pan0": {
+      "baseline_zstd3_bytes": 208321,
+      "refit_zstd3_bytes": 208121,
+      "zstd3_delta_bytes": -200,
+      "blocks": 32400,
+      "improved_blocks": 6478,
+      "equal_blocks": 25922,
+      "regressed_blocks": 0,
+      "max_block_ssd_regression": 0,
+      "baseline_rgb_ssd": 334806100,
+      "refit_rgb_ssd": 329548129,
+      "decoded_exact_size": true,
+      "refit_gpu_encode_median_ms": 0.31936,
+      "refit_gpu_encode_p95_ms": 0.36596
+    },
+    "dark-pan1": {
+      "baseline_zstd3_bytes": 210122,
+      "refit_zstd3_bytes": 209982,
+      "zstd3_delta_bytes": -140,
+      "blocks": 32400,
+      "improved_blocks": 6601,
+      "equal_blocks": 25799,
+      "regressed_blocks": 0,
+      "max_block_ssd_regression": 0,
+      "baseline_rgb_ssd": 336151084,
+      "refit_rgb_ssd": 330677472,
+      "decoded_exact_size": true,
+      "refit_gpu_encode_median_ms": 0.31828,
+      "refit_gpu_encode_p95_ms": 0.34072
+    },
+    "dark-pan4": {
+      "baseline_zstd3_bytes": 209132,
+      "refit_zstd3_bytes": 209117,
+      "zstd3_delta_bytes": -15,
+      "blocks": 32400,
+      "improved_blocks": 6580,
+      "equal_blocks": 25820,
+      "regressed_blocks": 0,
+      "max_block_ssd_regression": 0,
+      "baseline_rgb_ssd": 335606589,
+      "refit_rgb_ssd": 330384426,
+      "decoded_exact_size": true,
+      "refit_gpu_encode_median_ms": 0.32556,
+      "refit_gpu_encode_p95_ms": 0.39052
+    },
+    "dark-pan8": {
+      "baseline_zstd3_bytes": 208273,
+      "refit_zstd3_bytes": 208093,
+      "zstd3_delta_bytes": -180,
+      "blocks": 32400,
+      "improved_blocks": 6478,
+      "equal_blocks": 25922,
+      "regressed_blocks": 0,
+      "max_block_ssd_regression": 0,
+      "baseline_rgb_ssd": 334806100,
+      "refit_rgb_ssd": 329548129,
+      "decoded_exact_size": true,
+      "refit_gpu_encode_median_ms": 0.30224,
+      "refit_gpu_encode_p95_ms": 0.34736
+    },
+    "forest-pan0": {
+      "baseline_zstd3_bytes": 151114,
+      "refit_zstd3_bytes": 151758,
+      "zstd3_delta_bytes": 644,
+      "blocks": 32400,
+      "improved_blocks": 2633,
+      "equal_blocks": 29767,
+      "regressed_blocks": 0,
+      "max_block_ssd_regression": 0,
+      "baseline_rgb_ssd": 85149577,
+      "refit_rgb_ssd": 82844319,
+      "decoded_exact_size": true,
+      "refit_gpu_encode_median_ms": 0.26132,
+      "refit_gpu_encode_p95_ms": 0.32068
+    }
+  },
+  "q2q4_unchanged": {
+    "dark-q2": {
+      "candidate_matches_fresh_baseline": true,
+      "candidate_matches_stored_canonical": false,
+      "fresh_baseline_matches_stored_canonical": false,
+      "candidate_astc_bytes": 518416
+    },
+    "dark-q4": {
+      "candidate_matches_fresh_baseline": true,
+      "candidate_matches_stored_canonical": false,
+      "fresh_baseline_matches_stored_canonical": false,
+      "candidate_astc_bytes": 518416
+    },
+    "forest-q2": {
+      "candidate_matches_fresh_baseline": true,
+      "candidate_matches_stored_canonical": false,
+      "fresh_baseline_matches_stored_canonical": false,
+      "candidate_astc_bytes": 518416
+    },
+    "forest-q4": {
+      "candidate_matches_fresh_baseline": true,
+      "candidate_matches_stored_canonical": false,
+      "fresh_baseline_matches_stored_canonical": false,
+      "candidate_astc_bytes": 518416
+    }
+  },
+  "temporal_aligned_step_rms": {
+    "warning": "np.roll synthetic pans; unequal phase intervals, not FPS jitter proof",
+    "steps": [
+      {
+        "interval_pixels": 1,
+        "baseline_rms": 4.697273453134118,
+        "refit_rms": 4.670178679439465
+      },
+      {
+        "interval_pixels": 3,
+        "baseline_rms": 4.919390642024421,
+        "refit_rms": 4.88058638452288
+      },
+      {
+        "interval_pixels": 4,
+        "baseline_rms": 5.336962484740623,
+        "refit_rms": 5.304481830341766
+      }
+    ]
+  },
+  "native_stereo_timing": {
+    "baseline": {
+      "gpu_encode_median_ms": 0.46776,
+      "gpu_encode_p95_ms": 0.53116,
+      "gpu_transfer_encode_readback_median_ms": 0.6124,
+      "gpu_transfer_encode_readback_p95_ms": 0.67184,
+      "cpu_full_median_ms": 3.74193,
+      "cpu_full_p95_ms": 4.935267
+    },
+    "refit": {
+      "gpu_encode_median_ms": 0.63812,
+      "gpu_encode_p95_ms": 0.7342,
+      "gpu_transfer_encode_readback_median_ms": 0.77972,
+      "gpu_transfer_encode_readback_p95_ms": 0.88564,
+      "cpu_full_median_ms": 3.918192,
+      "cpu_full_p95_ms": 4.833426
+    }
+  }
+}

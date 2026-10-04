@@ -1,5 +1,7 @@
 # Adaptive ASTC block sizes: quality and payload
 
+> **REJECTED LIVE TRIAL — do not treat these trial builds as approved.** Commits `bf547738`, `af913d4e`, and `25e008cb` were reverted by `wivrn-nx` commit `d95fbe99` after the user reported “stuttery low quality ass mess.” The fixed ASTC 8×8 baseline is restored and optional chroma smoothing is OFF. This report remains useful as an offline comparison and historical record.
+
 This offline comparison evaluates q6 encoding at 4×4, 6×6, and 8×8 ASTC block footprints on dark-purple-hair and forest-footprint inputs. Every block remains 128 bits; smaller footprints spend more bits per pixel on spatial colour variation. The adaptive controller can choose q7/6×6 and q8/4×4 when measured per-eye packet bytes fit its budget. Its strict packet withholding and 30-other-frame measurement expiry are documented in `docs/NX_ASTC_QUALITY.md` at the source commit.
 
 | Scene | Footprint | LZ4 bytes | Full PSNR | 512² ROI PSNR |
@@ -25,10 +27,32 @@ The first matched `af913d4e` build was installed without uninstalling or replaci
 
 The first encoder windows also exposed 7–12 withheld 4×4 expansion attempts per 180 encoded frames in the two eye streams. That is too much probing to ignore in a smoothness feature. Follow-up controller commit `25e008cb` now scales the observed packet cost by the candidate’s block-count ratio before probing an unknown footprint. For example, 6×6 at 140,000 bytes with a 282,745-byte target no longer probes 4×4: its estimated 315,000 bytes cannot fit. A 400,000-byte target permits that probe. Recently measured fitting footprints still take priority. The regression checks cover both cases and bitrate recovery.
 
-The later passive eight-second capture occurred after XR had become idle and records 487-byte black 4×4 frames. Those logs establish the format/upload path, **not scene quality or viewer performance at 4×4**. Raw extracts and APK/source identity are included with the `first-live-` prefix. Final follow-up deployment evidence is recorded separately below.
+The later passive eight-second capture occurred after XR had become idle and records 487-byte black 4×4 frames. Those logs establish the format/upload path, **not scene quality or viewer performance at 4×4**. Raw extracts and APK/source identity are included with the `first-live-` prefix. The follow-up deployment evidence below is historical; the user rejected that live trial.
 
-Final matched follow-up build `25e008cb` is installed; the APK digest was verified against the on-device package, app data was preserved, and mode 6 colour smoothing is enabled for the user trial. `final-install.json` records artifact identity. The final controller has not yet been judged in a moving user scene.
+The matched follow-up build `25e008cb` was installed at the time; its APK digest was verified against the on-device package, app data was preserved, and mode 6 colour smoothing was enabled for the trial. `final-install.json` records historical artifact identity. This build has since been reverted.
 
 The final follow-up startup again warmed to 89.8/89.7 viewer iterations/s, with 150/180 and 145/180 fresh-source selections. 6×6 pools were active before XR went idle; the subsequent 4×4 pools remain an idle-path observation. These final extracts provide a connection/format smoke check, not an isolated performance comparison.
 
 The final encoder startup windows still contain failed expansion attempts: 5/8 per eye in the first 180-frame windows, then 3/5. The budget differed from the first build and the scene/visibility were uncontrolled, so these counts do not establish a causal improvement. Cost prediction reduces unnecessary probes in the regression cases; it does not eliminate all failed probes or guarantee the smallest fitting footprint on every frame. The attempted probe is encoded and measured before it can be rejected.
+
+## rejected-live evidence
+
+The final three captured two-second client windows show about 90 viewer render iterations/s, but only 15, 10, then 4 fresh source selections. Most iterations repeated an old image. The last window also reports a stream stall after a selected view exceeded 1000 ms age. In the corresponding final server window, both eyes were fixed at ASTC 8×8 q6: each encoded all 180 frames as Zstd, with zero expansion drops. Therefore these logs document a delivery failure while the encoder was already on the fixed 8×8/q6 rung; they do not prove smaller ASTC blocks or smoothing caused the root failure, and rollback alone does not prove that the bottleneck is solved. No photon-latency claim is made.
+
+The excerpts below are copied from the rejected user-session captures. Full extracts are archived in the [failure and recovery report](../live-failure-recovery/README.md).
+
+### rejected-live client extract
+
+```text
+10-04 15:41:54.828 ... render: 179 iterations in 2.0 s (89.5/s), 179 submitted a layer, 15 new-source ...
+10-04 15:41:56.830 ... render: 179 iterations in 2.0 s (89.4/s), 179 submitted a layer, 10 new-source ...
+10-04 15:41:58.100 ... Stream state streaming -> stalled: selected view frame exceeded 1000 ms age
+10-04 15:41:58.832 ... render: 147 iterations in 2.0 s (73.4/s), 147 submitted a layer, 4 new-source ...
+```
+
+### rejected-live server extract
+
+```text
+INFO [encode] nxastc: stream 0 mean packet 423802 bytes, target 555556 bytes; q0-q8 0/0/0/0/0/0/180/0/0, raw/lz4/zstd 0/0/180; over-budget expansion drops 0
+INFO [encode] nxastc: stream 1 mean packet 423796 bytes, target 555556 bytes; q0-q8 0/0/0/0/0/0/180/0/0, raw/lz4/zstd 0/0/180; over-budget expansion drops 0
+```
