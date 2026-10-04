@@ -1,0 +1,43 @@
+{
+  "description": "Direct host ASTC block decode vs matching RGB8 source; this measures block quality only, not GPU decode correctness.",
+  "baseline_reference": null,
+  "cases": [
+    {
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/results/dark/dark-q4.astc",
+      "astc_sha256": "82ac79c8602fb70a7f1907d5a46ca697d9292ea9ff9bd973cd6f0e0ccd1bbd11",
+      "width": 2176,
+      "height": 2176,
+      "block_width": 8,
+      "block_height": 8,
+      "source_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/fixtures/dark-left.png",
+      "source_sha256": "d77294def81c5cff2f203655198a160ad0aac930170f293af94c4485967bd024",
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "ff6e2301dd25a00b42ce531d7c4c83e2bc4a90b2ea39c989047ac2c8a98064fa",
+      "decoder_command": [
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+        "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/results/dark/dark-q4.astc",
+        "quality-improve/results/dark/metrics-q4existing/dark-q4.decoded.rgba"
+      ],
+      "decoder_return_code": 0,
+      "decoded_rgba_bytes": 18939904,
+      "rgb_psnr_db": 30.391339569595814,
+      "rgb_mae": 4.707473490889922,
+      "delta_psnr_vs_previous_xuastc_8x8_q25_db": null,
+      "lz4_payload_path": null,
+      "lz4_payload_bytes": null,
+      "delta_lz4_bytes_vs_previous_xuastc_8x8_q25": null,
+      "edge_crop_box_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "edge_crop_display_path": "quality-improve/results/dark/metrics-q4existing/dark-q4.edge-1to1.png",
+      "edge_crop_display_pixels": [
+        1000,
+        448
+      ],
+      "edge_crop_scale": 1
+    }
+  ]
+}

@@ -1,0 +1,176 @@
+{
+  "purpose": "direct ASTC block-payload compression comparison; q2-q5 Zstd1/3 vs same-scene q6 LZ4",
+  "command": "python3 compare_zstd_levels.py",
+  "fixture_root": "/tmp/nx-astc-quality-test",
+  "fixture_resolution_one_eye": "2176x2176; ASTC 8x8; compress only bytes after standard 16-byte ASTC header",
+  "host": "Linux-7.2.8-2-cachyos-x86_64-with-glibc2.44",
+  "libraries": {
+    "zstd": "1.5.7",
+    "lz4_version_number": 11000
+  },
+  "inputs": [
+    {
+      "path": "/tmp/nx-astc-quality-test/dark-left.png",
+      "bytes": 3860868,
+      "sha256": "d77294def81c5cff2f203655198a160ad0aac930170f293af94c4485967bd024"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/forest-left.png",
+      "bytes": 3100305,
+      "sha256": "81f6adcf561f7cc88b5687ba9ce5deb590c8b1951cc68504218b893b870280cf"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/metrics-dark/astc-quality.json",
+      "bytes": 10812,
+      "sha256": "1c19b83bcae3198e9e0a5470861379c97c2414073a48cf63425ff28659b01940"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/metrics-forest/astc-quality.json",
+      "bytes": 10922,
+      "sha256": "705534f8ad6254728e7e9120f9050785e2ae4824a73a44e036e14b0670a82e17"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q0.astc",
+      "bytes": 1183760,
+      "sha256": "e4d82a5d4ec06e7478ac00c2b3fd8e0c439b657fb8c64354c1d913886dd45094"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q0.astc.blocks.lz4",
+      "bytes": 44320,
+      "sha256": "16fa6087beb3b0a6a5b9b5df55661ad32ce824df023b8ada1bf5cc5678f14bc0"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q1.astc",
+      "bytes": 1183760,
+      "sha256": "ac0eb9a5a8574d88fbd80b5758199a850542c8987890f76167269d94608abc20"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q1.astc.blocks.lz4",
+      "bytes": 138372,
+      "sha256": "b530b57e6c50b4ab3a6dc2efba990b1298ab7ad9d0c6bedd762716d7a84d6595"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q2.astc",
+      "bytes": 1183760,
+      "sha256": "70358131090a6515e30399245725463c1084df6843295003aaa2f1d608d671d0"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q2.astc.blocks.lz4",
+      "bytes": 259155,
+      "sha256": "8b1b286e6e877efc769f299a9d67ed0f8721705441a8448e3cbf9c53fbe299f2"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q3.astc",
+      "bytes": 1183760,
+      "sha256": "599269d55706be0d1a63a316e2b04f6d4c3020a9ff2cbe79ce69288498b357e0"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q3.astc.blocks.lz4",
+      "bytes": 389952,
+      "sha256": "5b36885b46f10515f84f98f20412cb31a17c04584ba65374bc07425dbb656488"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q4.astc",
+      "bytes": 1183760,
+      "sha256": "82ac79c8602fb70a7f1907d5a46ca697d9292ea9ff9bd973cd6f0e0ccd1bbd11"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q4.astc.blocks.lz4",
+      "bytes": 427448,
+      "sha256": "e89d859e08810eed638481cc2c46e51a0ff1c1df9e004593ffd25c8b8b7c2ac1"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q5.astc",
+      "bytes": 1183760,
+      "sha256": "6e9dcc6ed69bcb9b9c452bc48e5ff27282c5b2fb6b60ef23e51de15d516af743"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q5.astc.blocks.lz4",
+      "bytes": 463377,
+      "sha256": "f57d6b607345c01fa246a213af1dd37ef3e57cae67207dcb14dd843dbdb39a5a"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q6.astc",
+      "bytes": 1183760,
+      "sha256": "65acc7e748d3152cbf3c7a2b660cf71f6ca30093215b024c6b495181563edc63"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/dark-q6.astc.blocks.lz4",
+      "bytes": 501248,
+      "sha256": "86cb6065b4b67fddd9ed46a6fb484335a6177b4dc394b0413152f2736896ac71"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q0.astc",
+      "bytes": 1183760,
+      "sha256": "1fa28092abd7df62fb21e801fababfb5a4f819a6d1d311296a498673bd1deeea"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q0.astc.blocks.lz4",
+      "bytes": 19691,
+      "sha256": "404c64bb4d9d52323b2e4069babf01a0a3485479d61cd3ca4f8ddbf30d391789"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q1.astc",
+      "bytes": 1183760,
+      "sha256": "65ced6a4b363d12fee21c4d80e486b30e3c93ff930faedc911c961cdd9401bc2"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q1.astc.blocks.lz4",
+      "bytes": 82566,
+      "sha256": "0edf46304159998f280e7070e3b28806045e72219f4b27a135dab8989a9b4d09"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q2.astc",
+      "bytes": 1183760,
+      "sha256": "592e30b49fa30be7cda0ff21ac6ca47a25b4a70f46cd0f5afc307c016c2b82c7"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q2.astc.blocks.lz4",
+      "bytes": 140073,
+      "sha256": "ec6904f7690dac3f217dfeef61f06ed8cf88545202cff385265e13ea1fa59d49"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q3.astc",
+      "bytes": 1183760,
+      "sha256": "42c6abbd54bbae42db65274856911695687808f91b0a04ed93313c6dd48e6b85"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q3.astc.blocks.lz4",
+      "bytes": 243628,
+      "sha256": "dedc7e4cdfa59169ad45eb9a76fc59c107801018602119eeb6e000cff326444b"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q4.astc",
+      "bytes": 1183760,
+      "sha256": "7f7cda47434188caac2c20ad4bbb036e1582c874405388c99c5a0f7d83e2462f"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q4.astc.blocks.lz4",
+      "bytes": 258463,
+      "sha256": "1eb73f7a5d8548cd50207468ad295daccf7a91e362d7e59d544bfc174277327f"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q5.astc",
+      "bytes": 1183760,
+      "sha256": "c10a64cdbe303bb22144ebf33daa10af149fdeeef2c37da2c3ce3caf7563df9e"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q5.astc.blocks.lz4",
+      "bytes": 282760,
+      "sha256": "5da5a1e1c845c18c8b20b279782750f9b6c025284a2f80f790a6846ca1c182ef"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q6.astc",
+      "bytes": 1183760,
+      "sha256": "facfe5271375cb0dd1dca58c5f2ae90076d2e2658f0abd201ba3e91fdc7f9840"
+    },
+    {
+      "path": "/tmp/nx-astc-quality-test/results/forest-q6.astc.blocks.lz4",
+      "bytes": 311230,
+      "sha256": "c901e0e4fa8c4626d9814a6484116bcfb55901796efdc95e3ee392f21c3c748b"
+    }
+  ],
+  "script_sha256": "8c327221fd4cab83516604fe0ba7137168fe3f1837c89d36b4564a7e0e3f8302",
+  "results_json_sha256": "e1ce92f2d4a647f788bb82586b08a601fbded848337526143950d440dcade2ff",
+  "stdout_sha256": "4082bc4b399dcac0e677db7be220fa1449015fcb0d93d072d4310096091b6005"
+}

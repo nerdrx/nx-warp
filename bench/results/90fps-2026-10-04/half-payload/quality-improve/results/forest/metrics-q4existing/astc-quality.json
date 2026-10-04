@@ -1,0 +1,43 @@
+{
+  "description": "Direct host ASTC block decode vs matching RGB8 source; this measures block quality only, not GPU decode correctness.",
+  "baseline_reference": null,
+  "cases": [
+    {
+      "astc_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/results/forest/forest-q4.astc",
+      "astc_sha256": "7f7cda47434188caac2c20ad4bbb036e1582c874405388c99c5a0f7d83e2462f",
+      "width": 2176,
+      "height": 2176,
+      "block_width": 8,
+      "block_height": 8,
+      "source_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/fixtures/forest-left.png",
+      "source_sha256": "81f6adcf561f7cc88b5687ba9ce5deb590c8b1951cc68504218b893b870280cf",
+      "decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+      "decoder_sha256": "ff6e2301dd25a00b42ce531d7c4c83e2bc4a90b2ea39c989047ac2c8a98064fa",
+      "decoder_command": [
+        "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+        "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/results/forest/forest-q4.astc",
+        "quality-improve/results/forest/metrics-q4existing/forest-q4.decoded.rgba"
+      ],
+      "decoder_return_code": 0,
+      "decoded_rgba_bytes": 18939904,
+      "rgb_psnr_db": 33.82178064678004,
+      "rgb_mae": 4.299243755406574,
+      "delta_psnr_vs_previous_xuastc_8x8_q25_db": null,
+      "lz4_payload_path": null,
+      "lz4_payload_bytes": null,
+      "delta_lz4_bytes_vs_previous_xuastc_8x8_q25": null,
+      "edge_crop_box_xyxy": [
+        350,
+        80,
+        850,
+        480
+      ],
+      "edge_crop_display_path": "quality-improve/results/forest/metrics-q4existing/forest-q4.edge-1to1.png",
+      "edge_crop_display_pixels": [
+        1000,
+        448
+      ],
+      "edge_crop_scale": 1
+    }
+  ]
+}

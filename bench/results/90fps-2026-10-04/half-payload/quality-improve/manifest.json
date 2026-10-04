@@ -1,0 +1,275 @@
+{
+  "title": "ASTC endpoint variants and Zstd level sweep",
+  "date": "2026-10-04",
+  "scope": "Offline Vulkan compute shader quality test only; no production integration, runtime, headset, or frame-rate claim. Primary fixtures represent actual 2176x2176 single-eye stream extent; crowd is a non-native 2176x800 stress crop.",
+  "device": "AMD Radeon RX 7900 XTX (RADV NAVI31), host",
+  "fixture_paths": {
+    "dark": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/fixtures/dark-left.png",
+    "forest": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/fixtures/forest-left.png",
+    "crowd": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/fixtures/crowd-500-reference.png"
+  },
+  "fixture_sha256": {
+    "dark": "d77294def81c5cff2f203655198a160ad0aac930170f293af94c4485967bd024",
+    "forest": "81f6adcf561f7cc88b5687ba9ce5deb590c8b1951cc68504218b893b870280cf",
+    "crowd": "af5421bb77ffe3eaa766b84a418419cc08350e4e87f65854f0065d09e040ae36"
+  },
+  "fixture_dimensions": {
+    "dark": [
+      2176,
+      2176
+    ],
+    "forest": [
+      2176,
+      2176
+    ],
+    "crowd": [
+      2176,
+      800
+    ]
+  },
+  "variants": {
+    "q6": "high-quality reference",
+    "q3": "regularized four-level weights reference",
+    "q2": "parent current production weights {0,2,5,7} and 3-bit RGB endpoints, only used as offline reference",
+    "A": "prototype: q2 weights, 6-bit endpoints when block max RGB range >=64, otherwise 3-bit",
+    "B": "prototype: q2 weights; luma quantized at 8-unit steps, chroma at 32-unit steps in YCoCg-like transform; reconstruct then ASTC-quantize RGB endpoints; near-black/white guard",
+    "q4": "existing prior ASTC output from unchanged q4 mode, dark/forest only; not re-encoded in this run"
+  },
+  "method": "ASTC 8x8, fit3 endpoint/weight method. Host decode via Basis Universal helper; full RGB PSNR/MAE. Compressed bytes count ASTC block data only, no 16-byte ASTC header or transport/FEC. Zstd3 CLI outputs checked by exact decompression. Zstd levels 3/6/9 use re-used ZSTD_CCtx with 10 timed calls and exact decompression.",
+  "q6_baselines": {
+    "lz4_block_payload_bytes": {
+      "dark": 501248,
+      "forest": 311230,
+      "crowd": 151943
+    },
+    "zstd3_block_payload_bytes": {
+      "dark": 416383,
+      "forest": 258375,
+      "crowd": 116063
+    }
+  },
+  "motion": "dark synthetic 0/1/2px horizontal shift, edge-clamped, no wrap; see motion/dark/pan-metrics.json and contact. A gate switched 1254/1395 of 73984 blocks across sequential shifts.",
+  "files": [
+    {
+      "path": "results/crowd/crowd-q2.astc",
+      "bytes": 435216,
+      "sha256": "952aa16d2804e13e3d8f64cddcb33b0bd7d4b875d07fdd969f053d24f288fccd"
+    },
+    {
+      "path": "results/crowd/crowd-q2.astc.blocks.zst3",
+      "bytes": 92428,
+      "sha256": "ffb247336954ab045031e5549eacdb67782f152875d550438c4672e8c315ee18"
+    },
+    {
+      "path": "results/crowd/crowd-q2.blocks.zst3",
+      "bytes": 92428,
+      "sha256": "ffb247336954ab045031e5549eacdb67782f152875d550438c4672e8c315ee18"
+    },
+    {
+      "path": "results/crowd/crowd-q3.astc",
+      "bytes": 435216,
+      "sha256": "9ae31c816a35b3fb6dd7bb465981f092473c990de59b4013b5d6d7a912300a60"
+    },
+    {
+      "path": "results/crowd/crowd-q3.blocks.zst3",
+      "bytes": 100894,
+      "sha256": "e282ff97d271eb6b2335424964e924449b94ba396e74ea1a4445c220ac8aeee9"
+    },
+    {
+      "path": "results/crowd/crowd-q6.astc",
+      "bytes": 435216,
+      "sha256": "487e525e4444421425358d6165a261326c55c3d18a13b3dc492597517010dba6"
+    },
+    {
+      "path": "results/crowd/crowd-q6.astc.blocks.zst3",
+      "bytes": 116063,
+      "sha256": "6c59c80e68f1bcf9ffe1a436bd1243a6e82c4257c5082dc4c33c5d9d8354d554"
+    },
+    {
+      "path": "results/crowd/crowd-q6.blocks.zst3",
+      "bytes": 116063,
+      "sha256": "6c59c80e68f1bcf9ffe1a436bd1243a6e82c4257c5082dc4c33c5d9d8354d554"
+    },
+    {
+      "path": "results/crowd/crowd-q7.astc",
+      "bytes": 435216,
+      "sha256": "9ca02c3893e7b502c5e8f89f01ddaae5848c05562e6570c0de3d3709a40a07dc"
+    },
+    {
+      "path": "results/crowd/crowd-q7.astc.blocks.zst3",
+      "bytes": 103515,
+      "sha256": "bd43ab042942d2a210a631b40be16a2493ffd0c9b0cd0c8a8198988d13ea5831"
+    },
+    {
+      "path": "results/crowd/crowd-q7.blocks.zst3",
+      "bytes": 103515,
+      "sha256": "bd43ab042942d2a210a631b40be16a2493ffd0c9b0cd0c8a8198988d13ea5831"
+    },
+    {
+      "path": "results/crowd/crowd-q8.astc",
+      "bytes": 435216,
+      "sha256": "8efc05e446eb423d2c2aec022dd67730b5a47c148df67a2b1ac54532c4e65e52"
+    },
+    {
+      "path": "results/crowd/crowd-q8.astc.blocks.zst3",
+      "bytes": 103832,
+      "sha256": "55d189b2b0398d8c81633be504a3758a9a9bbcc0d7868b70702e237c22c0625e"
+    },
+    {
+      "path": "results/crowd/crowd-q8.blocks.zst3",
+      "bytes": 103832,
+      "sha256": "55d189b2b0398d8c81633be504a3758a9a9bbcc0d7868b70702e237c22c0625e"
+    },
+    {
+      "path": "results/dark/dark-q2.astc",
+      "bytes": 1183760,
+      "sha256": "d726c4f73ded59141ce4b2f0c71fd60ba151f53bc841560a34542d0c3b57d40b"
+    },
+    {
+      "path": "results/dark/dark-q2.astc.blocks.zst3",
+      "bytes": 243337,
+      "sha256": "473ba79c2056acfb2d403c53688e27ff816df80f30935da262a4de0f4487ce14"
+    },
+    {
+      "path": "results/dark/dark-q2.blocks.zst3",
+      "bytes": 243337,
+      "sha256": "473ba79c2056acfb2d403c53688e27ff816df80f30935da262a4de0f4487ce14"
+    },
+    {
+      "path": "results/dark/dark-q3.astc",
+      "bytes": 1183760,
+      "sha256": "599269d55706be0d1a63a316e2b04f6d4c3020a9ff2cbe79ce69288498b357e0"
+    },
+    {
+      "path": "results/dark/dark-q3.blocks.zst3",
+      "bytes": 288044,
+      "sha256": "4ba9b32296156d11fc43f12e1f2adef4d796bf398f0dcdc8ca3c39720dc8b6fe"
+    },
+    {
+      "path": "results/dark/dark-q4.astc",
+      "bytes": 1183760,
+      "sha256": "82ac79c8602fb70a7f1907d5a46ca697d9292ea9ff9bd973cd6f0e0ccd1bbd11"
+    },
+    {
+      "path": "results/dark/dark-q6.astc",
+      "bytes": 1183760,
+      "sha256": "65acc7e748d3152cbf3c7a2b660cf71f6ca30093215b024c6b495181563edc63"
+    },
+    {
+      "path": "results/dark/dark-q6.astc.blocks.zst3",
+      "bytes": 416383,
+      "sha256": "a0c0881672020628c3edf513bb39ccf75ea5c18b4d1de10b2ca0e821ac65588c"
+    },
+    {
+      "path": "results/dark/dark-q6.blocks.zst3",
+      "bytes": 416383,
+      "sha256": "a0c0881672020628c3edf513bb39ccf75ea5c18b4d1de10b2ca0e821ac65588c"
+    },
+    {
+      "path": "results/dark/dark-q7.astc",
+      "bytes": 1183760,
+      "sha256": "0272f68f66ae07911f53839b45a7cb6954bfac42220b00dc7694d7d6a1713c63"
+    },
+    {
+      "path": "results/dark/dark-q7.astc.blocks.zst3",
+      "bytes": 265614,
+      "sha256": "6513b8786e94e91be9d212fff3011f47e18f39d3bd674a5d9ff603350a8d6acc"
+    },
+    {
+      "path": "results/dark/dark-q7.blocks.zst3",
+      "bytes": 265614,
+      "sha256": "6513b8786e94e91be9d212fff3011f47e18f39d3bd674a5d9ff603350a8d6acc"
+    },
+    {
+      "path": "results/dark/dark-q8.astc",
+      "bytes": 1183760,
+      "sha256": "137e3f7a8be4d55bd9d5d96dd293f361ea02372ecf697170af2a58ffa4a1c237"
+    },
+    {
+      "path": "results/dark/dark-q8.astc.blocks.zst3",
+      "bytes": 283207,
+      "sha256": "331575bb8db31467e0524a1e8fed1493e1d7de6296f70105d9dbe30d25b116f1"
+    },
+    {
+      "path": "results/dark/dark-q8.blocks.zst3",
+      "bytes": 283207,
+      "sha256": "331575bb8db31467e0524a1e8fed1493e1d7de6296f70105d9dbe30d25b116f1"
+    },
+    {
+      "path": "results/forest/forest-q2.astc",
+      "bytes": 1183760,
+      "sha256": "32789350ffe486d76fc6d1994ab52088a9aa97397c348a6a6d4b70aefeccd8d4"
+    },
+    {
+      "path": "results/forest/forest-q2.astc.blocks.zst3",
+      "bytes": 130838,
+      "sha256": "ac03da86f5632fabd96f8b6048e4e902abeed1d7a4fe8cdcc9596bca273ddb3d"
+    },
+    {
+      "path": "results/forest/forest-q2.blocks.zst3",
+      "bytes": 130838,
+      "sha256": "ac03da86f5632fabd96f8b6048e4e902abeed1d7a4fe8cdcc9596bca273ddb3d"
+    },
+    {
+      "path": "results/forest/forest-q3.astc",
+      "bytes": 1183760,
+      "sha256": "42c6abbd54bbae42db65274856911695687808f91b0a04ed93313c6dd48e6b85"
+    },
+    {
+      "path": "results/forest/forest-q3.blocks.zst3",
+      "bytes": 184738,
+      "sha256": "6f2a214814dc3b336d1853023828bcf65dc05a260c948d8bb073429f0ee2a960"
+    },
+    {
+      "path": "results/forest/forest-q4.astc",
+      "bytes": 1183760,
+      "sha256": "7f7cda47434188caac2c20ad4bbb036e1582c874405388c99c5a0f7d83e2462f"
+    },
+    {
+      "path": "results/forest/forest-q6.astc",
+      "bytes": 1183760,
+      "sha256": "facfe5271375cb0dd1dca58c5f2ae90076d2e2658f0abd201ba3e91fdc7f9840"
+    },
+    {
+      "path": "results/forest/forest-q6.astc.blocks.zst3",
+      "bytes": 258375,
+      "sha256": "e5097ba7b30833c238ab27bc5238af6d8dadb6e7a3be499cd873357a2a2f38ac"
+    },
+    {
+      "path": "results/forest/forest-q6.blocks.zst3",
+      "bytes": 258375,
+      "sha256": "e5097ba7b30833c238ab27bc5238af6d8dadb6e7a3be499cd873357a2a2f38ac"
+    },
+    {
+      "path": "results/forest/forest-q7.astc",
+      "bytes": 1183760,
+      "sha256": "17c0d97f473ea097edc325105030b6cdac88bc349579e9cc305beb8b245c139c"
+    },
+    {
+      "path": "results/forest/forest-q7.astc.blocks.zst3",
+      "bytes": 139337,
+      "sha256": "0c8a9dea7723dbc0898a74903d38d6891ae5661d8a22854bf45bf523fda78e90"
+    },
+    {
+      "path": "results/forest/forest-q7.blocks.zst3",
+      "bytes": 139337,
+      "sha256": "0c8a9dea7723dbc0898a74903d38d6891ae5661d8a22854bf45bf523fda78e90"
+    },
+    {
+      "path": "results/forest/forest-q8.astc",
+      "bytes": 1183760,
+      "sha256": "e58b3222c98a914ca1206f43029ab0465b12d2c15073d4a8d0c37f5c689097cc"
+    },
+    {
+      "path": "results/forest/forest-q8.astc.blocks.zst3",
+      "bytes": 176285,
+      "sha256": "2f3bf29464bee751cdbe13bb58d0166e0c43c3d82d9d67936ddd08c760f96e11"
+    },
+    {
+      "path": "results/forest/forest-q8.blocks.zst3",
+      "bytes": 176285,
+      "sha256": "2f3bf29464bee751cdbe13bb58d0166e0c43c3d82d9d67936ddd08c760f96e11"
+    }
+  ],
+  "zstd_levels_json": "zstd-levels/levels3-6-9.json"
+}

@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-04",
+  "profile": "nxastc native 2176x2176 per eye, 90Hz, neutral foveation, no motion-field warp, --no-encrypt",
+  "apk_sha256": "95e549812fa6ec09c04d0407bfb5b1aae23924733372b22da71be6449f2d0934",
+  "server_pid": 1044772,
+  "server_commandline": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/server/wivrn-server --no-encrypt -f /run/media/nerdrx/Lex/claude/nx-scratch/live/nxastc-20261003/server-nxastc-test.json ",
+  "client_pid": 24815,
+  "static_post_property": "",
+  "tests": {
+    "astc_rate_control": "PASS final source",
+    "packet_decode": "PASS exact blocks and malformed frames",
+    "packet_header": "PASS v1/v2",
+    "bitrate_bbr_checks": 73,
+    "bitrate_bbr_budget_checks": 4346,
+    "failures": 0
+  },
+  "limits": [
+    "short stationary windows only",
+    "final restart includes 164/180 fresh-source window",
+    "idle black packets excluded",
+    "no motion-to-photon measurement",
+    "offline RGB is not live YCbCr path"
+  ]
+}

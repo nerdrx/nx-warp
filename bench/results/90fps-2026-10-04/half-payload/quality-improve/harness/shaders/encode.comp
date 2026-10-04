@@ -1,0 +1,109 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "inverse.glsl"
+// Fixed ASTC 8x8: one partition, CEM8, 5x5 three-bit weights, six-bit endpoints.
+// ponytail: no partition/mode search; keep the cheap path until visual evidence rejects it.
+layout(local_size_x=64) in;
+layout(set=0,binding=0,std430) readonly buffer Input { uint rgba[]; } src;
+layout(set=0,binding=1,std430) writeonly buffer Output { uvec4 blocks[]; } dst;
+layout(push_constant) uniform Push { uint width, height, fit, quality; } pc;
+
+vec3 pixel(ivec2 p) {
+    p=clamp(p,ivec2(0),ivec2(pc.width,pc.height)-1);
+    uint v=src.rgba[uint(p.y)*pc.width+uint(p.x)];
+    return vec3(v&255u,(v>>8)&255u,(v>>16)&255u);
+}
+vec3 bilinear(ivec2 base,vec2 p) {
+    ivec2 q=ivec2(floor(p)); vec2 t=fract(p);
+    return mix(mix(pixel(base+q),pixel(base+q+ivec2(1,0)),t.x),
+               mix(pixel(base+q+ivec2(0,1)),pixel(base+q+ivec2(1,1)),t.x),t.y);
+}
+void put(inout uvec4 b,uint offset,uint count,uint value) {
+    uint word=offset>>5, shift=offset&31u;
+    value&=(1u<<count)-1u;
+    b[word]|=value<<shift;
+    if(shift+count>32u) b[word+1u]|=value>>(32u-shift);
+}
+uvec3 quantEndpoint(vec3 p, uint endpointBits) {
+    p=clamp(p,vec3(0),vec3(255));
+    if(pc.quality==8u) {
+        // Variant B: preserve endpoint luma more finely than chroma, then map
+        // reconstructed RGB back into ASTC's six-bit endpoint representation.
+        if(max(max(p.r,p.g),p.b)<12.0 || min(min(p.r,p.g),p.b)>243.0)
+            return min(uvec3(round(p*(63.0/255.0))),uvec3(63u));
+        float y=0.25*p.r+0.5*p.g+0.25*p.b;
+        float co=0.5*(p.r-p.b), cg=0.5*p.g-0.25*(p.r+p.b);
+        y=round(y/8.0)*8.0; co=round(co/32.0)*32.0; cg=round(cg/32.0)*32.0;
+        p=clamp(vec3(y+co-cg,y+cg,y-co-cg),vec3(0),vec3(255));
+        return min(uvec3(round(p*(63.0/255.0))),uvec3(63u));
+    }
+    uint step=1u<<uint(6u-clamp(endpointBits,1u,6u));
+    return min(uvec3(round(p*(63.0/255.0)/float(step)))*step,uvec3(63u));
+}
+vec3 unquantEndpoint(uvec3 q) { return vec3((q<<2)|(q>>4)); }
+uint quantWeight(float t) { uint w=uint(round(clamp(t,0.0,1.0)*7.0)); if(pc.quality==3u) w=uint(round(round(float(w)*3.0/7.0)*7.0/3.0)); if(pc.quality==2u || pc.quality==7u || pc.quality==8u) w=uint(round(round(float(w)*3.0/7.0)*7.0/3.0)); if(pc.quality==1u) w=4u; if(pc.quality==0u) w=0u; return min(w,7u); }
+
+void main() {
+    uint id=gl_GlobalInvocationID.x, across=(pc.width+7u)/8u;
+    if(id>=across*((pc.height+7u)/8u)) return;
+    ivec2 base=ivec2(id%across,id/across)*8;
+    vec3 lo=vec3(255),hi=vec3(0),sum=vec3(0),diag=vec3(0),cross=vec3(0);
+    for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+        vec3 v=pixel(base+ivec2(x,y));
+        lo=min(lo,v);hi=max(hi,v);sum+=v;diag+=v*v;
+        cross+=vec3(v.x*v.y,v.x*v.z,v.y*v.z);
+    }
+    bool isFlat=pc.quality==0u || (pc.fit==3u && max(max(diag.x-sum.x*sum.x/64.0,diag.y-sum.y*sum.y/64.0),diag.z-sum.z*sum.z/64.0)<1024.0);
+    if(isFlat) {lo=sum/64.0;hi=lo;}
+    else if(pc.fit!=0u) {
+        vec3 mean=sum/64.0;
+        diag=max(diag-sum*mean,vec3(0));
+        cross-=vec3(sum.x*mean.y,sum.x*mean.z,sum.y*mean.z);
+        mat3 cov=mat3(diag.x,cross.x,cross.y,cross.x,diag.y,cross.z,cross.y,cross.z,diag.z);
+        vec3 axis=diag.x>=diag.y&&diag.x>=diag.z?vec3(1,0,0):diag.y>=diag.z?vec3(0,1,0):vec3(0,0,1);
+        for(int i=0;i<4;i++) {vec3 a=cov*axis;axis=a*inversesqrt(max(dot(a,a),1e-12));}
+        float mn=1e30,mx=-1e30;
+        for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+            vec3 v=pixel(base+ivec2(x,y));float t=dot(v,axis);
+            if(t<mn){mn=t;lo=v;} if(t>mx){mx=t;hi=v;}
+        }
+    }
+    uint endpointBits=pc.quality<=3u?pc.quality+1u:pc.quality;
+    if(pc.quality==7u) {
+        // Variant A: spend endpoint precision only on blocks with strong
+        // component contrast; flat/low-contrast blocks retain coarse endpoints.
+        float span=max(max(hi.r-lo.r,hi.g-lo.g),hi.b-lo.b);
+        endpointBits=span>=64.0?6u:3u;
+    }
+    if(pc.quality==8u) endpointBits=3u;
+    uvec3 e0=quantEndpoint(lo,endpointBits),e1=quantEndpoint(hi,endpointBits);
+    // CEM8 enters blue contraction if endpoint sums are reversed; use ordinary RGB.
+    if(e0.x+e0.y+e0.z>e1.x+e1.y+e1.z) {uvec3 tmp=e0;e0=e1;e1=tmp;}
+    vec3 a=unquantEndpoint(e0),axis=unquantEndpoint(e1)-a;
+    float inv=1.0/max(dot(axis,axis),1e-9);
+    uvec4 header=uvec4(0x100f3u,0,0,0),weights=uvec4(0);
+    put(header,17,6,e0.r);put(header,23,6,e1.r);
+    put(header,29,6,e0.g);put(header,35,6,e1.g);
+    put(header,41,6,e0.b);put(header,47,6,e1.b);
+    if(pc.fit>=2u && !isFlat) {
+        // Fit the actual ASTC interpolation grid instead of sampling 25 source points.
+        // Clamp least-squares overshoot: endpoints/weights remain legal ASTC values.
+        float target[64];
+        for(uint y=0;y<8u;y++) for(uint x=0;x<8u;x++)
+            target[y*8u+x]=dot(pixel(base+ivec2(x,y))-a,axis)*inv;
+        for(uint i=0;i<25u;i++) {
+            float value=0;
+            for(uint j=0;j<64u;j++) value+=astc5x5InverseA[i*64u+j]*target[j];
+            uint w=quantWeight(value);
+            put(weights,3u*i,3,w);
+        }
+    } else if(!isFlat) {
+        for(uint y=0;y<5u;y++) for(uint x=0;x<5u;x++) {
+            vec3 v=bilinear(base,vec2(x,y)*1.75);
+            uint w=quantWeight(dot(v-a,axis)*inv);
+            put(weights,3u*(y*5u+x),3,w);
+        }
+    }
+    dst.blocks[id]=header|uvec4(bitfieldReverse(weights.w),bitfieldReverse(weights.z),
+                              bitfieldReverse(weights.y),bitfieldReverse(weights.x));
+}

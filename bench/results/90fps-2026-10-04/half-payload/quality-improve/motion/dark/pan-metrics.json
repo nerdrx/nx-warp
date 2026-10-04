@@ -1,0 +1,151 @@
+{
+  "scope": "Offline synthetic 0/1/2px horizontal pan of dark 2176x2176 fixture. Not live motion, network, or headset evidence.",
+  "source": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/quality-improve/fixtures/dark-left.png",
+  "source_sha256": "d77294def81c5cff2f203655198a160ad0aac930170f293af94c4485967bd024",
+  "dims": [
+    2176,
+    2176
+  ],
+  "pan_mapping": "frame[x] = source[max(x-shift,0)] (edge clamp, no wrap)",
+  "quality_variants": {
+    "current-q2": 2,
+    "q3-weight4-reference": 3,
+    "A-edge-gated": 7,
+    "B-luma-chroma": 8
+  },
+  "measurements": {
+    "0": {
+      "current-q2": {
+        "psnr_db": 27.292561069380273,
+        "mae": 8.205619979207215,
+        "astc_sha256": "d726c4f73ded59141ce4b2f0c71fd60ba151f53bc841560a34542d0c3b57d40b",
+        "zstd3_bytes": 243337,
+        "decoder_returncode": 0
+      },
+      "q3-weight4-reference": {
+        "psnr_db": 29.783718689156487,
+        "mae": 5.017913290373595,
+        "astc_sha256": "599269d55706be0d1a63a316e2b04f6d4c3020a9ff2cbe79ce69288498b357e0",
+        "zstd3_bytes": 288044,
+        "decoder_returncode": 0
+      },
+      "A-edge-gated": {
+        "psnr_db": 27.50149427754698,
+        "mae": 7.9784187572087655,
+        "astc_sha256": "0272f68f66ae07911f53839b45a7cb6954bfac42220b00dc7694d7d6a1713c63",
+        "zstd3_bytes": 265614,
+        "decoder_returncode": 0
+      },
+      "B-luma-chroma": {
+        "psnr_db": 28.314259131934723,
+        "mae": 6.0833805704611805,
+        "astc_sha256": "137e3f7a8be4d55bd9d5d96dd293f361ea02372ecf697170af2a58ffa4a1c237",
+        "zstd3_bytes": 283207,
+        "decoder_returncode": 0
+      }
+    },
+    "1": {
+      "current-q2": {
+        "psnr_db": 27.20051608089323,
+        "mae": 8.243205315789,
+        "astc_sha256": "61e9c833b97c5070a1ae0057f1e42e213df8d79ad9494d8d1cf4881abbe74080",
+        "zstd3_bytes": 248989,
+        "decoder_returncode": 0
+      },
+      "q3-weight4-reference": {
+        "psnr_db": 29.62020981882717,
+        "mae": 5.064504656412197,
+        "astc_sha256": "cadb9e828a13c31edae040127fc1fd4294fe537b52a43d10e623c03eb0f32a90",
+        "zstd3_bytes": 293786,
+        "decoder_returncode": 0
+      },
+      "A-edge-gated": {
+        "psnr_db": 27.414296000662702,
+        "mae": 8.00423599471958,
+        "astc_sha256": "5450b38f43496719c456c7ad17fc1232afb836f726747fd5812a60cfe8023e4d",
+        "zstd3_bytes": 271972,
+        "decoder_returncode": 0
+      },
+      "B-luma-chroma": {
+        "psnr_db": 28.224052374885463,
+        "mae": 6.103668600080198,
+        "astc_sha256": "e6ef4507bd6d04668826d67e76dc89f98ae6b0aed8b013d4d0d74ebb563b9461",
+        "zstd3_bytes": 287965,
+        "decoder_returncode": 0
+      }
+    },
+    "2": {
+      "current-q2": {
+        "psnr_db": 27.307927650542652,
+        "mae": 8.203922258528872,
+        "astc_sha256": "421605affa2bb3b40512b772d1153841a935b9f108ef1127325a671305e7859f",
+        "zstd3_bytes": 243454,
+        "decoder_returncode": 0
+      },
+      "q3-weight4-reference": {
+        "psnr_db": 29.818902161303832,
+        "mae": 5.006327100003604,
+        "astc_sha256": "0d7dd388034a44363b6e4c226888d6f1a15f552caa018c4b42a20cc5a847d472",
+        "zstd3_bytes": 287629,
+        "decoder_returncode": 0
+      },
+      "A-edge-gated": {
+        "psnr_db": 27.51392838727362,
+        "mae": 7.978142374252091,
+        "astc_sha256": "2a8f02af59aea5c4119cd4377ae60e9eaad71dd87e81a5f0c07abd6c420ec590",
+        "zstd3_bytes": 264937,
+        "decoder_returncode": 0
+      },
+      "B-luma-chroma": {
+        "psnr_db": 28.32940319997401,
+        "mae": 6.07861947628316,
+        "astc_sha256": "fd8b5d00f7ab6dadce0027f800b3e47362cdb6bc532a78a237ad9d155f1a6204",
+        "zstd3_bytes": 282847,
+        "decoder_returncode": 0
+      }
+    }
+  },
+  "aligned_pan_instability": {
+    "current-q2": {
+      "1": {
+        "aligned_mae": 1.9608048089925625,
+        "aligned_max_abs": 228
+      },
+      "2": {
+        "aligned_mae": 2.335221385874957,
+        "aligned_max_abs": 231
+      }
+    },
+    "q3-weight4-reference": {
+      "1": {
+        "aligned_mae": 1.8241280707685372,
+        "aligned_max_abs": 227
+      },
+      "2": {
+        "aligned_mae": 2.110569275145661,
+        "aligned_max_abs": 219
+      }
+    },
+    "A-edge-gated": {
+      "1": {
+        "aligned_mae": 1.9375928273608294,
+        "aligned_max_abs": 219
+      },
+      "2": {
+        "aligned_mae": 2.318510482619911,
+        "aligned_max_abs": 212
+      }
+    },
+    "B-luma-chroma": {
+      "1": {
+        "aligned_mae": 1.8032638184584178,
+        "aligned_max_abs": 239
+      },
+      "2": {
+        "aligned_mae": 2.0963042789562927,
+        "aligned_max_abs": 216
+      }
+    }
+  },
+  "contact_sheet": "pan-1to1-contact.png"
+}

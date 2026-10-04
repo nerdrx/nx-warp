@@ -1,0 +1,21 @@
+{
+  "variant_A_gate": "max channel range >=64 selects 6-bit endpoints; otherwise 3-bit",
+  "threshold_frame_counts": {
+    "0": {
+      "high_precision_blocks": 9320,
+      "total_blocks": 73984
+    },
+    "1": {
+      "high_precision_blocks": 9638,
+      "total_blocks": 73984
+    },
+    "2": {
+      "high_precision_blocks": 9233,
+      "total_blocks": 73984
+    }
+  },
+  "precision_gate_changes": {
+    "0->1": 1254,
+    "1->2": 1395
+  }
+}

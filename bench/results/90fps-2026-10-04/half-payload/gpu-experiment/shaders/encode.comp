@@ -1,0 +1,103 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "inverse.glsl"
+// Fixed ASTC 8x8: one partition, CEM8, 5x5 three-bit weights, six-bit endpoints.
+// ponytail: no partition/mode search; keep the cheap path until visual evidence rejects it.
+layout(local_size_x=64) in;
+layout(set=0,binding=0,std430) readonly buffer Input { uint rgba[]; } src;
+layout(set=0,binding=1,std430) writeonly buffer Output { uvec4 blocks[]; } dst;
+layout(push_constant) uniform Push { uint width, height, fit, quantBits; } pc;
+
+vec3 pixel(ivec2 p) {
+    p=clamp(p,ivec2(0),ivec2(pc.width,pc.height)-1);
+    uint v=src.rgba[uint(p.y)*pc.width+uint(p.x)];
+    return vec3(v&255u,(v>>8)&255u,(v>>16)&255u);
+}
+vec3 bilinear(ivec2 base,vec2 p) {
+    ivec2 q=ivec2(floor(p)); vec2 t=fract(p);
+    return mix(mix(pixel(base+q),pixel(base+q+ivec2(1,0)),t.x),
+               mix(pixel(base+q+ivec2(0,1)),pixel(base+q+ivec2(1,1)),t.x),t.y);
+}
+void put(inout uvec4 b,uint offset,uint count,uint value) {
+    uint word=offset>>5, shift=offset&31u;
+    value&=(1u<<count)-1u;
+    b[word]|=value<<shift;
+    if(shift+count>32u) b[word+1u]|=value>>(32u-shift);
+}
+uvec3 quantEndpoint(vec3 p) {
+    uint step=1u<<uint(6u-clamp(pc.quantBits,3u,6u));
+    return min(uvec3(round(clamp(p,vec3(0),vec3(255))*(63.0/255.0)/float(step)))*step,uvec3(63u));
+}
+vec3 unquantEndpoint(uvec3 q) { return vec3((q<<2)|(q>>4)); }
+
+void main() {
+    uint id=gl_GlobalInvocationID.x, across=(pc.width+7u)/8u;
+    if(id>=across*((pc.height+7u)/8u)) return;
+    ivec2 base=ivec2(id%across,id/across)*8;
+    vec3 lo=vec3(255),hi=vec3(0),sum=vec3(0),diag=vec3(0),cross=vec3(0);
+    for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+        vec3 v=pixel(base+ivec2(x,y));
+        lo=min(lo,v);hi=max(hi,v);sum+=v;diag+=v*v;
+        cross+=vec3(v.x*v.y,v.x*v.z,v.y*v.z);
+    }
+    bool isFlat=pc.fit>=3u && max(max(diag.x-sum.x*sum.x/64.0,diag.y-sum.y*sum.y/64.0),diag.z-sum.z*sum.z/64.0)<1024.0;
+    if(isFlat) {lo=sum/64.0;hi=lo;}
+    else if(pc.fit!=0u) {
+        vec3 mean=sum/64.0;
+        diag=max(diag-sum*mean,vec3(0));
+        cross-=vec3(sum.x*mean.y,sum.x*mean.z,sum.y*mean.z);
+        mat3 cov=mat3(diag.x,cross.x,cross.y,cross.x,diag.y,cross.z,cross.y,cross.z,diag.z);
+        vec3 axis=diag.x>=diag.y&&diag.x>=diag.z?vec3(1,0,0):diag.y>=diag.z?vec3(0,1,0):vec3(0,0,1);
+        for(int i=0;i<4;i++) {vec3 a=cov*axis;axis=a*inversesqrt(max(dot(a,a),1e-12));}
+        float mn=1e30,mx=-1e30;
+        for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+            vec3 v=pixel(base+ivec2(x,y));float t=dot(v,axis);
+            if(t<mn){mn=t;lo=v;} if(t>mx){mx=t;hi=v;}
+        }
+    }
+    uvec3 e0=quantEndpoint(lo),e1=quantEndpoint(hi);
+    // CEM8 enters blue contraction if endpoint sums are reversed; use ordinary RGB.
+    if(e0.x+e0.y+e0.z>e1.x+e1.y+e1.z) {uvec3 tmp=e0;e0=e1;e1=tmp;}
+    vec3 a=unquantEndpoint(e0),axis=unquantEndpoint(e1)-a;
+    float inv=1.0/max(dot(axis,axis),1e-9);
+    uvec4 header=uvec4(0x100f3u,0,0,0),weights=uvec4(0);
+    put(header,17,6,e0.r);put(header,23,6,e1.r);
+    put(header,29,6,e0.g);put(header,35,6,e1.g);
+    put(header,41,6,e0.b);put(header,47,6,e1.b);
+    float fitted[25]; for(int k=0;k<25;k++) fitted[k]=0.0;
+    if(pc.fit>=2u && !isFlat) {
+        // Fit the actual ASTC interpolation grid instead of sampling 25 source points.
+        // Clamp least-squares overshoot: endpoints/weights remain legal ASTC values.
+        float target[64];
+        for(uint y=0;y<8u;y++) for(uint x=0;x<8u;x++)
+            target[y*8u+x]=dot(pixel(base+ivec2(x,y))-a,axis)*inv;
+        for(uint i=0;i<25u;i++) {
+            float value=0;
+            for(uint j=0;j<64u;j++) value+=astc5x5InverseA[i*64u+j]*target[j];
+            fitted[i]=clamp(value,0.0,1.0);
+        }
+    } else if(!isFlat) {
+        for(uint y=0;y<5u;y++) for(uint x=0;x<5u;x++) {
+            vec3 v=bilinear(base,vec2(x,y)*1.75);
+            fitted[y*5u+x]=clamp(dot(v-a,axis)*inv,0.0,1.0);
+        }
+    }
+    for(uint y=0u;y<5u;y++) for(uint x=0u;x<5u;x++) {
+        float value=fitted[y*5u+x];
+        if(pc.fit==4u) { // 3x3 anchors bilinearly expanded to the existing 5x5 grid.
+            float gx=float(x)*0.5, gy=float(y)*0.5; uint x0=uint(floor(gx)),y0=uint(floor(gy));
+            uint x1=min(x0+1u,2u),y1=min(y0+1u,2u); float tx=fract(gx),ty=fract(gy);
+            float a0=mix(fitted[y0*2u*5u+x0*2u],fitted[y0*2u*5u+x1*2u],tx);
+            float a1=mix(fitted[y1*2u*5u+x0*2u],fitted[y1*2u*5u+x1*2u],tx);
+            value=mix(a0,a1,ty);
+        } else if(pc.fit==5u) { // 2x2 corner anchors expanded across the 5x5 grid.
+            float tx=float(x)*0.25,ty=float(y)*0.25;
+            value=mix(mix(fitted[0],fitted[4],tx),mix(fitted[20],fitted[24],tx),ty);
+        }
+        uint w=uint(round(value*7.0));
+        if(pc.fit==6u) { uint q=uint(round(value*3.0)); w=q==0u?0u:q==1u?2u:q==2u?5u:7u; }
+        put(weights,3u*(y*5u+x),3,w);
+    }
+    dst.blocks[id]=header|uvec4(bitfieldReverse(weights.w),bitfieldReverse(weights.z),
+                              bitfieldReverse(weights.y),bitfieldReverse(weights.x));
+}
