@@ -44,3 +44,5 @@ The cached prototype preserves ASTC bytes, but it does not prove a production wi
 Root recomputed all36 timing rows and verified the production shader/includes byte-for-byte against source d3f428bb. Compiler stats are driver-reported values, not measured runtime occupancy or VRAM traffic. No validation-layer run is claimed for this comparison.
 
 ![Cache timing and private memory](cache.png)
+
+The original host CMake build had an empty build type and no optimization flag; CPU-to-fence numbers include unoptimized command recording and must not be treated as a release-encoder CPU speedup. GPU timing is the principal comparison. `run.log` is the agent-consolidated execution summary, not raw captured runtime stdout. Root verified the rows and source, but did not rerun these GPU comparisons.

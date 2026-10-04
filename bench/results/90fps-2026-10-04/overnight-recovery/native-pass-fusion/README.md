@@ -48,3 +48,5 @@ Root verified that the baseline shader and all three includes exactly match sour
 ![Naive fusion stage costs and all measured pairs](fusion.png)
 
 Root rebuilt these public CMake/shader files successfully without another GPU run. Published CSV line endings are normalized to LF. A read-only kernel journal check for the original attempt window found no matching GPU/fault/reset/timeout messages; the query failure is retained as a harness limitation, not a physical hardware diagnosis.
+
+The original host CMake build had an empty build type and no optimization flag; CPU-to-fence numbers include unoptimized command recording and must not be treated as a release-encoder CPU speedup. GPU timing is the principal comparison. `run.log` is the agent-consolidated execution summary, not raw captured runtime stdout. Root verified the rows and source, but did not rerun these GPU comparisons.
