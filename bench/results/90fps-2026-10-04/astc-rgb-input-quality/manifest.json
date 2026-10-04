@@ -1,0 +1,55 @@
+{
+  "title": "ASTC RGB input vs CPU 4:2:0 proxy",
+  "date": "2026-10-04",
+  "compression": "zstd -3; exact byte counts of ASTC block payload, excluding 16-byte .astc file header; not packet framing",
+  "files": {
+    "README.md": {
+      "bytes": 3800,
+      "sha256": "5fe272e221ed69304d01d77fec13f94184997ecf2677f9756596e200aa3fcdb7"
+    },
+    "comparison.csv": {
+      "bytes": 4385,
+      "sha256": "e73ea94dd73536e8f6017c2738e55fdcf11506f2a93f1bdf5edf1c8b317d3fe5"
+    },
+    "comparison.json": {
+      "bytes": 7499,
+      "sha256": "4289c03a30cc6f9432a66945a6c776cec0ea1cbcc844a17be1c8b822bd7109e7"
+    },
+    "evidence-manifest.json": {
+      "bytes": 4743,
+      "sha256": "e98e8f32b3dcbf5573cf82c1b63be835a57e4ccecaab95381ae4c848be24ec4c"
+    },
+    "figures/dark-q2.png": {
+      "bytes": 656804,
+      "sha256": "e7d9d237f704bbbbd8453f309e146cfdd047c167ea0baf2febc68480657ecea2"
+    },
+    "figures/dark-q4.png": {
+      "bytes": 726417,
+      "sha256": "9cdc28aa30252fe5df209a6d69c80f272b9624df319e36b8a0882651d401d74e"
+    },
+    "figures/dark-q6.png": {
+      "bytes": 754232,
+      "sha256": "505aa96a28d3c58fa3bc7df1628f9c5c8d8e998f863b39e60963e375ccfbbcc6"
+    },
+    "figures/forest-q2.png": {
+      "bytes": 547128,
+      "sha256": "aae7b8271ab1fc0b8d2149bb67b51c530a89c9b7ad19977d8326a0d688d28002"
+    },
+    "figures/forest-q4.png": {
+      "bytes": 628274,
+      "sha256": "56bb0385f50274306dbc918a1d81bc296ca1b237e704b486ca5bfb24716f1841"
+    },
+    "figures/forest-q6.png": {
+      "bytes": 671012,
+      "sha256": "f45b1817559be1aa9dbe004f735b9a75f621c1791166a71a38372f7dbb702295"
+    },
+    "figures/psnr-vs-zstd3.png": {
+      "bytes": 74519,
+      "sha256": "fa9697b632553319fe2d8cb521bda2a14c7593e60412e23196cb029e00d55f79"
+    },
+    "proxy-manifest.json": {
+      "bytes": 2978,
+      "sha256": "d41858a999596b909f6391181e1e4219a212f0fe603467218efa79d754a52cd7"
+    }
+  }
+}

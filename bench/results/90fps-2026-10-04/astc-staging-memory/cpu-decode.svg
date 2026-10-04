@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="395" viewBox="0 0 920 395">
+<style>text{font-family:system-ui,sans-serif;fill:#222} .small{font-size:11px}.label{font-size:13px}.title{font-size:17px;font-weight:650}</style>
+<rect width="100%" height="100%" fill="white"/>
+<text x="18" y="26" class="title">Pico CPU decode path median (µs; lower is better)</text>
+<text x="18" y="62" class="label">Synthetic 2176</text><text x="18" y="78" class="small">LZ4</text>
+<rect x="205" y="48" width="33" height="9" rx="2" fill="#2a9d8f"/><text x="243" y="56" class="small">245</text>
+<rect x="205" y="59" width="224" height="9" rx="2" fill="#e76f51"/><text x="434" y="67" class="small">1681</text>
+<rect x="205" y="70" width="218" height="9" rx="2" fill="#457b9d"/><text x="428" y="78" class="small">1639</text>
+<text x="18" y="110" class="label">Synthetic 2176</text><text x="18" y="126" class="small">Zstd 3</text>
+<rect x="205" y="96" width="54" height="9" rx="2" fill="#2a9d8f"/><text x="264" y="104" class="small">402</text>
+<rect x="205" y="107" width="475" height="9" rx="2" fill="#e76f51"/><text x="685" y="115" class="small">3565</text>
+<rect x="205" y="118" width="467" height="9" rx="2" fill="#457b9d"/><text x="677" y="126" class="small">3505</text>
+<text x="18" y="158" class="label">Dark q6 1920x1080</text><text x="18" y="174" class="small">LZ4</text>
+<rect x="205" y="144" width="32" height="9" rx="2" fill="#2a9d8f"/><text x="242" y="152" class="small">242</text>
+<rect x="205" y="155" width="463" height="9" rx="2" fill="#e76f51"/><text x="673" y="163" class="small">3472</text>
+<rect x="205" y="166" width="463" height="9" rx="2" fill="#457b9d"/><text x="673" y="174" class="small">3475</text>
+<text x="18" y="206" class="label">Dark q6 1920x1080</text><text x="18" y="222" class="small">Zstd 3</text>
+<rect x="205" y="192" width="231" height="9" rx="2" fill="#2a9d8f"/><text x="441" y="200" class="small">1730</text>
+<rect x="205" y="203" width="525" height="9" rx="2" fill="#e76f51"/><text x="735" y="211" class="small">3935</text>
+<rect x="205" y="214" width="542" height="9" rx="2" fill="#457b9d"/><text x="752" y="222" class="small">4064</text>
+<text x="18" y="254" class="label">Forest q6 1920x1080</text><text x="18" y="270" class="small">LZ4</text>
+<rect x="205" y="240" width="31" height="9" rx="2" fill="#2a9d8f"/><text x="241" y="248" class="small">235</text>
+<rect x="205" y="251" width="448" height="9" rx="2" fill="#e76f51"/><text x="658" y="259" class="small">3360</text>
+<rect x="205" y="262" width="490" height="9" rx="2" fill="#457b9d"/><text x="700" y="270" class="small">3679</text>
+<text x="18" y="302" class="label">Forest q6 1920x1080</text><text x="18" y="318" class="small">Zstd 3</text>
+<rect x="205" y="288" width="167" height="9" rx="2" fill="#2a9d8f"/><text x="377" y="296" class="small">1254</text>
+<rect x="205" y="299" width="542" height="9" rx="2" fill="#e76f51"/><text x="752" y="307" class="small">4062</text>
+<rect x="205" y="310" width="504" height="9" rx="2" fill="#457b9d"/><text x="714" y="318" class="small">3778</text>
+<line x1="205" y1="345" x2="805" y2="345" stroke="#888"/>
+<line x1="205" y1="342" x2="205" y2="348" stroke="#888"/><text x="205" y="363" text-anchor="middle" class="small">0</text>
+<line x1="338" y1="342" x2="338" y2="348" stroke="#888"/><text x="338" y="363" text-anchor="middle" class="small">1000</text>
+<line x1="472" y1="342" x2="472" y2="348" stroke="#888"/><text x="472" y="363" text-anchor="middle" class="small">2000</text>
+<line x1="605" y1="342" x2="605" y2="348" stroke="#888"/><text x="605" y="363" text-anchor="middle" class="small">3000</text>
+<line x1="738" y1="342" x2="738" y2="348" stroke="#888"/><text x="738" y="363" text-anchor="middle" class="small">4000</text>
+<rect x="185" y="377" width="10" height="8" fill="#2a9d8f"/><text x="200" y="386" class="small">Scratch + copy</text>
+<rect x="390" y="377" width="10" height="8" fill="#e76f51"/><text x="405" y="386" class="small">Direct → current</text>
+<rect x="595" y="377" width="10" height="8" fill="#457b9d"/><text x="610" y="386" class="small">Direct → random</text>
+</svg>

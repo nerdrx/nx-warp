@@ -2,17 +2,16 @@
 
 Deadline: **07:00 UTC / 09:00 Europe/Berlin**. Keep existing heartbeat active until then; pause at deadline.
 
-## Latest state at 05:02 UTC
+## Latest state at 05:49 UTC
 
-- WiVRn HEAD/remote is `6d03c633`; selective colour fit committed `1a116b94`, server CPU instrumentation `6d03c633`. Android and host builds pass with matching embedded version.
-- DIRTY client: fresh-common-stereo resume gate, safe decoder retirement (drain presentation, release handles, join workers outside decoder lock), upload tracking/timings and timeline-create fallback. First candidate failed Pico `vkCreateSemaphore: Incomplete` despite advertised support; fallback candidate native short run passed 18 nonblack/2 idle-black windows, usually89-90 iterations/s but142-165 fresh sources per2s. No common-frame churn or network exception in capture. This is stationary off-head, not motion/photon proof.
-- Installed fallback APK SHA `777534d609238eb3a5dd39402ee73ccbc48cbbc6aa3beb868aa3355e5b6a1d84`, signature/data preserved. Scratch `astc-timeline-upload-20261004/fallback-packaging/`. Baseline rollback a6 remains.
-- Earlier native C run fell24-65fps with91focusactivations and788 no-common-frame warnings; retain failed evidence. New gate hypothesis needs additional recovery validation.
-- Luna astc_small_blocks reviewing SAME queue barrier option: can remove post-submit CPU wait without broken timeline semaphores if actual same-queue ordering/barrier guarantee verified. Do not claim gain before test.
-- Luna dense_colour_audit implements opt-in WIVRN_ASTC_DIRECT_RGB exclusive-native-ASTC RGBA8 compositor output, preserving remap/flip/motion/mask. PC-only conversion/detail opportunity; higher4B/px bandwidth thanNV12, requiresmeasure. No shader run while liveGPUchecks.
-- Luna chroma report complete: final production covariance reuse1-1.4% lowerPCencode time, all14photo/q byteidentical. Final36synthetic externaldecodechecks pass selectedgate. Native2176syntheticPico A/B/A hardware sampler passed maxerror1/zero>2, medians1.72-1.90ms showbaseline drift, no candidate speedgain.
-- Owned reports ready: dualplane-integration, dualplane-motion-preview, colour-mode-followups, packet-cpu-cost, dualplane-pico-native. Zstd1vs3 saved~.16-.27msPC but+2-5%bytes; retaincurrentpacking. Preserve unrelated mainREADME/branding dirt.
-- Live server1607867/WayVR1607938 and Picoapp6293 started for fallbackB capture (05UTC); verify owned PIDs beforestopping. Current source agents onlyPCedits/report, no parallelGPUwork.
+- WiVRn HEAD/remote `9d05f4da`; source `62eff3af` ships same-queue asynchronous ASTC upload, fresh-common-stereo resume gate and safe decoder retirement. `9d05f4da` adds opt-in direct RGB server input with equal-eye extent guard. Default RGB remains off; default async upload is on.
+- Matched pinned-header host targets (openxr_wivrn, monado, wivrn-server) and Android native build at9d05 PASS. Packaging source9d05 in progress; do not run with old6d03 client and new host. Previous installed APKbf87dad1 remains until data-preserving replacement verified.
+- Same-APK sync/async/sync live checks at source6d03+later62eff client patch: per-eye CPU upload handoff median .480/.013/.405ms; post-submit wait .465/0/.390ms. Short off-head viewer typically87-90 iterations/s with variable fresh updates; no sustained motion or photon proof.
+- No timeline semaphore dependency retained: Pico rejected creation despite advertised capability. Same actual graphics queue plus transfer-to-fragment barrier preserves sampling ordering; fence gates buffer/command reuse. Native2176 standalone readbacks maxdelta1, identical output hashes.
+- Native direct RGB smoke selected profile, 18 nonblack/0idleblack encoder windows,89.2-90.5 render iterations/s,171-180fresh updates per2s. No inside-headset colour inspection or controlled live byte comparison. CPU4:2:0 photo proxy separately shows RGB gains.13-.43dB and~2.3-15.6% larger Zstd3 blocks; synthetic shader equivalence maxdelta1. Direct RGB stays opt-in.
+- Mapped staging direct-decode experiment REJECTED: all VMA choices actualHOST_CACHED type4, but directLZ4/Zstd decode1.6-4.1ms vsordinaryscratch+copy.24-1.73ms. Keep existing decode path; output hashes match. Report astc-staging-memory.
+- Root owns matched APK packaging/final native smoke. Luna chroma investigates bounded selective partition fit scratch-only, PCGPU; no device usage. Luna smallblocks exported astc-rgb-input-quality report; density reviewed server/doc. All owned runtime processes stopped at05:49; verify pid/cmd before any action. No parallel live/GPU runs.
+- NXWarp main f44f8a3 reports samequeue/upload-live/directRGB; pending owned report commits include staging rejection,RGBproxy,README owned results section and valid zero-context sourcepatch correction. Preserve unrelated README logo/branding dirt.
 
 Earlier detailed evidence follows (older runtime state is superseded above).
 

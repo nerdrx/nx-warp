@@ -17,6 +17,16 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: native colour detail and a cheaper upload handoff
+
+The current experimental profile uses **native 2176 × 2176 per eye, ASTC 8×8 and a 90 Hz viewer**, without foveation, JPEG or object-motion warping. Selective dual-plane fitting improves dense colour on the PC while keeping the existing hardware texture sampler on Pico. Exact q6 photo comparisons improve dark-scene PSNR **0.55 dB** with essentially unchanged compressed bytes; this does not remove every 8×8 artefact. [Colour crops and measurements](bench/results/90fps-2026-10-04/dualplane-integration/README.md).
+
+The client now hands uploads to the existing graphics queue without waiting on the CPU after every submission. Same-APK sync/async/sync checks reduce median host handoff from **0.48 / 0.40 ms to 0.013 ms per eye worker**. Short stationary viewer captures stay around 90 render iterations/s; fresh source updates vary. **This is a CPU wait reduction, not measured photon latency or sustained motion proof.** [Live evidence and graph](bench/results/90fps-2026-10-04/astc-upload-live/README.md).
+
+![Same-APK upload handoff comparison](bench/results/90fps-2026-10-04/astc-upload-live/upload-handoff.png)
+
+Fresh stereo frames now gate resume, and decoder replacement drains presentation before releasing images. An optional PC RGB input bypass preserves colour before ASTC encoding, with a memory/bitrate trade-off. Direct decompression into mapped upload memory was tested and rejected: it was substantially slower on Pico. [RGB correctness](bench/results/90fps-2026-10-04/astc-direct-rgb/README.md) · [Rejected memory shortcut](bench/results/90fps-2026-10-04/astc-staging-memory/README.md).
+
 ### 3 October: fast native PC ASTC encoder
 
 A new one-dispatch Vulkan encoder emits standard **4352 × 2176 ASTC 8×8** blocks without partition or mode search. The complete dark-scene PC call takes **1.59 / 3.02 ms p50/p95** with GPU-resident input, including readback and LZ4; CPU-upload input takes **4.76 / 5.98 ms**. Low-variance flat blocks cut matched dark-scene payload **53%** against the fitted non-flat encoder, to **366 Mbit/s normalized to 90 updates/s**; forest reaches **230 Mbit/s**. Six synthetic pans stay within **1.44–1.65 ms median PC call**. This is standalone encoder proof: fine text still softens, fast blocks have not been sampled on Pico, and live 90 Hz remains unproven. [Source, sample timings, quality crops and animation](bench/results/90fps-2026-10-03/astc-texture-path/gpu-encoder/report.md).

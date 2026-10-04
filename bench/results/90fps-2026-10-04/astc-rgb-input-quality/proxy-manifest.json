@@ -1,0 +1,49 @@
+{
+  "title": "ASTC RGB versus CPU BT.709 4:2:0 input proxy",
+  "status": "CPU proxy inputs prepared for the bounded ASTC colour-input comparison",
+  "created": "2026-10-04",
+  "generator": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-rgb-input-quality-20261004/prepare_yuv_proxy.py",
+  "generator_sha256": "e3552fbe64ccc17607492ecb46e75dfb025fecfacbf56ca59035c57863cea2b5",
+  "fixtures": [
+    {
+      "scene": "dark",
+      "source_rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/dark-native-1920x1080.rgba",
+      "source_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "source_dimensions": [
+        1920,
+        1080
+      ],
+      "source_layout": "row-major RGBA8",
+      "proxy_rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-rgb-input-quality-20261004/inputs/dark-yuv420-cpu-proxy.rgba",
+      "proxy_sha256": "613b3395917d588b21bb98586c10aff71f80213102baff2b4b955b4193c1a09a",
+      "proxy_bytes": 8294400,
+      "model": "sRGB decode/encode roundtrip; production foveation full-range BT.709 matrix; per-pixel R8 luma; 2x2 arithmetic-mean R8G8 chroma; ASTC pixel() nearest p/2 chroma fetch and inverse matrix; clamp and round reconstructed CPU reference to RGBA8",
+      "rounding": "NumPy rint (nearest, ties-to-even); actual GPU imageStore R8 quantization may differ at exact ties",
+      "measures": {
+        "proxy_vs_source_rgb_mae_code": 1.3445564879115226,
+        "proxy_vs_source_rgb_max_abs_code": 168
+      },
+      "not_claimed": "not output from the production GPU foveation pass; does not model foveation geometry, resampling, or implementation-specific UNORM conversion"
+    },
+    {
+      "scene": "forest",
+      "source_rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/forest-native-1920x1080.rgba",
+      "source_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "source_dimensions": [
+        1920,
+        1080
+      ],
+      "source_layout": "row-major RGBA8",
+      "proxy_rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-rgb-input-quality-20261004/inputs/forest-yuv420-cpu-proxy.rgba",
+      "proxy_sha256": "2b33cbe1be2a430fbcdf629b75d3173126a8c53f888759dd170024716e32dc57",
+      "proxy_bytes": 8294400,
+      "model": "sRGB decode/encode roundtrip; production foveation full-range BT.709 matrix; per-pixel R8 luma; 2x2 arithmetic-mean R8G8 chroma; ASTC pixel() nearest p/2 chroma fetch and inverse matrix; clamp and round reconstructed CPU reference to RGBA8",
+      "rounding": "NumPy rint (nearest, ties-to-even); actual GPU imageStore R8 quantization may differ at exact ties",
+      "measures": {
+        "proxy_vs_source_rgb_mae_code": 0.6520680619855967,
+        "proxy_vs_source_rgb_max_abs_code": 123
+      },
+      "not_claimed": "not output from the production GPU foveation pass; does not model foveation geometry, resampling, or implementation-specific UNORM conversion"
+    }
+  ]
+}

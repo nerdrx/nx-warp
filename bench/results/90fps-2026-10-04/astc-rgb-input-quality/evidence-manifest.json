@@ -1,0 +1,78 @@
+{
+  "title": "ASTC RGB vs CPU BT.709 4:2:0 input proxy",
+  "date": "2026-10-04",
+  "dimensions": [
+    1920,
+    1080
+  ],
+  "fit": 3,
+  "qualities": [
+    2,
+    4,
+    6
+  ],
+  "gpu_device": "AMD Radeon RX 7900 XTX (RADV NAVI31)",
+  "gpu_samples": "Only six CPU-proxy encodes run: two scenes by q2/q4/q6. Same-shader RGB ASTC baseline outputs were reused. No timing claim made.",
+  "reference_model": "Server foveation BT.709 full-range matrix; quantized R8 luma and 2x2 average R8G8 chroma; ASTC shader inverse matrix and nearest p/2 chroma sample; final CPU reference rounded to RGBA8.",
+  "limits": [
+    "CPU proxy, not GPU foveation capture",
+    "No foveation geometry or source resampling",
+    "UNORM rounding ties may differ",
+    "2 user photo inputs only; no general perceptual claim"
+  ],
+  "tools": {
+    "selected_shader_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-production-colour-port-20261004/encode.comp",
+    "selected_shader_sha256": "16c7db76da47ce3320ef12cac20518ee3f80a468f7dddf56e62fb85f93f14c4e",
+    "selected_shader_spirv_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-production-colour-port-20261004/build/encode.spv",
+    "selected_shader_spirv_sha256": "a506a2c897c5445cf915d8f62ff52def5783bab05eef141e61282e1514223061",
+    "resident_harness_path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/build/astc-gpu",
+    "resident_harness_sha256": "ceed2e41a74c549bda91e53d338296cde1b3c6bfa3c4b27f9f26edcd95209323",
+    "resident_harness_source": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/src/main.cpp",
+    "resident_harness_source_sha256": "b601833508a77b99cd1c687e7a6a6f915c4c8a12a719efa6b6cd77389ef1035e",
+    "external_decoder_path": "/run/media/nerdrx/Lex/claude/nx-scratch/nx-xuastc-20261003/decode_astc",
+    "external_decoder_sha256": "ff6e2301dd25a00b42ce531d7c4c83e2bc4a90b2ea39c989047ac2c8a98064fa",
+    "proxy_generator_sha256": "e3552fbe64ccc17607492ecb46e75dfb025fecfacbf56ca59035c57863cea2b5",
+    "run_script_sha256": "096fedc9aad359ebe70927135944f60d834b6a1c43e999a5615471843e2b9f28"
+  },
+  "roi_xywh": {
+    "dark": [
+      320,
+      240,
+      512,
+      512
+    ],
+    "forest": [
+      704,
+      128,
+      512,
+      512
+    ]
+  },
+  "files": {
+    "dark_source_rgba_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+    "dark_cpu_proxy_rgba_sha256": "613b3395917d588b21bb98586c10aff71f80213102baff2b4b955b4193c1a09a",
+    "dark_rgb_q2_astc_sha256": "66b74cbd569c3d98d6cba3c0db99481042c75875a1474047abf1c966ebef0a84",
+    "dark_proxy_q2_astc_sha256": "1ef833809d1d2ab2d5b7db7815864062855f1413badaa0cef908078d3a45bcef",
+    "dark_crop_q2_sha256": "e7d9d237f704bbbbd8453f309e146cfdd047c167ea0baf2febc68480657ecea2",
+    "dark_rgb_q4_astc_sha256": "eb2dd4cac797e254c2e304e26545e424356f899119342d8aefe9f8dbd4bbe258",
+    "dark_proxy_q4_astc_sha256": "d2785a2af5e58da2c9ebca3b6b196548fb045bb36fb71129c488e28ec808538f",
+    "dark_crop_q4_sha256": "9cdc28aa30252fe5df209a6d69c80f272b9624df319e36b8a0882651d401d74e",
+    "dark_rgb_q6_astc_sha256": "22b5ff40c0c87e93040c832a8a6111cb1919814e8ed6e85bf272de4cd2452913",
+    "dark_proxy_q6_astc_sha256": "4c56be3215435ca648704fe79c944a054c195ea8e9bfcd647f0500edfc86d002",
+    "dark_crop_q6_sha256": "505aa96a28d3c58fa3bc7df1628f9c5c8d8e998f863b39e60963e375ccfbbcc6",
+    "forest_source_rgba_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+    "forest_cpu_proxy_rgba_sha256": "2b33cbe1be2a430fbcdf629b75d3173126a8c53f888759dd170024716e32dc57",
+    "forest_rgb_q2_astc_sha256": "a161bc6cccd6848bd4390bbfc17f0843fef4ad9d3c39535da1a5f8fadc43aeff",
+    "forest_proxy_q2_astc_sha256": "4d6bec43d2f81a4ee56cefecf0fcc2ce421d5105403ad58eef566dfec4502403",
+    "forest_crop_q2_sha256": "aae7b8271ab1fc0b8d2149bb67b51c530a89c9b7ad19977d8326a0d688d28002",
+    "forest_rgb_q4_astc_sha256": "b16dbb7af13c369dbdca754ca199b4fb65207134d6484885cf97d1f69d20e1d4",
+    "forest_proxy_q4_astc_sha256": "fa8624664d9ad4ed69c1beba183f122626102e0c028f20779ee0c6b41179331e",
+    "forest_crop_q4_sha256": "56bb0385f50274306dbc918a1d81bc296ca1b237e704b486ca5bfb24716f1841",
+    "forest_rgb_q6_astc_sha256": "9eaa81eb327ad495f69a06e8e30df2b8f9588a5bb64a05eccbc26a3750cfc5a4",
+    "forest_proxy_q6_astc_sha256": "8de8123cc7cf08058f26609485aceec475fcf534f00a30ad9230934d1ae3a7c4",
+    "forest_crop_q6_sha256": "f45b1817559be1aa9dbe004f735b9a75f621c1791166a71a38372f7dbb702295"
+  },
+  "results_csv_sha256": "b916c28933f499c24c7beb131a87759dfa95720ae22a3431ba4b20ccbe89782c",
+  "results_json_sha256": "4289c03a30cc6f9432a66945a6c776cec0ea1cbcc844a17be1c8b822bd7109e7",
+  "proxy_manifest_sha256": "d41858a999596b909f6391181e1e4219a212f0fe603467218efa79d754a52cd7"
+}

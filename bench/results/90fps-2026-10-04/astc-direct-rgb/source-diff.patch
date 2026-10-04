@@ -1,23 +1,20 @@
 diff --git a/server/compositor/compositor.cpp b/server/compositor/compositor.cpp
-index efba5988..dc216b96 100644
+index efba5988..767bec8a 100644
 --- a/server/compositor/compositor.cpp
 +++ b/server/compositor/compositor.cpp
-@@ -221,9 +221,52 @@ std::array<vk::Format, 5> image_formats(int bit_depth)
- 	throw std::runtime_error(std::format("Unsupported bit depth {}", bit_depth));
- }
-
+@@ -223,0 +224,11 @@ std::array<vk::Format, 5> image_formats(int bit_depth)
 +bool astc_direct_rgb_enabled(std::span<wivrn::encoder_settings> encoders)
 +{
 +	const char * value = std::getenv("WIVRN_ASTC_DIRECT_RGB");
 +	return value and std::string_view(value) == "1" and encoders.size() >= 3 and
 +	       encoders[0].enabled and encoders[1].enabled and
++	       encoders[0].width == encoders[1].width and encoders[0].height == encoders[1].height and
 +	       encoders[0].codec == wivrn::video_codec::nxastc and
 +	       encoders[1].codec == wivrn::video_codec::nxastc and
 +	       std::ranges::none_of(encoders.subspan(2), [](const auto & encoder) { return encoder.enabled; });
 +}
 +
- std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::CommandPool command_pool, std::span<wivrn::encoder_settings> encoders)
- {
+@@ -226 +237,34 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 -	auto formats = image_formats(encoders[0].bit_depth);
 +	for (auto & encoder: encoders)
 +		encoder.options.erase("_wivrn_astc_direct_rgb");
@@ -53,147 +50,66 @@ index efba5988..dc216b96 100644
 +		encoders[1].options["_wivrn_astc_direct_rgb"] = "1";
 +		U_LOG_I("nxastc: direct RGB compositor output enabled");
 +	}
- 	const bool native_center = [] {
- 		const char * value = std::getenv("NX_DIRECT_NATIVE_CENTER");
- 		return value and std::string_view(value) == "1";
-@@ -245,7 +288,7 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
- 	                .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
- 	        },
- 	        vk::ImageFormatListCreateInfo{
+@@ -248 +292 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 -	                .viewFormatCount = formats.size(),
 +	                .viewFormatCount = uint32_t(formats.size()),
- 	                .pViewFormats = formats.data(),
- 	        },
- 	};
-@@ -273,9 +316,11 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
- 		        vk.device,
- 		        image_info.get(),
- 		        VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO},
+@@ -276 +320 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 -		        std::format("compositor YCbCr image {}", i),
 +		        std::format("compositor {} image {}", astc_direct_rgb ? "RGB" : "YCbCr", i),
- 		};
- 		vk::Image vk_image{image};
+@@ -278,0 +323,2 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 +		const auto plane0 = astc_direct_rgb ? vk::ImageAspectFlagBits::eColor : vk::ImageAspectFlagBits::ePlane0;
 +		const auto plane1 = astc_direct_rgb ? vk::ImageAspectFlagBits::eColor : vk::ImageAspectFlagBits::ePlane1;
- 		buffer_allocation native_buffer;
- 		if (native_center)
- 			native_buffer = buffer_allocation{
-@@ -302,7 +347,7 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
- 		                        .viewType = vk::ImageViewType::e2DArray,
- 		                        .format = formats[0],
- 		                        .subresourceRange = {
+@@ -305 +351 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 -		                                .aspectMask = vk::ImageAspectFlagBits::ePlane0,
-+	                                .aspectMask = plane0,
- 		                                .levelCount = 1,
- 		                                .layerCount = image_info.get().arrayLayers,
- 		                        },
-@@ -314,9 +359,9 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
- 		                        .pNext = &usage,
- 		                        .image = vk_image,
- 		                        .viewType = vk::ImageViewType::e2DArray,
++		                                .aspectMask = plane0,
+@@ -317 +363 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 -		                        .format = formats[1],
 +		                        .format = astc_direct_rgb ? formats[0] : formats[1],
- 		                        .subresourceRange = {
+@@ -319 +365 @@ std::array<wivrn::compositor::image, 2> make_images(wivrn::vk_bundle & vk, vk::C
 -		                                .aspectMask = vk::ImageAspectFlagBits::ePlane1,
 +		                                .aspectMask = plane1,
- 		                                .levelCount = 1,
- 		                                .layerCount = image_info.get().arrayLayers,
- 		                        },
-@@ -1733,7 +1778,7 @@ compositor::compositor(wivrn_session & session) :
-         frame_rate(settings[0].fps),
-         pacer(U_TIME_1S_IN_NS / frame_rate),
-         squasher(vk, render_extent(session.get_info())),
+@@ -1736 +1782 @@ compositor::compositor(wivrn_session & session) :
 -        foveation(vk, images[0].image.info().extent)
 +        foveation(vk, images[0].image.info().extent, settings[0].options.contains("_wivrn_astc_direct_rgb"))
- {
- 	const char * source_fps = std::getenv("WIVRN_NX_SOURCE_FPS");
- 	nx_source_cap_60 = source_fps and source_fps[0] == '6' and source_fps[1] == '0' and source_fps[2] == '\0';
 diff --git a/server/compositor/foveation.cpp b/server/compositor/foveation.cpp
 index 9c831f7b..0b8daead 100644
 --- a/server/compositor/foveation.cpp
 +++ b/server/compositor/foveation.cpp
-@@ -58,6 +58,7 @@ struct ubo_data
- 	uint32_t native_center_origin_x;
- 	uint32_t native_center_origin_y;
- 	uint32_t native_center_size;
+@@ -60,0 +61 @@ struct ubo_data
 +	uint32_t astc_direct_rgb_on;
- };
-
- vk::raii::Sampler make_sampler(wivrn::vk_bundle & vk)
-@@ -575,8 +576,9 @@ uint32_t foveation::lens_mask_total()
- 	return lens_mask_tiles[0].total();
- }
-
+@@ -578 +579 @@ uint32_t foveation::lens_mask_total()
 -foveation::foveation(wivrn::vk_bundle & bundle, vk::Extent3D foveated_size) :
 +foveation::foveation(wivrn::vk_bundle & bundle, vk::Extent3D foveated_size, bool astc_direct_rgb) :
-         foveated_size(foveated_size),
+@@ -579,0 +581 @@ foveation::foveation(wivrn::vk_bundle & bundle, vk::Extent3D foveated_size) :
 +        astc_direct_rgb(astc_direct_rgb),
-         // normal sight line is between 10° and 15° below horizontal
-         // https://apps.dtic.mil/sti/tr/pdf/AD0758339.pdf pages 393-394
-         // testing shows 10° looks better
-@@ -791,6 +793,7 @@ void foveation::update_ubo(
- 	ubo.native_center_origin_x = (foveated_size.width / 2u - 128u) & ~31u;
- 	ubo.native_center_origin_y = (foveated_size.height / 2u - 128u) & ~31u;
- 	ubo.native_center_size = native_center ? 256u : 0u;
+@@ -793,0 +796 @@ void foveation::update_ubo(
 +	ubo.astc_direct_rgb_on = astc_direct_rgb ? 1u : 0u;
- 	if (native_center && !native_footprint_logged) {
- 		uint32_t min_x = UINT32_MAX, max_x = 0, min_y = UINT32_MAX, max_y = 0;
- 		for (unsigned eye = 0; eye < 2; ++eye) for (unsigned i = 0; i < 256; ++i) {
 diff --git a/server/compositor/foveation.h b/server/compositor/foveation.h
 index 2f5494d9..d8027850 100644
 --- a/server/compositor/foveation.h
 +++ b/server/compositor/foveation.h
-@@ -40,6 +40,7 @@ class foveation
- 	std::mutex mutex;
-
- 	const vk::Extent3D foveated_size; // per eye
+@@ -42,0 +43 @@ class foveation
 +	const bool astc_direct_rgb;
-
- 	// Natural vertical gaze angle
- 	const float angle_offset;
-@@ -123,7 +124,8 @@ class foveation
-
- public:
- 	foveation(wivrn::vk_bundle &,
+@@ -126 +127,2 @@ public:
 -	          vk::Extent3D foveated_size);
 +	          vk::Extent3D foveated_size,
 +	          bool astc_direct_rgb = false);
-
- 	void update_tracking(const from_headset::tracking &);
- 	void update_foveation_center_override(const from_headset::override_foveation_center &);
 diff --git a/server/compositor/shaders/foveation.comp b/server/compositor/shaders/foveation.comp
 index 9e2f13bd..94f45b6b 100644
 --- a/server/compositor/shaders/foveation.comp
 +++ b/server/compositor/shaders/foveation.comp
-@@ -51,6 +51,7 @@ layout(set = 0, binding = 1, std430) buffer restrict Config
- 	uint native_center_origin_x;
- 	uint native_center_origin_y;
- 	uint native_center_size;
+@@ -53,0 +54 @@ layout(set = 0, binding = 1, std430) buffer restrict Config
 +	uint astc_direct_rgb_on;
- } ubo;
-
- layout(set = 0, binding = 2) uniform writeonly restrict image2DArray luma;
-@@ -157,21 +158,28 @@ void main()
- 		native_center.rgb[iz * ubo.native_center_size * ubo.native_center_size + cy * ubo.native_center_size + cx] =
- 			(uint(round(native_rgb.r * 255.0)) << 16u) | (uint(round(native_rgb.g * 255.0)) << 8u) | uint(round(native_rgb.b * 255.0));
- 	}
+@@ -160,2 +160,0 @@ void main()
 -	colour.xyz = rgb_to_ycbcr(encoded_rgb);
 -
- 	// A 64x64 tile is 64 whole 8x8 workgroups, so this branch is uniform across the
- 	// workgroup AND across every subgroup in it -- which is what makes it safe to take
- 	// after the sampling loop and before the chroma reduction below, whose
- 	// subgroupShuffleDown would be undefined if some lanes of a subgroup had left.
- 	// Overriding the value rather than skipping the fetches also keeps the alpha channel
- 	// genuine: only the picture is replaced.
+@@ -167,0 +167 @@ void main()
 +	bool masked = false;
- 	if (ubo.mask_on != 0u)
- 	{
- 		uint tile = (iy >> 6) * ubo.mask_cols + (ix >> 6);
- 		uint word = ubo.mask[MASK_WORDS * iz + (tile >> 5)];
+@@ -172,2 +172 @@ void main()
 -		if ((word & (1u << (tile & 31u))) != 0u)
 -			colour.xyz = vec3(0.5); // neutral grey: Y, Cb and Cr all mid scale
 +		masked = (word & (1u << (tile & 31u))) != 0u;
- 	}
+@@ -174,0 +174,9 @@ void main()
 +	if (ubo.astc_direct_rgb_on != 0u)
 +	{
 +		vec3 rgb = masked ? vec3(0.5) : encoded_rgb;
@@ -203,36 +119,18 @@ index 9e2f13bd..94f45b6b 100644
 +	colour.xyz = rgb_to_ycbcr(encoded_rgb);
 +	if (masked)
 +		colour.xyz = vec3(0.5); // neutral grey: Y, Cb and Cr all mid scale
-
- 	imageStore(luma, ivec3(ix, iy, iz), vec4(colour.x));
-
 diff --git a/server/encoder/video_encoder_astc.cpp b/server/encoder/video_encoder_astc.cpp
 index 1bf2ef42..b13d2091 100644
 --- a/server/encoder/video_encoder_astc.cpp
 +++ b/server/encoder/video_encoder_astc.cpp
-@@ -16,7 +16,7 @@ namespace
- {
- struct push_constants
- {
+@@ -19 +19 @@ struct push_constants
 -	uint32_t width, height, fit, quality;
 +	uint32_t width, height, fit, quality, direct_rgb;
- };
-
- vk::raii::CommandPool make_command_pool(wivrn::vk_bundle & vk)
-@@ -107,7 +107,8 @@ wivrn::video_encoder_astc::video_encoder_astc(vk_bundle & vk, const encoder_sett
-         pipeline_layout(make_pipeline_layout(vk, *ds_layout)),
-         pipeline(make_pipeline(vk, *pipeline_layout)),
-         ds_pool(make_ds_pool(vk)),
+@@ -110 +110,2 @@ wivrn::video_encoder_astc::video_encoder_astc(vk_bundle & vk, const encoder_sett
 -        initial_fps(settings.fps)
 +        initial_fps(settings.fps),
 +        direct_rgb_input(settings.options.contains("_wivrn_astc_direct_rgb"))
- {
- 	if (settings.bit_depth != 8 || settings.eyes != 1)
- 		throw std::runtime_error("NX ASTC requires 8-bit single-eye streams");
-@@ -149,8 +150,12 @@ void wivrn::video_encoder_astc::present_image(vk::Image image, vk::SemaphoreSubm
- 	auto it = image_views.find(VkImage(image));
- 	if (it == image_views.end())
- 	{
+@@ -152,2 +153,6 @@ void wivrn::video_encoder_astc::present_image(vk::Image image, vk::SemaphoreSubm
 -		auto y = vk.device.createImageView({.image = image, .viewType = vk::ImageViewType::e2D, .format = vk::Format::eR8Unorm, .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::ePlane0, .levelCount = 1, .baseArrayLayer = src_layer, .layerCount = 1}});
 -		auto uv = vk.device.createImageView({.image = image, .viewType = vk::ImageViewType::e2D, .format = vk::Format::eR8G8Unorm, .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::ePlane1, .levelCount = 1, .baseArrayLayer = src_layer, .layerCount = 1}});
 +		const auto format = direct_rgb_input ? vk::Format::eR8G8B8A8Unorm : vk::Format::eR8Unorm;
@@ -241,44 +139,21 @@ index 1bf2ef42..b13d2091 100644
 +		auto uv = direct_rgb_input
 +		                  ? vk.device.createImageView({.image = image, .viewType = vk::ImageViewType::e2D, .format = vk::Format::eR8G8B8A8Unorm, .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor, .levelCount = 1, .baseArrayLayer = src_layer, .layerCount = 1}})
 +		                  : vk.device.createImageView({.image = image, .viewType = vk::ImageViewType::e2D, .format = vk::Format::eR8G8Unorm, .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::ePlane1, .levelCount = 1, .baseArrayLayer = src_layer, .layerCount = 1}});
- 		it = image_views.emplace(VkImage(image), std::array{std::move(y), std::move(uv)}).first;
- 	}
- 	std::array images{
-@@ -169,7 +174,7 @@ void wivrn::video_encoder_astc::present_image(vk::Image image, vk::SemaphoreSubm
- 	cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *pipeline);
- 	cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *pipeline_layout, 0, s.descriptor_set, {});
- 	s.quality = quality.load(std::memory_order_relaxed);
+@@ -172 +177 @@ void wivrn::video_encoder_astc::present_image(vk::Image image, vk::SemaphoreSubm
 -	push_constants pc{extent.width, extent.height, 3, s.quality};
 +	push_constants pc{extent.width, extent.height, 3, s.quality, direct_rgb_input ? 1u : 0u};
- 	cmd.pushConstants(*pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, vk::ArrayProxy<const push_constants>{pc});
- 	const uint32_t blocks_x = (extent.width + 7) / 8, blocks_y = (extent.height + 7) / 8;
- 	cmd.dispatch((blocks_x * blocks_y + 63) / 64, 1, 1);
 diff --git a/server/encoder/video_encoder_astc.h b/server/encoder/video_encoder_astc.h
 index 557aedb7..0def66ee 100644
 --- a/server/encoder/video_encoder_astc.h
 +++ b/server/encoder/video_encoder_astc.h
-@@ -44,6 +44,7 @@ class video_encoder_astc : public video_encoder
- 	std::array<uint32_t, 7> sampled_quality{};
- 	std::array<uint32_t, 3> sampled_encoding{};
- 	const float initial_fps;
+@@ -46,0 +47 @@ class video_encoder_astc : public video_encoder
 +	const bool direct_rgb_input;
-
- public:
- 	video_encoder_astc(vk_bundle & vk, const encoder_settings & settings, uint8_t stream_idx);
 diff --git a/server/shaders/astc_encode.comp b/server/shaders/astc_encode.comp
 index 3287c7a2..b3cb7041 100644
 --- a/server/shaders/astc_encode.comp
 +++ b/server/shaders/astc_encode.comp
-@@ -8,10 +8,11 @@ layout(local_size_x=64) in;
- layout(set=0,binding=0) uniform sampler2D luma;
- layout(set=0,binding=1) uniform sampler2D chroma;
- layout(set=0,binding=2,std430) writeonly buffer Output { uvec4 blocks[]; } dst;
+@@ -11 +11 @@ layout(set=0,binding=2,std430) writeonly buffer Output { uvec4 blocks[]; } dst;
 -layout(push_constant) uniform Push { uint width, height, fit, quality; } pc;
 +layout(push_constant) uniform Push { uint width, height, fit, quality, direct_rgb; } pc;
-
- vec3 pixel(ivec2 p) {
-     p=clamp(p,ivec2(0),ivec2(pc.width,pc.height)-1);
+@@ -14,0 +15 @@ vec3 pixel(ivec2 p) {
 +    if(pc.direct_rgb!=0u) return texelFetch(luma,p,0).rgb*255.0;
-     float y=texelFetch(luma,p,0).r;
-     vec2 uv=texelFetch(chroma,p/2,0).rg-vec2(0.5);
-     return clamp(vec3(y+1.5748*uv.y, y-0.1873*uv.x-0.4681*uv.y, y+1.8556*uv.x),0.0,1.0)*255.0;
