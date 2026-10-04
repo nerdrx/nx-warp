@@ -1,0 +1,9 @@
+Build command: cmake -S . -B build -G Ninja && cmake --build build -j4
+Build result: success; production ASTC shader/includes and both scratch variants compiled.
+
+Timing command: nice -n 10 timeout 480s ./native_pass_fusion
+Device: AMD Radeon RX 7900 XTX (RADV NAVI31), timestampValidBits=64, timestampPeriod=10 ns.
+Result: exit 0; 4 warmups per mode; 12 triples; rotated all six variant orders twice; 73,984 ASTC blocks per output; pairwise mismatch count 0.
+
+Stats command: nice -n 10 ./native_pass_fusion --stats
+Result: exit 0; separate pipeline-executable-properties query, no dispatch.

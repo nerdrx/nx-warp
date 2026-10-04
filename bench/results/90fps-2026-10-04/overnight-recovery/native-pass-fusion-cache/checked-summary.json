@@ -1,0 +1,48 @@
+{
+  "rows": 36,
+  "means": {
+    "baseline": {
+      "pass_gpu_us": 89.59333333333333,
+      "astc_gpu_us": 1359.6966666666667,
+      "copy_gpu_us": 85.48,
+      "total_gpu_us": 1534.77,
+      "cpu_wall_us": 1705.23
+    },
+    "naive": {
+      "pass_gpu_us": 0.0,
+      "astc_gpu_us": 1637.8866666666668,
+      "copy_gpu_us": 82.46,
+      "total_gpu_us": 1720.3466666666666,
+      "cpu_wall_us": 1883.9424999999999
+    },
+    "cached": {
+      "pass_gpu_us": 0.0,
+      "astc_gpu_us": 1367.59,
+      "copy_gpu_us": 83.55666666666667,
+      "total_gpu_us": 1451.1466666666668,
+      "cpu_wall_us": 1608.8899999999999
+    }
+  },
+  "cached_minus_baseline": {
+    "pass_gpu_us": {
+      "mean": -89.59333333333333,
+      "median": -87.94
+    },
+    "astc_gpu_us": {
+      "mean": 7.893333333333335,
+      "median": -3.0599999999999454
+    },
+    "copy_gpu_us": {
+      "mean": -1.9233333333333344,
+      "median": -1.2999999999999972
+    },
+    "total_gpu_us": {
+      "mean": -83.62333333333328,
+      "median": -98.57999999999993
+    },
+    "cpu_wall_us": {
+      "mean": -96.34000000000003,
+      "median": -98.97500000000014
+    }
+  }
+}
