@@ -34,3 +34,7 @@ Host server/runtime and Android builds passed. Legacy packet checks, v3 exact ro
 Next acceptance gate: a matched, moving-scene comparison of fresh source FPS, wire bytes, worker CPU time, complete-pair gaps and visual stability. Ordinary 8×8 image fidelity is still below the user's HEVC expectation. Saving bytes may permit more local colour detail later, but this integration itself does not alter image quality.
 
 Reproduction requires the private screenshot-derived fixtures retained in scratch. `production_decode.cpp`, `native_delta.cpp`, CSV/JSON evidence and hashes are included; full user photos, APKs and encoded fixture payloads are not published. The source repository's `docs/ASTC_MOTION_PACKING.md` documents the experimental configuration and runnable packet checks.
+
+## Moving-scene follow-up
+
+The [harder 3D clip](stress/README.md) yields only **1.55% aggregate payload savings** after replaying admission and cooldown at a one-frame reference gap, and zero at larger gaps. Its 512×512 frames are not native-headset performance evidence. Wider search is rejected. The existing photo fixture result remains valid, but is not a general moving-scene compression claim. Updated ACK age-out checks pass under host sanitizers in source `d2d3422b`; the feature stays off.

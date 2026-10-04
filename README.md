@@ -23,6 +23,8 @@ A new guarded PC packing path saves **23.49% of bytes** on a photo-derived nativ
 
 ![Lossless motion packing bytes and Pico CPU decode cost](bench/results/90fps-2026-10-04/motion-packing/packing-results.png)
 
+The harder 36-frame **512×512 moving-camera/object scene** saves only **1.55% payload** after replaying admission and probe cooldown, with a one-frame reference gap; older references produce no accepted deltas. Wider search and byte-lane rearrangement were rejected. **The photo result is not general VR compression proof, and the feature remains off.** [Moving-scene graphs, reproducible fixtures and rejected trials](bench/results/90fps-2026-10-04/motion-packing/stress/README.md).
+
 ### 4 October: native colour detail and a cheaper upload handoff
 
 The current experimental profile uses **native 2176 × 2176 per eye, fixed ASTC 8×8 and a 90 Hz viewer**, without foveation, JPEG or object-motion warping. Selective dual-plane fitting improves dense colour on the PC while keeping the existing hardware texture sampler on Pico. Exact q6 photo comparisons improve dark-scene PSNR **0.55 dB** with essentially unchanged compressed bytes; this does not remove every 8×8 artefact. [Colour crops and measurements](bench/results/90fps-2026-10-04/dualplane-integration/README.md).
