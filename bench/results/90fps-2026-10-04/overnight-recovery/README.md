@@ -239,3 +239,7 @@ The enabled sender ring grows from 1 to 2 MiB per encoder, adding 2 MiB across t
 ### Remove repeated readiness scans
 
 Source **8d339452** makes completeness queries constant time and skips slot walks for contiguous sets, preserving exact repair decisions. A short asleep-Pico CPU helper comparison reduces a late-hole due-query mean **5.287→2.932 µs**; host checks and all 120 device rows agree on eligibility. Actual accumulator 251 checks, NACK/history 816 checks, a 600,000-comparison scan oracle and Android native build pass. This internal optimization is active in source, not installed. It measures metadata work only; whole-stream recovery and FPS remain unproven. [Source, paired host/device rows, graphs and scope](received-count/README.md).
+
+### Attribute the large CPU fence wait before changing the pipeline
+
+A pushed default-off server diagnostic records same-queue ASTC compute-through-readback timestamps separately from the existing CPU fence interval. A generated 64 KiB compute/copy test deliberately holds its input semaphore for 10 ms: host fence-wait mean changes0.493→10.368 ms while GPU bracket mean remains8.253→8.517 µs. Every run-specific output check passes; a separate Khronos validation run has no messages. This validates timestamp placement on that queue, not production queue delay, ASTC performance or latency. The diagnostic is built but remains off. [Runnable scope gate, raw samples, figure and limitations](gpu-timing-scope/README.md).
