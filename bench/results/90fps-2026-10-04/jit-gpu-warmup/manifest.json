@@ -1,0 +1,76 @@
+{
+  "capture": {
+    "start_utc": "2026-10-04T02:34:46.074394+00:00",
+    "end_utc": "2026-10-04T02:34:59.107675+00:00",
+    "protocol": "Fourwakeups3sinterval; stationaryexistingWayVR; nodemo",
+    "server_nonblack_windows": 12,
+    "server_idle_black_windows": 2,
+    "client_pid": 24825,
+    "apk_sha256": "430ae866e7820783b5bd5382cd123864b6b484ad99a421426764c9e94f191e8b",
+    "limits": "Shortstationaryupdatecheck; no sustainedmotion/complexscene90FPS/photon claim"
+  },
+  "apk": {
+    "sha256": "430ae866e7820783b5bd5382cd123864b6b484ad99a421426764c9e94f191e8b",
+    "size_bytes": 190304646,
+    "signing_certificate_sha256": "fb6a4688fd7c9234f42ba6c2c9efe5922e6a804c805ab0982b04b6c02afbc150",
+    "signature_verified": true,
+    "source_manifest": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-jit-gpu-warmup-20261004/packaging/manifest.json"
+  },
+  "native_build": {
+    "target": "wivrn",
+    "status": "success",
+    "abi": "arm64-v8a",
+    "api_level": 29,
+    "build_type": "Release",
+    "ndk": "29.0.14206865",
+    "jobs": 4,
+    "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build/android-arm64/client/libwivrn.so",
+    "sha256": "80a8ec3488b7bcc4ab43e8652fa6f274faadf988544413138237776c31eb826c",
+    "size_bytes": 155751040,
+    "source_sha256": {
+      "client/scenes/stream.cpp": "8392a67a17a234fa5936be60c38223cee7e6a561232e89c3f2ed9db5ade8a5ec",
+      "client/scenes/stream_jit.h": "6198ccdb59c6027a58b278ce5791e9e6a9bd9c28698de3664df565dc77afb07d"
+    }
+  },
+  "provenance": {
+    "client_extract_source": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-jit-gpu-warmup-20261004/live-check/client-extract.txt",
+    "client_extract_source_sha256": "c8be85f78623d0b5689f9744c5531416c7eb363162eae992cfaaa5c1de70e3de",
+    "server_extract_source": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-jit-gpu-warmup-20261004/live-check/server-extract.txt",
+    "server_extract_source_sha256": "f793bdfd2e492becd9ed23b165163eb3a8e11d92a41b0596e32564242bbd8d4d",
+    "source_files": {
+      "stream.cpp": {
+        "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client/scenes/stream.cpp",
+        "sha256": "8392a67a17a234fa5936be60c38223cee7e6a561232e89c3f2ed9db5ade8a5ec"
+      },
+      "stream_jit.h": {
+        "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client/scenes/stream_jit.h",
+        "sha256": "6198ccdb59c6027a58b278ce5791e9e6a9bd9c28698de3664df565dc77afb07d"
+      },
+      "stream_jit_test.cpp": {
+        "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/tests/stream_jit_test.cpp",
+        "sha256": "1615999b41a6c714307abd48a30276a75c73df80029671059e6ee905f3fabaf0"
+      }
+    },
+    "live_metadata_source": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-jit-gpu-warmup-20261004/live-check/metadata.json",
+    "live_metadata_source_sha256": "dcd25509a8bb6af9b5dc09ff768034bbed038f50b93cdc7457a376bb75bff794",
+    "packaging_manifest_source": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-jit-gpu-warmup-20261004/packaging/manifest.json",
+    "packaging_manifest_source_sha256": "272f83384a57b40a7caac9a48d813c972ce10a49586f71a0ace423925b2a285a"
+  },
+  "local_evidence": {
+    "README.md": "a4fddb3b778051a9a1dcefd74c86ff1b2642c6bfd602efb216c637ecda911ce1",
+    "client-windows.csv": "eb949742cf15c399811a080a8586e8ecb406e52f56ef7322d33d80ff63590a4a",
+    "server-extract.txt": "9167c0244c48af01e942cd1ce27638a7c1013428317ba6a5a829e165d83c083b",
+    "source-evidence.md": "dd78ec91775142d4daa25b54f2c6f47a6299753debb63a48b8a605d70a13443d",
+    "idle-warmup-model.svg": "4bfcf2ba8beca14499a4900332ea4550c8e74cdff2ded7c018cf85f38bfedf63",
+    "packaging-manifest.json": "1724126eb5eede06ec3ee02ba3c1e2091a8d1a06a00ca2cc6d340ef46f4e2d61"
+  },
+  "limits": [
+    "short stationary wake/reconnect check",
+    "not sustained motion or sustained 90 Hz proof",
+    "not latency or photon timing proof",
+    "not perceived image quality validation",
+    "no build/test/runtime/install/Git action performed by report author"
+  ],
+  "integration_commit": "71ee12463c457aad37668999ec9041d10a80de01",
+  "packaging_manifest_sha256": "1724126eb5eede06ec3ee02ba3c1e2091a8d1a06a00ca2cc6d340ef46f4e2d61"
+}

@@ -1,0 +1,7 @@
+Capture summary (server log has no wall-clock timestamps):
+- 12 non-black encoder mean records and 2 idle-black records.
+- Idle-black stream means: 157 B each.
+- Non-black q6/Zstd stream means: 12,196/12,204 B; 58,707/58,747 B;
+  then four stream pairs around 125.1–125.7 kB.
+- Every reported stream record shows 180 q6 frames and Zstd output.
+- Do not pair these records with specific client windows; server excerpt has no timestamps.

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="440" viewBox="0 0 920 440" role="img" aria-labelledby="title desc">
+<title id="title">JIT calibration state after 90 idle refreshes</title>
+<desc id="desc">A model comparing unconditional idle accounting with submitted GPU pass only accounting using the exact scheduler warmup gate.</desc>
+<style>text{font-family:Arial,sans-serif;fill:#172033}.title{font-size:23px;font-weight:700}.sub{font-size:13px;fill:#4b5563}.pt{font-size:15px;font-weight:700}.axis{font-size:12px;fill:#5b6475}.grid{stroke:#d9deea;stroke-width:1}.old{stroke:#e27a3f;fill:none;stroke-width:4}.new{stroke:#2768c7;fill:none;stroke-width:4}.gate{stroke:#78849a;stroke-width:1.5;stroke-dasharray:5 5}.panel{fill:#fff;stroke:#dce2ec;stroke-width:1}</style>
+<rect width="920" height="440" fill="#f7f9fc"/>
+<text x="32" y="38" class="title">Idle refreshes must not calibrate GPU-pass cost</text>
+<text x="32" y="62" class="sub">Exact scheduler model: 90 idle updates, 3 ms reported cost each; not a headset measurement</text>
+<rect x="28" y="82" width="420" height="300" rx="10" class="panel"/>
+<rect x="472" y="82" width="420" height="300" rx="10" class="panel"/>
+<text x="52" y="110" class="pt">Pass samples counted</text>
+<text x="496" y="110" class="pt">Pass-cost peak retained</text>
+<!-- left axes: plot x=86..412, y=145..325 -->
+<line x1="86" y1="145" x2="86" y2="325" stroke="#445066"/><line x1="86" y1="325" x2="412" y2="325" stroke="#445066"/>
+<line x1="86" y1="145" x2="412" y2="145" class="gate"/>
+<line x1="86" y1="235" x2="412" y2="235" class="grid"/>
+<text x="55" y="149" class="axis">90</text><text x="62" y="239" class="axis">45</text><text x="68" y="329" class="axis">0</text>
+<text x="82" y="347" class="axis">0</text><text x="394" y="347" class="axis">90</text>
+<text x="151" y="367" class="axis">Idle refresh updates</text><text x="252" y="139" class="axis">90-sample warm-up gate</text>
+<path d="M86 325 L412 145" class="old"/><path d="M86 325 L412 325" class="new"/>
+<circle cx="412" cy="145" r="5" fill="#e27a3f"/><circle cx="412" cy="325" r="5" fill="#2768c7"/>
+<text x="347" y="132" class="axis">90</text><text x="348" y="317" class="axis">0</text>
+<!-- right axes -->
+<line x1="532" y1="145" x2="532" y2="325" stroke="#445066"/><line x1="532" y1="325" x2="858" y2="325" stroke="#445066"/>
+<line x1="532" y1="166" x2="858" y2="166" class="grid"/><line x1="532" y1="235" x2="858" y2="235" class="grid"/>
+<text x="499" y="170" class="axis">3 ms</text><text x="499" y="239" class="axis">1.5</text><text x="514" y="329" class="axis">0</text>
+<text x="529" y="347" class="axis">0</text><text x="840" y="347" class="axis">90</text><text x="626" y="367" class="axis">Idle refresh updates</text>
+<path d="M532 166 L858 166" class="old"/><path d="M532 325 L858 325" class="new"/>
+<text x="735" y="155" class="axis">3 ms (model input)</text><text x="763" y="316" class="axis">0 ms</text>
+<line x1="70" y1="405" x2="102" y2="405" class="old"/><text x="110" y="410" class="axis">Unconditional count (hypothetical)</text>
+<line x1="385" y1="405" x2="417" y2="405" class="new"/><text x="425" y="410" class="axis">Submitted GPU pass only (current)</text>
+<text x="710" y="410" class="axis">Model based on source test and gate</text>
+</svg>

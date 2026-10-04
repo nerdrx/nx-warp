@@ -1,0 +1,91 @@
+{
+  "artifact": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-jit-gpu-warmup-20261004/packaging/presentation-jit-release.apk",
+  "artifact_sha256": "430ae866e7820783b5bd5382cd123864b6b484ad99a421426764c9e94f191e8b",
+  "artifact_size_bytes": 190304646,
+  "baseline_apk": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-half-rate-20261004/packaging/presentation-release.apk",
+  "baseline_apk_sha256": "95e549812fa6ec09c04d0407bfb5b1aae23924733372b22da71be6449f2d0934",
+  "native_build": {
+    "target": "wivrn",
+    "status": "success",
+    "abi": "arm64-v8a",
+    "api_level": 29,
+    "build_type": "Release",
+    "ndk": "29.0.14206865",
+    "jobs": 4,
+    "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build/android-arm64/client/libwivrn.so",
+    "sha256": "80a8ec3488b7bcc4ab43e8652fa6f274faadf988544413138237776c31eb826c",
+    "size_bytes": 155751040,
+    "source_sha256": {
+      "client/scenes/stream.cpp": "8392a67a17a234fa5936be60c38223cee7e6a561232e89c3f2ed9db5ade8a5ec",
+      "client/scenes/stream_jit.h": "6198ccdb59c6027a58b278ce5791e9e6a9bd9c28698de3664df565dc77afb07d"
+    }
+  },
+  "signing": {
+    "scheme": "APK Signature Scheme v3",
+    "certificate_sha256": "fb6a4688fd7c9234f42ba6c2c9efe5922e6a804c805ab0982b04b6c02afbc150",
+    "matches_baseline": true,
+    "verification_passed": true
+  },
+  "removed_stale_signature_entries": [
+    "META-INF/DEFAULT_.RSA",
+    "META-INF/DEFAULT_.SF",
+    "META-INF/MANIFEST.MF"
+  ],
+  "regenerated_signature_entries": [
+    "META-INF/DEFAULT_.RSA",
+    "META-INF/DEFAULT_.SF",
+    "META-INF/MANIFEST.MF"
+  ],
+  "native_entries": [
+    {
+      "entry": "lib/arm64-v8a/libopenxr_loader.so",
+      "stored": true,
+      "data_offset": 16384,
+      "offset_mod_16384": 0,
+      "sha256": "9e9198b51d5e5299e44e64051ea8112882bb0dffc9d47da14f27445f77171c53"
+    },
+    {
+      "entry": "lib/arm64-v8a/libssl.so",
+      "stored": true,
+      "data_offset": 786432,
+      "offset_mod_16384": 0,
+      "sha256": "9564effeae7bb33aafa966ae5cc312479202a0e0ded9ec501247d36ba3585c6d"
+    },
+    {
+      "entry": "lib/arm64-v8a/libktx.so",
+      "stored": true,
+      "data_offset": 1753088,
+      "offset_mod_16384": 0,
+      "sha256": "dadc441486c4b26fc7281b3ea77c6c42e6e68b4514c85fc710e1540295ef0ed6"
+    },
+    {
+      "entry": "lib/arm64-v8a/libwivrn.so",
+      "stored": true,
+      "data_offset": 4554752,
+      "offset_mod_16384": 0,
+      "sha256": "80a8ec3488b7bcc4ab43e8652fa6f274faadf988544413138237776c31eb826c"
+    },
+    {
+      "entry": "lib/arm64-v8a/libcrypto.so",
+      "stored": true,
+      "data_offset": 160317440,
+      "offset_mod_16384": 0,
+      "sha256": "77cf61ad2fe34eb1078a03a9855298ba3f898719bc748536a073974e3fab528f"
+    }
+  ],
+  "checks": {
+    "all_other_entry_contents_unchanged": true,
+    "manifest_classes_resources_unchanged": true,
+    "native_entries_all_stored_and_16k_aligned": true,
+    "embedded_libwivrn_matches_build": true,
+    "stale_signature_entries_replaced": true,
+    "compile_gate_passed": true,
+    "apksigner_v3_verification_passed": true
+  },
+  "scope": "Native-payload-only repack. Entry/signature checks concern packaging; installed Pico runtime evidence is reported separately.",
+  "packaging_tools": {
+    "zipalign": "Android SDK build-tools 35.0.0",
+    "zipalign_command": "zipalign -P 16 -f 4",
+    "java": "21.0.12+8"
+  }
+}
