@@ -1,0 +1,47 @@
+{
+  "model": "A8110",
+  "abi": "arm64-v8a",
+  "android": "10",
+  "source_commit_basis": "c514841f",
+  "benchmark_only": true,
+  "xr_state_at_start": "XR_SESSION_STATE_IDLE",
+  "gpu_presentation_measured": false,
+  "network_loss_measured": false,
+  "decoder_dimensions_pixels": [
+    2176,
+    2176
+  ],
+  "warmups": 5,
+  "samples": 30,
+  "no_cpu_affinity_or_frequency_lock": true,
+  "files": {
+    "native_delta.cpp": {
+      "bytes": 15195,
+      "sha256": "2c79c8786b6a0158cfca7bfe4d031e02accf5eee95ef5e4f72c1f981565d65c3"
+    },
+    "native_delta_baseline.cpp": {
+      "bytes": 14841,
+      "sha256": "afafd130d27e0224a81a0545bcabf728c1018dafc472934b0ab0d85cf16dac49"
+    },
+    "native_delta_pico": {
+      "bytes": 11019696,
+      "sha256": "1391556b6bcc9b8a74d2c2de99b2967d0eeb3712cad5247761ac115f754388a5"
+    },
+    "native_delta_pico_fast": {
+      "bytes": 11019176,
+      "sha256": "b9a6ef1e9c318a7155c7fd17132536bd22ac5d5d08a195832e3272cb25fe9f16"
+    },
+    "reference.raw": {
+      "bytes": 1183744,
+      "sha256": "35a20ec3efb1cdb05d3e8054a3362794f860b81ee3192cffa7c503080e993d84"
+    },
+    "expected.raw": {
+      "bytes": 1183744,
+      "sha256": "496f9d471583b789a796496ee8b452a04d7c867834c4f05b8d842194dc04a0ea"
+    },
+    "packed.zstd": {
+      "bytes": 161864,
+      "sha256": "fd782ba7b98d1fe8206d3f0080593d6b13b339b890f861a0e352d1953a51074e"
+    }
+  }
+}

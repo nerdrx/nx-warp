@@ -17,6 +17,12 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: lossless motion packing — experimental, default off
+
+A new guarded PC packing path saves **23.49% of bytes** on a photo-derived native **2176 × 2176** Pico fixture while reproducing identical ASTC blocks. The production CPU decoder takes **0.908 / 1.086 ms p50/p95**, versus **0.559 / 0.590 ms** for independent Zstd: about **0.35 ms extra per eye**. Recently decoded acknowledgements, bounded reference age, a 15% minimum saving and independent anchors guard the experiment. Host, Android and exact packet checks pass. **It is built and pushed, but not enabled in the live profile; moving-scene Wi-Fi smoothness and HEVC parity remain unproven.** [Graphs, rejected alternatives and measurement limits](bench/results/90fps-2026-10-04/motion-packing/README.md).
+
+![Lossless motion packing bytes and Pico CPU decode cost](bench/results/90fps-2026-10-04/motion-packing/packing-results.png)
+
 ### 4 October: native colour detail and a cheaper upload handoff
 
 The current experimental profile uses **native 2176 × 2176 per eye, fixed ASTC 8×8 and a 90 Hz viewer**, without foveation, JPEG or object-motion warping. Selective dual-plane fitting improves dense colour on the PC while keeping the existing hardware texture sampler on Pico. Exact q6 photo comparisons improve dark-scene PSNR **0.55 dB** with essentially unchanged compressed bytes; this does not remove every 8×8 artefact. [Colour crops and measurements](bench/results/90fps-2026-10-04/dualplane-integration/README.md).
