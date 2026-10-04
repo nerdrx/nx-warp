@@ -1,6 +1,6 @@
 # Final planar/RGB/planar smoke
 
-Three short, stationary native ASTC 8×8 captures used the same clean final APK (`4073507c…`, source commit `86e0d678`). K used planar input while the app was already warm after the producer-pause run. L used RGB input after a fresh reconnect. M returned to planar input after another fresh reconnect. This is not a controlled A/B/A sequence.
+`build_smoke.py` groups each render summary with following diagnostic lines until the next render summary, including records whose log timestamps differ by a millisecond. Three short, stationary native ASTC 8×8 captures used the same clean final APK (`4073507c…`, source commit `86e0d678`). K used planar input while the app was already warm after the producer-pause run. L used RGB input after a fresh reconnect. M returned to planar input after another fresh reconnect. This is not a controlled A/B/A sequence.
 
 ![Per-window render and fresh-source rates](native-mode-windows.png)
 

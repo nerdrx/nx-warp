@@ -41,10 +41,15 @@ def sha(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+def capture_dir(name: str) -> Path:
+    private = SCRATCH / name
+    return private if private.exists() else OUT / "captures" / name
+
 all_rows = []
 capture_manifest = []
+prior_capture = {x.get("label"): x for x in json.loads((OUT / "capture-manifest.json").read_text())} if (OUT / "capture-manifest.json").exists() else {}
 for label, name, description in RUNS:
-    run = SCRATCH / name
+    run = capture_dir(name)
     meta = json.loads((run / "metadata.json").read_text())
     lines = (run / "client-extract.txt").read_text().splitlines()
     windows = []
@@ -53,8 +58,8 @@ for label, name, description in RUNS:
         if not m:
             continue
         stamp = TS.search(line).group(1)
-        same_window = [x for x in lines if f"[{stamp}]" in x]
-        txt = "\n".join(same_window)
+        end = next((j for j in range(i + 1, len(lines)) if RENDER.search(lines[j])), len(lines))
+        txt = "\n".join(lines[i:end])
         gpu = GPU.search(txt)
         older = OLDER.search(txt)
         sleep = SLEEP.search(txt)
@@ -89,7 +94,7 @@ for label, name, description in RUNS:
         "description": description,
         "metadata": meta,
         "client_extract_sha256": sha(run / "client-extract.txt"),
-        "client_capture_sha256": sha(run / "client-capture.log"),
+        "client_capture_sha256": sha(run / "client-capture.log") if (run / "client-capture.log").exists() else prior_capture.get(label, {}).get("client_capture_sha256"),
         "server_extract_sha256": sha(run / "server-extract.txt"),
         "server_stages_sha256": sha(run / "server-stages.txt"),
         "window_count": len(windows),
@@ -102,9 +107,18 @@ with (OUT / "client-windows.csv").open("w", newline="", encoding="utf-8") as f:
     w.writeheader(); w.writerows(all_rows)
 (OUT / "capture-manifest.json").write_text(json.dumps(capture_manifest, indent=2, sort_keys=True) + "\n")
 
-gradual_packaging = json.loads(Path("/run/media/nerdrx/Lex/claude/nx-scratch/astc-timeline-upload-20261004/jit-gradual-packaging/manifest.json").read_text())
-packaging = json.loads(Path("/run/media/nerdrx/Lex/claude/nx-scratch/astc-timeline-upload-20261004/jit-halfperiod-packaging/manifest.json").read_text())
-final_packaging = json.loads(Path("/run/media/nerdrx/Lex/claude/nx-scratch/astc-timeline-upload-20261004/final86e0-packaging/manifest.json").read_text())
+packaging_paths = [Path("/run/media/nerdrx/Lex/claude/nx-scratch/astc-timeline-upload-20261004") / p / "manifest.json" for p in ("jit-gradual-packaging", "jit-halfperiod-packaging", "final86e0-packaging")]
+if all(p.exists() for p in packaging_paths):
+    gradual_packaging, packaging, final_packaging = [json.loads(p.read_text()) for p in packaging_paths]
+else:
+    source_artifacts = json.loads((OUT / "source-artifacts.json").read_text())
+    gradual_packaging = {"artifact_sha256": source_artifacts["candidate_e_g_packaging"]["apk_sha256"], **source_artifacts["candidate_e_g_packaging"]}
+    packaging = {"artifact_sha256": source_artifacts["candidate_h_i_packaging"]["apk_sha256"], **source_artifacts["candidate_h_i_packaging"]}
+    final_packaging = {"artifact_sha256": source_artifacts["final_clean_candidate_j_packaging"]["apk_sha256"], **source_artifacts["final_clean_candidate_j_packaging"]}
+if not all(p.exists() for p in packaging_paths):
+    for package in (packaging, final_packaging):
+        package["base_sha256"] = package["base_apk_sha256"]
+        package["all_other_entry_contents_unchanged"] = package["other_apk_entry_contents_unchanged"]
 source_artifacts = {
     "capture_apk_sha256": {x["label"]: x["metadata"].get("apk_sha256", "") for x in capture_manifest},
     "candidate_e_g_packaging": {
@@ -140,9 +154,9 @@ source_artifacts = {
 
 # Device-clock event order from G. Host stop/continue events remain UTC evidence;
 # clocks are not aligned, so keep them in separate files/columns.
-g = SCRATCH / "jit-gradual-pause-g"
+g = capture_dir("jit-gradual-pause-g")
 events = []
-for line in (g / "client-capture.log").read_text().splitlines():
+for line in (g / "client-capture.log" if (g / "client-capture.log").exists() else g / "session-events.txt").read_text().splitlines():
     if "NXPause" in line or "Stream state" in line or "Session state changed" in line:
         stamp = TS.search(line)
         if stamp and stamp.group(1) >= "2026-10-04 08:19:07":
@@ -150,12 +164,13 @@ for line in (g / "client-capture.log").read_text().splitlines():
 with (OUT / "device-events-g.csv").open("w", newline="", encoding="utf-8") as f:
     w = csv.DictWriter(f, fieldnames=["device_log_time", "event"], lineterminator="\n")
     w.writeheader(); w.writerows(events)
-host_events = json.loads((g / "events.json").read_text())
+host_event_path = g / "events.json"
+host_events = json.loads(host_event_path.read_text()) if host_event_path.exists() else []
 (OUT / "host-events-g.json").write_text(json.dumps({"clock_note": "Host UTC timestamps are not aligned to headset log clock.", "events": host_events}, indent=2) + "\n")
 
-j = SCRATCH / "jit-final86e0-pause-j"
+j = capture_dir("jit-final86e0-pause-j")
 events_j = []
-for line in (j / "client-capture.log").read_text().splitlines():
+for line in (j / "client-capture.log" if (j / "client-capture.log").exists() else j / "session-events.txt").read_text().splitlines():
     if "NXPause" in line or "Stream state" in line or "Session state changed" in line:
         stamp = TS.search(line)
         if stamp and stamp.group(1) >= "2026-10-04 08:37:29":
@@ -163,7 +178,8 @@ for line in (j / "client-capture.log").read_text().splitlines():
 with (OUT / "device-events-j.csv").open("w", newline="", encoding="utf-8") as f:
     w = csv.DictWriter(f, fieldnames=["device_log_time", "event"], lineterminator="\n")
     w.writeheader(); w.writerows(events_j)
-host_events_j = json.loads((j / "events.json").read_text())
+host_event_path_j = j / "events.json"
+host_events_j = json.loads(host_event_path_j.read_text()) if host_event_path_j.exists() else []
 (OUT / "host-events-j.json").write_text(json.dumps({"clock_note": "Host UTC timestamps are not aligned to headset log clock.", "events": host_events_j}, indent=2) + "\n")
 
 def median(values):

@@ -2,15 +2,15 @@
 
 Deadline: **07:00 UTC / 09:00 Europe/Berlin**. Keep existing heartbeat active until then; pause at deadline.
 
-## Latest state at 06:39 UTC
+## Latest state at 06:56 UTC
 
 - WiVRn source `86e0d678` is committed/pushed. Native ASTC starts JIT cap at 2 ms, maximum half a positive predicted period, recovers cap by at most 1 ms; miss-driven decrease unchanged. Pure 1000-pass scheduler checks and matched host `openxr_wivrn`/`monado`/server plus Android builds passed.
 - Final clean signed APK installed: `nx-scratch/astc-timeline-upload-20261004/final86e0-packaging/presentation-release.apk`, SHA256 `4073507c97bdf73ca06942d0cf751c08ac7825af592397d3e7b8f00929acc120`; native SHA `a430d163bd88b8dd4f57620beaf7b6cee94eb63911498af1b07bfb75a7b5e3bd`. Signature/app data preserved; original f8 APK41603c40 retained as rollback. Capture helper verifies actual installed APK SHA.
 - Halfperiod candidate 0aab7ee9 cold H and warm I had zero scheduler-attributed misses in logged windows, max sleep5.6ms; warm viewer89.7–90.6 iterations/s, fewer fresh source frames. Original full-period probe D logged7 skips; gradual-only E/F still hits11.4ms cliff. Reports preparing `astc-jit-pacing/`.
 - Final source86e0 producer pause J marked in headset clock: BEGIN08:37:29.418, stale stall30.427, END31.912, fresh-view resume32.049. No second stale transition throughend06:37:53UTC, zero pacing-attributed misses. Producer pause is not real network-loss recovery or photon/motion proof.
 - Prior pause G second stall at11.227 resumed11.228 happened after XR went idle10.063 then regainedfocus11.221; hidden decoder callbacks cannot publish frames. No fresh pair existed at that selection. Reject nearest-target theory and do not mask the watchdog or rewrite selection.
-- Root owns final runtime server1632574 /WayVR1632596, final-planar-a-k capture running. Profile2176x2176 per-eye90Hz ASTC8/no foveation/JPEG/blur/fieldwarp; requestedno-encrypt. JIT override empty; astc_sync_upload0; directRGBoff currently. Source audit found no concrete RGB or JIT guard defect. Short native RGB comparison planned, keep experimental RGB defaultoff.
-- ZstdDCtx report QA passed; preliminary noise-limited4–10%medianhint notintegrated. Matched-native report scope/rate correction localready and all18artifacthashespassed; report agentpreparing JITcaps figures. Keep Zstd3 and productionguarded.80dualplane.
+- Final clean APK4073507c is installed and verified against actual device SHA. All owned server/WayVR/Pico app processes stopped after the final planar K /RGB L /planar M checks. K was warm after pause; L/M were fresh reconnects, so GPU timings are not a controlled mode A/B. Steady L/M viewer89.7–90.2/s,167–180fresh per roughly2s, zero scheduler-attributed misses. RGBenabled startuprecord captured in L; preserve experimental RGBdefaultoff. JIT override empty; async_upload0. Source audit found no concrete RGB or guard defect. Native2176per-eye90HzASTC8/no foveation/JPEG/blur/fieldwarp; requestedno-encrypt.
+- NXWarp main53c32b0 pushed figures, recovery clock evidence, finalAPK provenance, matched-native scope corrections and preliminaryZstdDCtx report. Root/Luna caught exact-millisecond log grouping defect; parser nowgroupsstats untilnext renderline, all89rows retainGPU/counterfields. Dsum7attributedskips, E4startup, H/I/J0 unchanged. Publicfiltered A-J telemetry and portable regeneration preparing finalfollowup. Keep Zstd3 and productionguarded.80dualplane; noDCtxintegration.
 - Preserve unrelated READMElogo/branding dirt. No demos/mouse/network changes/uninstall. Finish meaningful work07UTC; stop ownedserver/tests, best verifiedAPK ready, publishresults, pause heartbeat.
 
 Earlier detailed evidence follows (older runtime state is superseded above).

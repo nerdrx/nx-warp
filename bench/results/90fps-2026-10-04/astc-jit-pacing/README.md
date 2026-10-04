@@ -11,13 +11,13 @@ Each point is one app-reported window. Circles show render iterations/s; crosses
 | A | 500 us cap, original APK | 7 | 89.70 | 89.20 | 1.3–1.9 ms | 0 |
 | B | 2,000 us cap, original APK | 7 | 89.70 | 87.71 | 1.2–1.9 ms | 0 |
 | C | 500 us repeat, original APK | 7 | 89.70 | 89.70 | 1.3–1.8 ms | 0 |
-| D | 45,000 us cap, original APK | 8 | 88.55 | 85.81 | 1.1–1.9 ms | 3 |
+| D | 45,000 us cap, original APK | 8 | 88.55 | 85.81 | 1.1–1.9 ms | 4 |
 | E | 45,000 us cap, candidate APK | 7 | 89.70 | 87.40 | 1.3–1.9 ms | 1 |
 | F | candidate warm repeat | 8 | 89.80 | 89.05 | 2.1–2.9 ms | 1 |
 | G | candidate APK, controlled producer pause | 12 | 89.80 | 80.32 | 1.7–5.5 ms | 0 |
 | H | half-period candidate, cold-start run | 7 | 89.80 | 83.81 | 1.0–1.8 ms | 0 |
 | I | half-period candidate, warm repeat | 7 | 89.70 | 86.00 | 1.8–2.8 ms | 0 |
-| J | clean final build, controlled producer pause | 12 | 89.80 | 84.81 | 1.4–6.4 ms | 0 |
+| J | clean final build, controlled producer pause | 12 | 89.80 | 84.81 | 1.2–6.4 ms | 0 |
 
 These medians describe selected complete windows only; they do not combine sessions into a single throughput estimate. A–D used APK digest `41603c40…`; E–G used `0662e875…`; H–I used `0aab7ee9…`; J used the clean final `4073507c…` build from commit `86e0d678`. The source and native hashes for the H–I and J package manifests are in [source-artifacts.json](source-artifacts.json). Run metadata and all input-log hashes are in [capture-manifest.json](capture-manifest.json).
 
@@ -38,5 +38,5 @@ Files:
 - `device-events-g.csv`, `device-events-j.csv`: short headset-clock event timelines.
 - `host-events-g.json`, `host-events-j.json`: independent host UTC signal timestamps.
 - `capture-manifest.json`, `source-artifacts.json`: capture and build provenance.
-- `build_report.py`: local regeneration script; reads the scratch captures named in its header.
+- `build_report.py`: local regeneration script; reads the private scratch captures when available, otherwise the filtered extracts under `captures/`. It associates diagnostic lines with the preceding render record until the next render record, so sub-millisecond timestamp differences do not drop metrics.
 - `manifest.json`: SHA-256 for every report artifact except itself.

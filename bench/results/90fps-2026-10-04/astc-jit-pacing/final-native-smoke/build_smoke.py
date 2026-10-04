@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 
 SCRATCH = Path("/run/media/nerdrx/Lex/claude/nx-scratch/astc-timeline-upload-20261004/live-check")
 OUT = Path(__file__).resolve().parent
+def capture_dir(name, label):
+    private = SCRATCH / name
+    if private.exists(): return private
+    if (OUT / label.lower() / "client-extract.txt").exists(): return OUT / label.lower()
+    return OUT.parent / "captures" / name
 RUNS = [
     ("K", "final-planar-a-k", "planar", "warm since producer-pause run"),
     ("L", "final-rgb-b-l", "RGB", "fresh reconnect"),
@@ -23,21 +28,23 @@ def digest(path):
 
 rows, captures = [], []
 for label, name, mode, phase in RUNS:
-    src = SCRATCH / name
+    src = capture_dir(name, label)
     dst = OUT / label.lower()
     dst.mkdir(exist_ok=True)
     meta = json.loads((src / "metadata.json").read_text())
-    files_to_copy = ["metadata.json", "client-extract.txt", "server-extract.txt", "server-stages.txt", "server-mode.txt", "server-mode-provenance.json"]
+    files_to_copy = [fn for fn in ["metadata.json", "client-extract.txt", "server-extract.txt", "server-stages.txt", "server-mode.txt", "server-mode-provenance.json"] if (src / fn).exists()]
     for filename in files_to_copy:
-        shutil.copyfile(src / filename, dst / filename)
+        if (src / filename).resolve() != (dst / filename).resolve():
+            shutil.copyfile(src / filename, dst / filename)
     lines = (src / "client-extract.txt").read_text().splitlines()
     run_rows = []
-    for line in lines:
+    for line_index, line in enumerate(lines):
         m = RENDER.search(line)
         if not m:
             continue
         stamp = TS.search(line).group(1)
-        txt = "\n".join(x for x in lines if f"[{stamp}]" in x)
+        end = next((j for j in range(line_index + 1, len(lines)) if RENDER.search(lines[j])), len(lines))
+        txt = "\n".join(lines[line_index:end])
         gpu, misses = GPU.search(txt), MISSES.search(txt)
         iters, sec, ips, submitted, fresh, skip, nothing = m.groups()
         iters, sec, ips, fresh = int(iters), float(sec), float(ips), int(fresh)
