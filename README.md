@@ -17,6 +17,10 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: request repairs while the stream is quiet
+
+A new **default-off** client trial checks repair deadlines even without another video packet. An isolated host pipe adapter changes first request opportunity from **20.06 to about 3.08 ms** when the next signal arrives at 20 ms; this excludes WiVRn runtime, Wi-Fi, Pico and repair delivery. **225 checks and Android native build pass.** Source is pushed; no installation or activation. [Graph, runnable checks and remaining gates](bench/results/90fps-2026-10-04/overnight-recovery/recovery-poll/README.md).
+
 ### 4 October: retain high-rate repair bytes
 
 The server's enabled repair history grows **1 to 2 MiB per encoder**, adding **2 MiB of PC memory for two eyes**. In the actual history/serializer test at a synthetic 1 Gbit/s stereo payload budget and 90 source frames/s, the old ring retains **0 of 521 shards** two frames back; the new ring retains **all 521**. This removes a storage limit, not a measured Wi-Fi stall. History tests and sanitizers pass; source is built and pushed without installation or live restart. NACK timing and adaptive FEC remain unchanged. Separate limits still matter: only64 replies per request and two request rounds. An isolated actual-class replay leaves116 holes after a256-shard burst despite retained data; higher caps remain unintegrated. [Repair ceiling and graph](bench/results/90fps-2026-10-04/overnight-recovery/repair-cap-replay/README.md). [Exact conditions, graph and rejected shortcut](bench/results/90fps-2026-10-04/overnight-recovery/repair-history/README.md).
