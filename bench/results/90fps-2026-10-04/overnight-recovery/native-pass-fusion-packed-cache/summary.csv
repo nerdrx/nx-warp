@@ -1,0 +1,8 @@
+variant,runs,pass_gpu_us_mean,pass_gpu_us_median,astc_gpu_us_mean,astc_gpu_us_median,copy_gpu_us_mean,copy_gpu_us_median,total_gpu_us_mean,total_gpu_us_median,cpu_wall_us_mean,cpu_wall_us_median
+baseline,12,86.580,99.180,1367.423,1365.760,85.357,83.940,1539.360,1542.420,1701.675,1705.215
+vec3cache,12,0.000,0.000,1332.793,1336.740,83.377,83.400,1416.170,1420.320,1571.874,1573.745
+packedcache,12,0.000,0.000,1362.693,1367.880,83.917,85.000,1446.610,1455.100,1606.236,1613.295
+
+paired_delta_vs_baseline,mean_astc_us,median_astc_us,mean_total_gpu_us,median_total_gpu_us,mean_cpu_wall_us,median_cpu_wall_us
+vec3cache,-34.630,-23.960,-123.190,-130.640,-129.801,-136.900
+packedcache,-4.730,3.480,-92.750,-96.760,-95.439,-87.055

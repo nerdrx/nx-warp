@@ -1,0 +1,48 @@
+{
+  "rows": 36,
+  "means": {
+    "baseline": {
+      "pass_gpu_us": 86.58,
+      "astc_gpu_us": 1367.4233333333334,
+      "copy_gpu_us": 85.35666666666667,
+      "total_gpu_us": 1539.3600000000001,
+      "cpu_wall_us": 1701.675
+    },
+    "vec3cache": {
+      "pass_gpu_us": 0.0,
+      "astc_gpu_us": 1332.7933333333333,
+      "copy_gpu_us": 83.37666666666667,
+      "total_gpu_us": 1416.17,
+      "cpu_wall_us": 1571.8741666666667
+    },
+    "packedcache": {
+      "pass_gpu_us": 0.0,
+      "astc_gpu_us": 1362.6933333333334,
+      "copy_gpu_us": 83.91666666666667,
+      "total_gpu_us": 1446.61,
+      "cpu_wall_us": 1606.2358333333334
+    }
+  },
+  "packed_minus_vector": {
+    "pass_gpu_us": {
+      "mean": 0.0,
+      "median": 0.0
+    },
+    "astc_gpu_us": {
+      "mean": 29.899999999999977,
+      "median": 31.539999999999964
+    },
+    "copy_gpu_us": {
+      "mean": 0.5399999999999991,
+      "median": 0.240000000000002
+    },
+    "total_gpu_us": {
+      "mean": 30.43999999999996,
+      "median": 32.539999999999964
+    },
+    "cpu_wall_us": {
+      "mean": 34.36166666666666,
+      "median": 31.184999999999945
+    }
+  }
+}

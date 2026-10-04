@@ -1,0 +1,181 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "astc_encode_inverse.glsl"
+#include "astc_encode_colour.glsl"
+// Fixed ASTC 8x8: ordinary 5x5 weights with an optional 4x4 dual-plane colour fit.
+// Both retain one CEM8 partition and hardware sampling; no extra dispatch.
+layout(local_size_x=64) in;
+layout(set=0,binding=0) uniform sampler2D luma;
+layout(set=0,binding=1) uniform sampler2D chroma;
+layout(set=0,binding=2,std430) writeonly buffer Output { uvec4 blocks[]; } dst;
+layout(push_constant) uniform Push { uint width, height, fit, quality, direct_rgb; } pc;
+
+float encodeChannel(float x) { return x < 0.0031308 ? 12.92*x : 1.055*pow(x,1.0/2.4)-0.055; }
+vec3 pixel(ivec2 p) {
+    p=clamp(p,ivec2(0),ivec2(pc.width,pc.height)-1);
+    if(pc.direct_rgb!=0u) {
+        vec3 linear=texelFetch(luma,p,0).rgb;
+        vec3 encoded=clamp(vec3(encodeChannel(linear.r),encodeChannel(linear.g),encodeChannel(linear.b)),0.0,1.0);
+        // Match the baseline RGBA8_UNORM intermediate quantization before ASTC.
+        return floor(encoded*255.0+0.5);
+    }
+    float y=texelFetch(luma,p,0).r;
+    vec2 uv=texelFetch(chroma,p/2,0).rg-vec2(0.5);
+    return clamp(vec3(y+1.5748*uv.y, y-0.1873*uv.x-0.4681*uv.y, y+1.8556*uv.x),0.0,1.0)*255.0;
+}
+vec3 bilinear(ivec2 base,vec2 p) {
+    ivec2 q=ivec2(floor(p)); vec2 t=fract(p);
+    return mix(mix(pixel(base+q),pixel(base+q+ivec2(1,0)),t.x),
+               mix(pixel(base+q+ivec2(0,1)),pixel(base+q+ivec2(1,1)),t.x),t.y);
+}
+void put(inout uvec4 b,uint offset,uint count,uint value) {
+    uint word=offset>>5, shift=offset&31u;
+    value&=(1u<<count)-1u;
+    b[word]|=value<<shift;
+    if(shift+count>32u) b[word+1u]|=value>>(32u-shift);
+}
+uvec3 quantEndpoint(vec3 p) {
+    uint endpointBits=pc.quality<=3u?pc.quality+1u:pc.quality;
+    uint step=1u<<uint(6u-clamp(endpointBits,1u,6u));
+    return min(uvec3(round(clamp(p,vec3(0),vec3(255))*(63.0/255.0)/float(step)))*step,uvec3(63u));
+}
+vec3 unquantEndpoint(uvec3 q) { return vec3((q<<2)|(q>>4)); }
+uint quantWeight(float t) {
+    uint w=uint(round(clamp(t,0.0,1.0)*7.0));
+    if(pc.quality==3u) w=uint(round(round(float(w)*3.0/7.0)*7.0/3.0)); // 0, 2, 5, 7
+    if(pc.quality==2u) {
+        uint q=uint(round(clamp(t,0.0,1.0)*3.0));
+        w=q==0u?0u:q==1u?2u:q==2u?5u:7u;
+    }
+    if(pc.quality==1u) w=4u;
+    if(pc.quality==0u) w=0u;
+    return min(w,7u);
+}
+
+void main() {
+    uint id=gl_GlobalInvocationID.x, across=(pc.width+7u)/8u;
+    if(id>=across*((pc.height+7u)/8u)) return;
+    ivec2 base=ivec2(id%across,id/across)*8;
+    vec3 lo=vec3(255),hi=vec3(0),sum=vec3(0),diag=vec3(0),cross=vec3(0);
+    for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+        vec3 v=pixel(base+ivec2(x,y));
+        lo=min(lo,v);hi=max(hi,v);sum+=v;diag+=v*v;
+        cross+=vec3(v.x*v.y,v.x*v.z,v.y*v.z);
+    }
+    bool isFlat=pc.quality==0u || (pc.fit==3u && max(max(diag.x-sum.x*sum.x/64.0,diag.y-sum.y*sum.y/64.0),diag.z-sum.z*sum.z/64.0)<1024.0);
+    vec3 mean=sum/64.0;
+    mat3 cov=mat3(0.0);
+    if(isFlat) {lo=mean;hi=lo;}
+    else if(pc.fit!=0u) {
+        diag=max(diag-sum*mean,vec3(0));
+        cross-=vec3(sum.x*mean.y,sum.x*mean.z,sum.y*mean.z);
+        cov=mat3(diag.x,cross.x,cross.y,cross.x,diag.y,cross.z,cross.y,cross.z,diag.z);
+        vec3 axis=diag.x>=diag.y&&diag.x>=diag.z?vec3(1,0,0):diag.y>=diag.z?vec3(0,1,0):vec3(0,0,1);
+        for(int i=0;i<4;i++) {vec3 a=cov*axis;axis=a*inversesqrt(max(dot(a,a),1e-12));}
+        float mn=1e30,mx=-1e30;
+        for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+            vec3 v=pixel(base+ivec2(x,y));float t=dot(v,axis);
+            mn=min(mn,t);mx=max(mx,t);
+        }
+        // Actual extrema may contain unrelated colour components. Projecting
+        // onto the mean's PCA line reduces those errors without another pass.
+        lo=mean+axis*(mn-dot(mean,axis));
+        hi=mean+axis*(mx-dot(mean,axis));
+    }
+    uvec3 e0=quantEndpoint(lo),e1=quantEndpoint(hi);
+    // CEM8 enters blue contraction if endpoint sums are reversed; use ordinary RGB.
+    uvec3 expanded0=(e0<<2)|(e0>>4), expanded1=(e1<<2)|(e1>>4);
+    if(expanded0.x+expanded0.y+expanded0.z>expanded1.x+expanded1.y+expanded1.z) {uvec3 tmp=e0;e0=e1;e1=tmp;}
+    uvec3 originalE0=e0,originalE1=e1;
+    vec3 a=unquantEndpoint(e0),axis=unquantEndpoint(e1)-a;
+    float inv=1.0/max(dot(axis,axis),1e-9);
+    uvec4 header=uvec4(0x100f3u,0,0,0),weights=uvec4(0);
+    uint baseGrid[25];
+    if(pc.fit>=2u && !isFlat) {
+        // Fit the actual ASTC interpolation grid instead of sampling 25 source points.
+        // Clamp least-squares overshoot: endpoints/weights remain legal ASTC values.
+        float target[64];
+        for(uint y=0;y<8u;y++) for(uint x=0;x<8u;x++)
+            target[y*8u+x]=dot(pixel(base+ivec2(x,y))-a,axis)*inv;
+        for(uint i=0;i<25u;i++) {
+            float value=0;
+            for(uint j=0;j<64u;j++) value+=astc5x5InverseA[i*64u+j]*target[j];
+            uint w=quantWeight(value);
+            baseGrid[i]=weightDecode[w];
+            put(weights,3u*i,3,w);
+        }
+    } else if(!isFlat) {
+        for(uint y=0;y<5u;y++) for(uint x=0;x<5u;x++) {
+            vec3 v=bilinear(base,vec2(x,y)*1.75);
+            uint w=quantWeight(dot(v-a,axis)*inv);
+            baseGrid[y*5u+x]=weightDecode[w];
+            put(weights,3u*(y*5u+x),3,w);
+        }
+    }
+    float originalQ6Error=-1.0;
+    if(pc.quality==6u && pc.fit>=2u && !isFlat) {
+        float sumT=0.0,sumTT=0.0;
+        vec3 sumRGB=vec3(0.0),sumTRGB=vec3(0.0);
+        vec3 old0=unquantEndpoint(originalE0),old1=unquantEndpoint(originalE1);
+        originalQ6Error=0.0;
+        for(uint i=0u;i<64u;i++) {
+            vec3 source=pixel(base+ivec2(int(i%8u),int(i/8u)));
+            float t=float(interpolate5(baseGrid,i))*(1.0/64.0);
+            sumT+=t;sumTT+=t*t;sumRGB+=source;sumTRGB+=source*t;
+            float weight=float(interpolate5(baseGrid,i));
+            vec3 decoded=floor((old0*(64.0-weight)+old1*weight+vec3(32.0))*(1.0/64.0));
+            vec3 error=source-decoded;
+            originalQ6Error+=dot(error,error);
+        }
+        float determinant=64.0*sumTT-sumT*sumT;
+        if(determinant>1e-6) {
+            vec3 fitted0=(sumRGB*sumTT-sumTRGB*sumT)/determinant;
+            vec3 fittedSlope=(sumTRGB*64.0-sumRGB*sumT)/determinant;
+            uvec3 fitE0=quantEndpoint(fitted0),fitE1=quantEndpoint(fitted0+fittedSlope);
+            uvec3 fitX0=(fitE0<<2)|(fitE0>>4),fitX1=(fitE1<<2)|(fitE1>>4);
+            bool ordered=fitX0.x+fitX0.y+fitX0.z<=fitX1.x+fitX1.y+fitX1.z;
+            if(ordered) {
+                vec3 next0=unquantEndpoint(fitE0),next1=unquantEndpoint(fitE1);
+                float refitError=0.0;
+                for(uint i=0u;i<64u;i++) {
+                    vec3 source=pixel(base+ivec2(int(i%8u),int(i/8u)));
+                    float t=float(interpolate5(baseGrid,i));
+                    vec3 decoded=floor((next0*(64.0-t)+next1*t+vec3(32.0))*(1.0/64.0));
+                    vec3 error=source-decoded;
+                    refitError+=dot(error,error);
+                }
+                if(refitError<originalQ6Error) { e0=fitE0;e1=fitE1; }
+            }
+        }
+    }
+    put(header,17,6,e0.r);put(header,23,6,e1.r);
+    put(header,29,6,e0.g);put(header,35,6,e1.g);
+    put(header,41,6,e0.b);put(header,47,6,e1.b);
+    uvec4 result=header|uvec4(bitfieldReverse(weights.w),bitfieldReverse(weights.z),
+                              bitfieldReverse(weights.y),bitfieldReverse(weights.x));
+    // The existing PCA covariance cheaply rejects ordinary-colour tiles before
+    // their extra pixel cache and error evaluation. The inner gate is 500; allow
+    // a small margin here for floating-point covariance cancellation.
+    float chromaVariance=(diag.x+2.0*diag.y+diag.z-2.0*cross.x-2.0*cross.z)/64.0;
+    if(pc.quality>=2u && pc.fit>=2u && !isFlat && chromaVariance>=499.0) {
+        vec3 pixels[64];
+        float baselineError=0;
+        vec3 endpoint0=unquantEndpoint(e0),endpoint1=unquantEndpoint(e1);
+        for(uint i=0u;i<64u;i++) {
+            pixels[i]=pixel(base+ivec2(int(i%8u),int(i/8u)));
+            uint weight=interpolate5(baseGrid,i);
+            vec3 decoded=floor((endpoint0*float(64u-weight)+endpoint1*float(weight)+vec3(32.0))*(1.0/64.0));
+            vec3 error=pixels[i]-decoded;
+            baselineError+=dot(error,error);
+        }
+        uvec4 candidate;
+        float candidateError;
+        // At sharper settings require a larger error reduction to limit mode
+        // changes under sub-block motion; coarse settings retain their colour fix.
+        float requiredRatio=pc.quality>=4u?0.80:0.95;
+        float dualBaseline=originalQ6Error>=0.0?originalQ6Error:baselineError;
+        if(dualCandidate(pixels,dualBaseline,mean,cov,candidate,candidateError) &&
+           candidateError<dualBaseline*requiredRatio && candidateError<baselineError) result=candidate;
+    }
+    dst.blocks[id]=result;
+}
