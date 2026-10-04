@@ -19,7 +19,7 @@
 
 ### 4 October: request repairs while the stream is quiet
 
-A new **default-off** client trial checks repair deadlines even without another video packet. An isolated host pipe adapter changes first request opportunity from **20.06 to about 3.08 ms** when the next signal arrives at 20 ms; this excludes WiVRn runtime, Wi-Fi, Pico and repair delivery. **225 checks and Android native build pass.** Source is pushed; no installation or activation. [Graph, runnable checks and remaining gates](bench/results/90fps-2026-10-04/overnight-recovery/recovery-poll/README.md).
+A new **default-off** client trial checks repair deadlines even without another video packet. An isolated host pipe adapter changes first request opportunity from **20.06 to about 3.08 ms** when the next signal arrives at 20 ms; this excludes WiVRn runtime, Wi-Fi, Pico and repair delivery. **225 checks and Android native build pass.** Source is pushed; no installation or activation. [Graph, runnable checks and remaining gates](bench/results/90fps-2026-10-04/overnight-recovery/recovery-poll/README.md). Follow-up source removes repeated shard readiness scans: the asleep Pico metadata helper due-query mean falls **5.287→2.932 µs**, with matching decisions and correctness checks. This is a small CPU component gain, not a stream latency or FPS measurement. [Host/Pico graphs and exact scope](bench/results/90fps-2026-10-04/overnight-recovery/received-count/README.md).
 
 ### 4 October: retain high-rate repair bytes
 
