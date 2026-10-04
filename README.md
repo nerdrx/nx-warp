@@ -27,6 +27,12 @@ The client now hands uploads to the existing graphics queue without waiting on t
 
 Fresh stereo frames now gate resume, and decoder replacement drains presentation before releasing images. An optional PC RGB input bypass preserves colour before ASTC encoding, with a memory/bitrate trade-off. Direct decompression into mapped upload memory was tested and rejected: it was substantially slower on Pico. [RGB correctness](bench/results/90fps-2026-10-04/astc-direct-rgb/README.md) · [Rejected memory shortcut](bench/results/90fps-2026-10-04/astc-staging-memory/README.md).
 
+Native ASTC pacing now starts with a **2 ms sleep cap**, probes recovery in **1 ms steps**, and stops at half the predicted refresh period. The original broad-cap sample recorded seven scheduler-attributed skips; the bounded cold/warm samples and clean final-build pause sample recorded zero. These are short independent stationary checks, including startup and XR-idle effects—not continuous motion or photon measurements. The final client/server build is `86e0d678`, with a data-preserving signed Pico update. [Pacing, recovery event order and final RGB smoke](bench/results/90fps-2026-10-04/astc-jit-pacing/README.md).
+
+![Independent Pico pacing windows, viewer cadence and fresh source updates](bench/results/90fps-2026-10-04/astc-jit-pacing/pacing-windows.png)
+
+The circles count viewer iterations; crosses estimate fresh source updates. Intentional pause gaps are not uninterrupted 90 Hz delivery. Optional RGB remains off by default. No sustained-motion, perceived-quality or physical photon-latency claim is made.
+
 ### 3 October: fast native PC ASTC encoder
 
 A new one-dispatch Vulkan encoder emits standard **4352 × 2176 ASTC 8×8** blocks without partition or mode search. The complete dark-scene PC call takes **1.59 / 3.02 ms p50/p95** with GPU-resident input, including readback and LZ4; CPU-upload input takes **4.76 / 5.98 ms**. Low-variance flat blocks cut matched dark-scene payload **53%** against the fitted non-flat encoder, to **366 Mbit/s normalized to 90 updates/s**; forest reaches **230 Mbit/s**. Six synthetic pans stay within **1.44–1.65 ms median PC call**. This is standalone encoder proof: fine text still softens, fast blocks have not been sampled on Pico, and live 90 Hz remains unproven. [Source, sample timings, quality crops and animation](bench/results/90fps-2026-10-03/astc-texture-path/gpu-encoder/report.md).

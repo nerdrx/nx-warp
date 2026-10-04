@@ -1,0 +1,80 @@
+{
+  "device": "Pico Adreno 650",
+  "protocol": "12 warmups, 30 samples, one-shot / retained ZSTD_DCtx / one-shot per fixture",
+  "build_sha256": "02dc882b1525975a76f02ce5e2b3454c7d8bd95ac346d2d9dd928d5bfaa734ef",
+  "decoder_header_sha256": "63107c9eb6615bf9521d46c2bf21c1c722d0875aad3eb439ac43c82519df070b",
+  "measurement_capture": "The probe emitted aggregate median/p95 per 30-sample arm, not individual sample timings; no per-sample values were recorded. run.csv preserves all six A/B/A aggregate observations in order.",
+  "fixture_policy": "Current guarded selected q6 outputs; ordinary CPU scratch decode followed by memcpy in both arms. Inputs are referenced by hash only; no photo or compressed payload is included.",
+  "inputs": [
+    {
+      "scene": "dark",
+      "source_lz4_sha256": "4ea59e062c570659861c434f355e7caccf067385661f0620a36cd7d6a79e7676",
+      "raw_blocks_sha256": "d52306d78f221acc736edfd82553cc057afd5564279d96bb603bb5ac8c1ecdbf",
+      "raw_bytes": 518400,
+      "zstd_payload_sha256": "1048a5e7882ba9664be6f77c43062e3c8045a5f76b1d15492c95cff4a66d7d9e",
+      "zstd_bytes": 208321,
+      "zstd_level": 3
+    },
+    {
+      "scene": "forest",
+      "source_lz4_sha256": "72a8f057215a37ed8267a105a3147a42a7e7e7f179ab4b659e5c8d80c71ab6f2",
+      "raw_blocks_sha256": "fbe3b619e9ff57b640e5eca0fc75ef68f5dbafa3c5f7c04426511dc502b3dfd3",
+      "raw_bytes": 518400,
+      "zstd_payload_sha256": "d0a3085d13392782e2ece60b5d7ad0d2a19624d02771b3383767699321799cb1",
+      "zstd_bytes": 151114,
+      "zstd_level": 3
+    }
+  ],
+  "results": [
+    {
+      "scene": "dark",
+      "method": "oneshot",
+      "median_us": 582.344,
+      "p95_us": 594.948,
+      "output_sha256": "d52306d78f221acc736edfd82553cc057afd5564279d96bb603bb5ac8c1ecdbf",
+      "output_data_included": false
+    },
+    {
+      "scene": "dark",
+      "method": "dctx",
+      "median_us": 486.354,
+      "p95_us": 502.656,
+      "output_sha256": "d52306d78f221acc736edfd82553cc057afd5564279d96bb603bb5ac8c1ecdbf",
+      "output_data_included": false
+    },
+    {
+      "scene": "dark",
+      "method": "oneshot-repeat",
+      "median_us": 502.656,
+      "p95_us": 815.052,
+      "output_sha256": "d52306d78f221acc736edfd82553cc057afd5564279d96bb603bb5ac8c1ecdbf",
+      "output_data_included": false
+    },
+    {
+      "scene": "forest",
+      "method": "oneshot",
+      "median_us": 399.739,
+      "p95_us": 412.656,
+      "output_sha256": "fbe3b619e9ff57b640e5eca0fc75ef68f5dbafa3c5f7c04426511dc502b3dfd3",
+      "output_data_included": false
+    },
+    {
+      "scene": "forest",
+      "method": "dctx",
+      "median_us": 381.302,
+      "p95_us": 419.115,
+      "output_sha256": "fbe3b619e9ff57b640e5eca0fc75ef68f5dbafa3c5f7c04426511dc502b3dfd3",
+      "output_data_included": false
+    },
+    {
+      "scene": "forest",
+      "method": "oneshot-repeat",
+      "median_us": 395.99,
+      "p95_us": 837.083,
+      "output_sha256": "fbe3b619e9ff57b640e5eca0fc75ef68f5dbafa3c5f7c04426511dc502b3dfd3",
+      "output_data_included": false
+    }
+  ],
+  "capture_date_utc": "2026-10-04",
+  "capture_time_utc": "not recorded"
+}

@@ -1,0 +1,11 @@
+run,scratch_capture,description,complete_windows,iteration_rate_median_s,iteration_rate_min_s,iteration_rate_max_s,estimated_fresh_rate_median_s,own_gpu_min_ms,own_gpu_max_ms,windows_with_nonzero_deadline_counts
+A,jit-cap500-a,500 us cap; original APK,7,89.7,83.3,90.6,89.2,1.3,1.9,0
+B,jit-cap2000-b,"2,000 us cap; original APK",7,89.7,81.0,89.7,87.71,1.2,1.9,0
+C,jit-cap500-c,500 us cap repeat; original APK,7,89.7,80.8,90.5,89.7,1.3,1.8,0
+D,jit-original-probe-d,"45,000 us cap; original APK",8,88.55,74.9,89.8,85.81,1.1,1.9,3
+E,jit-gradual-probe-e,"45,000 us cap; candidate APK",7,89.7,80.6,90.1,87.4,1.3,1.9,1
+F,jit-gradual-warm-f,"45,000 us cap; candidate warm repeat",8,89.8,89.3,90.3,89.05,2.1,2.9,1
+G,jit-gradual-pause-g,"45,000 us cap; controlled producer pause",12,89.8,82.4,90.5,80.32,1.7,5.5,0
+H,jit-halfperiod-cold-h,candidate default cap; cold-start run,7,89.8,89.3,90.6,83.81,1.0,1.8,0
+I,jit-halfperiod-warm-i,candidate default cap; warm repeat,7,89.7,89.7,90.6,86.0,1.8,2.8,0
+J,jit-final86e0-pause-j,clean final candidate; controlled producer pause,12,89.8,82.3,90.6,84.81,1.4,6.4,0

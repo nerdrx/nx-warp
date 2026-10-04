@@ -2,16 +2,16 @@
 
 Deadline: **07:00 UTC / 09:00 Europe/Berlin**. Keep existing heartbeat active until then; pause at deadline.
 
-## Latest state at 05:49 UTC
+## Latest state at 06:39 UTC
 
-- WiVRn HEAD/remote `9d05f4da`; source `62eff3af` ships same-queue asynchronous ASTC upload, fresh-common-stereo resume gate and safe decoder retirement. `9d05f4da` adds opt-in direct RGB server input with equal-eye extent guard. Default RGB remains off; default async upload is on.
-- Matched pinned-header host targets (openxr_wivrn, monado, wivrn-server) and Android native build at9d05 PASS. Packaging source9d05 in progress; do not run with old6d03 client and new host. Previous installed APKbf87dad1 remains until data-preserving replacement verified.
-- Same-APK sync/async/sync live checks at source6d03+later62eff client patch: per-eye CPU upload handoff median .480/.013/.405ms; post-submit wait .465/0/.390ms. Short off-head viewer typically87-90 iterations/s with variable fresh updates; no sustained motion or photon proof.
-- No timeline semaphore dependency retained: Pico rejected creation despite advertised capability. Same actual graphics queue plus transfer-to-fragment barrier preserves sampling ordering; fence gates buffer/command reuse. Native2176 standalone readbacks maxdelta1, identical output hashes.
-- Native direct RGB smoke selected profile, 18 nonblack/0idleblack encoder windows,89.2-90.5 render iterations/s,171-180fresh updates per2s. No inside-headset colour inspection or controlled live byte comparison. CPU4:2:0 photo proxy separately shows RGB gains.13-.43dB and~2.3-15.6% larger Zstd3 blocks; synthetic shader equivalence maxdelta1. Direct RGB stays opt-in.
-- Mapped staging direct-decode experiment REJECTED: all VMA choices actualHOST_CACHED type4, but directLZ4/Zstd decode1.6-4.1ms vsordinaryscratch+copy.24-1.73ms. Keep existing decode path; output hashes match. Report astc-staging-memory.
-- Root owns matched APK packaging/final native smoke. Luna chroma investigates bounded selective partition fit scratch-only, PCGPU; no device usage. Luna smallblocks exported astc-rgb-input-quality report; density reviewed server/doc. All owned runtime processes stopped at05:49; verify pid/cmd before any action. No parallel live/GPU runs.
-- NXWarp main f44f8a3 reports samequeue/upload-live/directRGB; pending owned report commits include staging rejection,RGBproxy,README owned results section and valid zero-context sourcepatch correction. Preserve unrelated README logo/branding dirt.
+- WiVRn source `86e0d678` is committed/pushed. Native ASTC starts JIT cap at 2 ms, maximum half a positive predicted period, recovers cap by at most 1 ms; miss-driven decrease unchanged. Pure 1000-pass scheduler checks and matched host `openxr_wivrn`/`monado`/server plus Android builds passed.
+- Final clean signed APK installed: `nx-scratch/astc-timeline-upload-20261004/final86e0-packaging/presentation-release.apk`, SHA256 `4073507c97bdf73ca06942d0cf751c08ac7825af592397d3e7b8f00929acc120`; native SHA `a430d163bd88b8dd4f57620beaf7b6cee94eb63911498af1b07bfb75a7b5e3bd`. Signature/app data preserved; original f8 APK41603c40 retained as rollback. Capture helper verifies actual installed APK SHA.
+- Halfperiod candidate 0aab7ee9 cold H and warm I had zero scheduler-attributed misses in logged windows, max sleep5.6ms; warm viewer89.7–90.6 iterations/s, fewer fresh source frames. Original full-period probe D logged7 skips; gradual-only E/F still hits11.4ms cliff. Reports preparing `astc-jit-pacing/`.
+- Final source86e0 producer pause J marked in headset clock: BEGIN08:37:29.418, stale stall30.427, END31.912, fresh-view resume32.049. No second stale transition throughend06:37:53UTC, zero pacing-attributed misses. Producer pause is not real network-loss recovery or photon/motion proof.
+- Prior pause G second stall at11.227 resumed11.228 happened after XR went idle10.063 then regainedfocus11.221; hidden decoder callbacks cannot publish frames. No fresh pair existed at that selection. Reject nearest-target theory and do not mask the watchdog or rewrite selection.
+- Root owns final runtime server1632574 /WayVR1632596, final-planar-a-k capture running. Profile2176x2176 per-eye90Hz ASTC8/no foveation/JPEG/blur/fieldwarp; requestedno-encrypt. JIT override empty; astc_sync_upload0; directRGBoff currently. Source audit found no concrete RGB or JIT guard defect. Short native RGB comparison planned, keep experimental RGB defaultoff.
+- ZstdDCtx report QA passed; preliminary noise-limited4–10%medianhint notintegrated. Matched-native report scope/rate correction localready and all18artifacthashespassed; report agentpreparing JITcaps figures. Keep Zstd3 and productionguarded.80dualplane.
+- Preserve unrelated READMElogo/branding dirt. No demos/mouse/network changes/uninstall. Finish meaningful work07UTC; stop ownedserver/tests, best verifiedAPK ready, publishresults, pause heartbeat.
 
 Earlier detailed evidence follows (older runtime state is superseded above).
 
