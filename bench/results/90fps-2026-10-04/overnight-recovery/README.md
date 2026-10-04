@@ -231,3 +231,7 @@ The next offscreen cut writes ASTC directly into cached host memory, removing th
 ## High-rate repair storage
 
 The enabled sender ring grows from 1 to 2 MiB per encoder, adding 2 MiB across two eyes. An actual production-history/serialization check at synthetic 1000 Mbit/s stereo payload and 90 source FPS changes two-frame-old retention from 0/521 to 521/521 shards. Timing, FEC and packet format remain. Final tests/builds pass; no installed/live change. The stale-NACK shortcut was rejected because those counts also feed adaptive FEC. [Retention evidence, parser fix and source](repair-history/README.md).
+
+### Recovery throughput and wake gates
+
+[Actual-class repair ceiling](repair-cap-replay/README.md) shows retained shards are not all deliverable with64 replies and two rounds;128/256 are hypothetical limits, not enabled. [Production socket batching](sender-batch-check/README.md) is rejected: roughly0.08–0.10us/shard savings are tiny, while existing batch semantics drop a forced partial suffix. [Network wake audit](sender-batch-audit/RECOVERY_WAKE_AUDIT.md) identifies arrival-only NACK servicing and a100ms poll timeout; a bounded wake design remains under investigation. No live recovery or physical-latency result follows.
