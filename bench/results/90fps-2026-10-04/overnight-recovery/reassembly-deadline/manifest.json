@@ -1,0 +1,15 @@
+{
+  "production_source": "076d55da",
+  "deadline_commit": "cbe970d4",
+  "display_hz": 90,
+  "source_fps": [
+    30,
+    60,
+    90
+  ],
+  "single_rows": 6,
+  "stereo_rows": 18,
+  "selector": "idealized exact retained-ID intersection; not production renderer",
+  "validation": "deterministic normal and ASan/UBSan pass",
+  "decision": "keep deadline default off; per-eye retirement can discard repairable coherent pair"
+}

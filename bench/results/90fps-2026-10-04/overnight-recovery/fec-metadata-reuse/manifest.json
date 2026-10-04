@@ -1,0 +1,19 @@
+{
+  "baseline": "cbe970d4",
+  "candidate": "076d55da",
+  "compiler": "GCC16.2.1",
+  "optimization": "-O2",
+  "cpu_affinity": [
+    3
+  ],
+  "priority": "nice+5",
+  "clock": "unlocked",
+  "method": "5 ABBA blocks, same seed per block, include snapshots from respective source trees",
+  "recovery_rows": 360,
+  "encode_rows": 320,
+  "recovery_calls_per_row": 2500,
+  "encode_calls_per_row": 10000,
+  "validation": "4296checks normal ASan/UBSan TSan; identicalwireprobe; server/OpenXR andAndroidnativebuildsPASS",
+  "baseline_fec_sha256": "2590ce36f6944c0970547611dc3dfaba053f2a8aeee0897193274017a7a01db1",
+  "candidate_fec_sha256": "7b15a9c41ba83cbc0a7841776fa882a9d7944eba21a3de9aba716de6486712be"
+}
