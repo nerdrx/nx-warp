@@ -1,0 +1,24 @@
+{
+  "source": "6d8970d2",
+  "baseline_history_source": "076d55da",
+  "model": "actual production storage/serialization with synthetic equal-eye constant payload volumes",
+  "source_fps": 90,
+  "payload_mbps": [
+    250,
+    500,
+    700,
+    1000
+  ],
+  "frames_per_case": 12,
+  "fec": [
+    false,
+    true
+  ],
+  "rows_per_variant": 32,
+  "capacity_bytes": [
+    1048576,
+    2097152
+  ],
+  "tests": "816 normal/ASan/UBSan;4296 FEC ASan/UBSan; server/OpenXR and Android native builds",
+  "live_changes": false
+}

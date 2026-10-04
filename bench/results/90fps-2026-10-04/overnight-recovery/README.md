@@ -227,3 +227,7 @@ Fixed view/timing metadata serializers now reuse private per-thread capacity, fo
 The two-display-period reassembly trial remains **default off**. Production per-eye window replay retires incomplete fronts earlier, but a stereo repair race loses a repairable common frame and holds the previous pair for one extra refresh. The selector in that replay is idealized; these are deterministic model results, not headset measurements. The next gate is coherent stereo availability before forfeiting repair. [Runnable replay, exact scenarios and tradeoff graph](reassembly-deadline/README.md).
 
 The next offscreen cut writes ASTC directly into cached host memory, removing the separate output copy. Two matched ABBA runs save only **0.107–0.141 ms median**, with one p95 regression. Exact ASTC and strict packet decoding pass; a separate Vulkan validation run is clean. Production integration is held pending worthwhile benefit. [Memory flags, 200 rows and graph](direct-output/README.md).
+
+## High-rate repair storage
+
+The enabled sender ring grows from 1 to 2 MiB per encoder, adding 2 MiB across two eyes. An actual production-history/serialization check at synthetic 1000 Mbit/s stereo payload and 90 source FPS changes two-frame-old retention from 0/521 to 521/521 shards. Timing, FEC and packet format remain. Final tests/builds pass; no installed/live change. The stale-NACK shortcut was rejected because those counts also feed adaptive FEC. [Retention evidence, parser fix and source](repair-history/README.md).
