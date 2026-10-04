@@ -1,0 +1,372 @@
+{
+  "inputs": {
+    "candidate_quality_policy_spirv": {
+      "bytes": 77408,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/candidate-quality-policy.spv",
+      "sha256": "b8447734bf2ac2e5618522a8c923d3f37c96d4dd401a30f609bceaf1647ec4d2"
+    },
+    "dark_source_rgba": {
+      "bytes": 8294400,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/dark-native-1920x1080.rgba",
+      "sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd"
+    },
+    "forest_source_rgba": {
+      "bytes": 8294400,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-native-colour-20261004/crops/forest-native-1920x1080.rgba",
+      "sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2"
+    },
+    "native_a_client_capture": {
+      "bytes": 181918,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-a/client-capture.log",
+      "sha256": "c3019029bbedaa1db9a3104842706fa0b86c2aab6a1bd3be401b5667704e67b2"
+    },
+    "native_a_metadata_zero_content": {
+      "bytes": 434,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-a/metadata.json",
+      "sha256": "96c1ddd83a3cb3cd2ca94684a95aa98af1f7724e73304e6533473a12a824fa03"
+    },
+    "native_b_client_capture": {
+      "bytes": 256873,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-b/client-capture.log",
+      "sha256": "b7a2588a11dc0fa1c9b9cf991a0f4516296ff7ef39324e744106777b07470ffd"
+    },
+    "native_b_metadata": {
+      "bytes": 435,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-b/metadata.json",
+      "sha256": "58ca48980a0ded90e62b0b66bb26c20b0ef8c0c99bf091f6de437a4b15cc5cf1"
+    },
+    "native_b_server_extract": {
+      "bytes": 2452,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-b/server-extract.txt",
+      "sha256": "9d58251c2473994c79ebf9c6762c17ca95a8f3a3550f6d8cf96d47da6a63803c"
+    },
+    "production_baseline_spirv_sha256": "2a2cec0f4a9a1051d7718c969941249d73fc48a5b1a5fc00065cf568fd68e50c",
+    "production_shader": {
+      "bytes": 6052,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/shaders/astc_encode_colour.glsl",
+      "sha256": "11dc63257a0d34a57ca95871ad506c15af6990f06a8e2592292f26584db34dfa"
+    },
+    "production_tables": {
+      "bytes": 11446,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/shaders/astc_encode_colour_tables.glsl",
+      "sha256": "440c4ffa73c3f05833d5123257183bdbe13ba2dbbc898eced7b0b705b3c5d4aa"
+    },
+    "q6_pan_crop_hash_list": {
+      "bytes": 6672,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops.sha256",
+      "sha256": "17c5509c3fedbab11d0de954fe484026b069fd5436a3bdac24737c962c62a930"
+    },
+    "q6_phase_crop_files": {
+      "dark-baseline-q6-p0.rgba": "910db4123cac142a61ca9ac29da0e608f89d2492fa7974c9c5561b644f54d171",
+      "dark-baseline-q6-p1.rgba": "a71e8f62846309cdd605affca946e47c05e302baae2cd8df09fd5866895b46d7",
+      "dark-baseline-q6-p2.rgba": "ef041920712bbf6cedd5145f1b1717e1a1c4a185b6f15f8ed47968fe4fddc99c",
+      "dark-baseline-q6-p3.rgba": "817ba636dec13f5535b0ecc60e8036e1f9ce92f59920242d9137e9c40f5f57d7",
+      "dark-baseline-q6-p4.rgba": "e492d44b09b3c485e16620fd28d556c54c1f252e91a416e1febfb2acd24dcbef",
+      "dark-baseline-q6-p5.rgba": "0e33355f1cdb9bea7b152e35b0b132f170daf2656d684f2fccaf25b76591f72b",
+      "dark-baseline-q6-p6.rgba": "d1ac2e2ca042380e7612aa38b7addd10325750bfcdd43d613209479142831cea",
+      "dark-baseline-q6-p7.rgba": "54e88059650b5fb3b2d0ff9adb822088f379d606801c6936d5f2d039ab71b3c0",
+      "dark-candidate-q6-p0.rgba": "5a5c98412b92a34e19652255ad937a2f96de58046cbb3aa17b613fcc5645145d",
+      "dark-candidate-q6-p1.rgba": "d3b04381b1542510db9cecc2ab5614b1fa96ced314a81ffa362e7d6300f3759a",
+      "dark-candidate-q6-p2.rgba": "4ded0094c5ba42d1e92a3fa416998ecba36a29d21b62c63a54f274d252f8bac5",
+      "dark-candidate-q6-p3.rgba": "ff10f1434418ba391ccaee4af65e3a3abd6eb08d984038718188ee247fe52123",
+      "dark-candidate-q6-p4.rgba": "469670174d5d12ede7070b988946830a8734725e973f1168e575cb305faaf558",
+      "dark-candidate-q6-p5.rgba": "cac457f8693545f1ef59f2e67ae6a8bfef027478419a81a097565a4e2c5d9bdb",
+      "dark-candidate-q6-p6.rgba": "6cf224429c65dcde24995de7bd8b4e9bf9f5020fca847f01ad61e7e5810e6ed4",
+      "dark-candidate-q6-p7.rgba": "2f978becbc460537f0e585d6432052355b2fa70267e0ac1b9a0f9d58a0cd4819",
+      "forest-baseline-q6-p0.rgba": "06fdf06d1f7427525dc0aac09e4f40d9291265ab46c597c34711850962fdc3a4",
+      "forest-baseline-q6-p1.rgba": "34496325610ac43d1eb63d98873ffa2657a070968dc08f0b446d15f2c1ce8f5e",
+      "forest-baseline-q6-p2.rgba": "6e6d3000aaa1ef233b02ba7024ba6891a206548456a729171d921a84439b550d",
+      "forest-baseline-q6-p3.rgba": "a23ef07b617de0d1cfaffa896e49efce4f8a27639be3375246624573c26e3eda",
+      "forest-baseline-q6-p4.rgba": "ca809c7388e91dd9261b5061b9b5ce80f6925ad32985ff0d3c865e9acfaa6f25",
+      "forest-baseline-q6-p5.rgba": "d87236e5f31b4c5aa67eb35bb22bcb8751aaeb46d661a35a3cadba2d009bf9f2",
+      "forest-baseline-q6-p6.rgba": "8bacb0b62122de16fd449bb3998b4b3e9dc29b1fa0427b5a5d64eed19640bbda",
+      "forest-baseline-q6-p7.rgba": "e1410814132dc8eaf49275b00612b491035a0c9eb0d98dd8ee8fa230dbeaade0",
+      "forest-candidate-q6-p0.rgba": "3630aacfd5d5a694e4ce80bf4e61e0e00e88d1b62ec5c4872cd0c5aea1f73e32",
+      "forest-candidate-q6-p1.rgba": "aee1471374dc1ecb73fbbcc18f2b8c3ed929c3104ab3a3fa759aa543b82f2b07",
+      "forest-candidate-q6-p2.rgba": "97a9afae0b2df08aa4102acf79ab92f0b80274056d5f5e8c4701c21a98490530",
+      "forest-candidate-q6-p3.rgba": "f7c44d79bb7676308b5ab3bbe1cd8b3d4850c5e19403696b2f8464f8c21f6501",
+      "forest-candidate-q6-p4.rgba": "1c116fa357e59f3d82fb3582a3c9e642fe217ee05d8b371b3136a19627827256",
+      "forest-candidate-q6-p5.rgba": "853fe6354e64924babe9e882e2b62bdcfffb02ddefd4a2568e5f963544953bc3",
+      "forest-candidate-q6-p6.rgba": "dd27efbdf0cbd83013ab554e7b634567b6e3e32363ccc5132422f40f35a4bd0c",
+      "forest-candidate-q6-p7.rgba": "af78571aa4069832632385a1f171a5b3f3f05fb81a8de3f960f9cb68b5672a63"
+    },
+    "quality_policy_results": {
+      "bytes": 8423,
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/results.json",
+      "sha256": "a0a28f9dbc8e4b9fcd132ba4a7becee795cb58c9b5290ef95fcc9d835e0b03e4"
+    },
+    "stdlib_test": {
+      "bytes": 6583,
+      "path": "https://github.com/nerdrx/wivrn-nx/blob/pyrowave-probe/tests/astc_colour_tables_test.py",
+      "sha256": "ee0b86c6732dd4912494d20955086b3a8f05614e6ada4fc2ead3af3967638d14"
+    },
+    "native_c_client_capture": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-c-cost/client-capture.log",
+      "bytes": 1974056,
+      "sha256": "6b4e6f8b97f64cd534fe3f6d05eb88f804ea84c77e3b17c16b5731ee06a1694e"
+    },
+    "native_c_metadata": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-c-cost/metadata.json",
+      "bytes": 435,
+      "sha256": "bf77131940a7a9f4b0050cc600d22157295f1c3bfae4e847ad44e705a597a4f4"
+    },
+    "native_c_server_extract": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-newest-pair-20261004/zero-delay/live-check/colour-policy-native-c-cost/server-extract.txt",
+      "bytes": 2694,
+      "sha256": "d21dbaff0f2d6e5f9eb166b04128549088499571310a2598c237b74b56c4de36"
+    },
+    "production_final_perf_results": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/final-production-perf/results.json",
+      "bytes": 7015,
+      "sha256": "08a8089019cd8c1f1b2d08266e97f39fa69d0a5a3032ac17760c7268bef77704"
+    },
+    "production_final_synthetic_results": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/final-production-synthetic/results.json",
+      "bytes": 4896,
+      "sha256": "5c9a63849eb5589758b6c548ab0781694b3d32cdd7f7a40a72c0a99ac1c7e615"
+    },
+    "production_final_perf_method": "RX 7900 XTX, resident 1920x1080, fit3, 12 warmups/30 samples; dark and forest q2/q6 final ASTC outputs byte-identical to prior-coarse build.",
+    "production_final_spirv_sha256": "a506a2c897c5445cf915d8f62ff52def5783bab05eef141e61282e1514223061",
+    "production_final_synthetic_cases": 36,
+    "production_final_synthetic_gate_failures": 0,
+    "production_final_synthetic_spirv_sha256": "a506a2c897c5445cf915d8f62ff52def5783bab05eef141e61282e1514223061",
+    "native_sampler_report": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native",
+      "source_path": "/run/media/nerdrx/Lex/claude/nx-scratch/dualplane-pico-native",
+      "files": {
+        "README.md": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/README.md",
+          "bytes": 1682,
+          "sha256": "44342b68e93c282644636dd8c8c439d1519056657f63f8e8ef65af2664123485"
+        },
+        "SHA256SUMS": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/SHA256SUMS",
+          "bytes": 744,
+          "sha256": "ea15ad2d9016c22872e27bd611ff73f655d16db6525d131ee9219b57d74a52aa"
+        },
+        "error-summary.csv": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/error-summary.csv",
+          "bytes": 831,
+          "sha256": "a4a63f86cfb4fadd14c2a7d4d6933fd40f42fef67d6b96ca33668bae6e51259b"
+        },
+        "fixture-manifest.json": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/fixture-manifest.json",
+          "bytes": 1959,
+          "sha256": "05d26592abf18b65fbcb0561916ba6af7ea5bbf7a19c26c0610750a677a7a1c2"
+        },
+        "gpu-medians.svg": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/gpu-medians.svg",
+          "bytes": 2885,
+          "sha256": "2cc579cf566728b4f3102db6dcccf477d6f11e4e2f461bac6a36450b05c51edf"
+        },
+        "run-manifest.json": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/run-manifest.json",
+          "bytes": 3337,
+          "sha256": "75c455bb90e4a88027c03028e65223485b9b84a496ea004a57e9314aa09f2057"
+        },
+        "samples-astc.csv": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/samples-astc.csv",
+          "bytes": 4174,
+          "sha256": "97d13860c7565080fff7c7df0b81aa309d921eb2d333cf01cdf144c2384599fb"
+        },
+        "summary.csv": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/summary.csv",
+          "bytes": 537,
+          "sha256": "7037691a75f1b1f4b471d830b1b814214cd4156b8116ffaa0c1cce1c8e1316aa"
+        },
+        "thermal-after.txt": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/thermal-after.txt",
+          "bytes": 1670,
+          "sha256": "e9c4c19bc7ae72a46286f79980e3365477a089b1cf9292e40f598710c70cf64b"
+        },
+        "thermal-before.txt": {
+          "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/thermal-before.txt",
+          "bytes": 1672,
+          "sha256": "867056b63a691db0e3659bddb0a257e15782bfa65f6d0590f7ba5e94f7b4c921"
+        }
+      },
+      "scope": "Pico Adreno 650 synthetic offscreen ASTC decode and sampler timing; comparable-cost evidence only, no speedup claim."
+    }
+  },
+  "native_a_failure": {
+    "root_diagnosis": "host OpenXR/Monado versions mismatched; corrected by relinking the host to the matching runtime before run B",
+    "server_idle_black_windows": 0,
+    "server_nonblack_windows": 0
+  },
+  "native_b": {
+    "apk_sha256": "a6a3f44a538057b91e5489d970bbfaa1a6c6653fcdd9ca6da57e2f9dcbb166a5",
+    "end_utc": "2026-10-04T04:11:56.082188+00:00",
+    "scope": "stationary WayVR wake/reconnect check; not matched codec A/B or complex-motion proof",
+    "server_idle_black_windows": 0,
+    "server_nonblack_windows": 20,
+    "start_utc": "2026-10-04T04:11:36.688956+00:00"
+  },
+  "open_validation": [
+    "matched native codec A/B performance attribution",
+    "complex motion and longer-duration headset behavior",
+    "direct visual-quality review; phase sweep is synthetic, not natural motion",
+    "Native C focus/readiness churn root cause and native rerun after any fix"
+  ],
+  "policy": "chroma statistic threshold 500; decoded-error gate 0.95 for q2-q3 and 0.80 for q4-q6",
+  "production_validation": {
+    "packed_external_decode_cases": 14,
+    "reported_by": "root",
+    "status": "passed",
+    "table_test": "stdlib table assertions and optional external endpoint blue-contraction fixture passed",
+    "final_production_spirv_sha256": "a506a2c897c5445cf915d8f62ff52def5783bab05eef141e61282e1514223061",
+    "final_gpu_perf_results": "Resident RX 7900 XTX; 1920x1080; fit3; 12 warmups/30 samples; four photo/quality cases byte-identical to prior coarse output; median encode 0.17760-0.19784 ms.",
+    "final_synthetic_outputs": 36,
+    "final_synthetic_external_gate_failures": 0,
+    "final_synthetic_scope": "Four synthetic fixtures at q2/q4/q6; flat RGB and neutral gray selected zero dual-plane blocks; checker and diagonal results and payload tradeoffs summarized in README."
+  },
+  "quality_policy_candidate_spirv_sha256": "b8447734bf2ac2e5618522a8c923d3f37c96d4dd401a30f609bceaf1647ec4d2",
+  "quality_validation": "10 scene/quality external-decoded results; selected candidate passed per-block external decoded-error gate in all 10",
+  "report_artifacts": {
+    "README.md": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/README.md",
+      "bytes": 8456,
+      "sha256": "b43fb9f7f68bddcbdadf9929e905e6d8abd3fc3bf7d9badf1798bf8a71e4f6d2"
+    },
+    "live-windows.csv": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/live-windows.csv",
+      "bytes": 962,
+      "sha256": "0fc39127ec34770be5e4419516e80162202ceb2b931cb15a66771c5437a83b96"
+    },
+    "metrics.csv": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/metrics.csv",
+      "bytes": 1417,
+      "sha256": "bef10fa68e28a2d4e25b8cbd12be074b4193d0c70d3c546d9a833a4ec5499bf2"
+    },
+    "native-live-windows.png": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/native-live-windows.png",
+      "bytes": 207788,
+      "sha256": "f0d17ed80dce84b61aebac90b60b150cd57606530fb2d99a0c91c03ab9a79c2b"
+    },
+    "native-live-windows.svg": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/native-live-windows.svg",
+      "bytes": 121514,
+      "sha256": "03fafff15f71a617ef05965a6a34adc312232df23cb949ed6946821e039543d5"
+    },
+    "previews/dark-q6-phase-sweep.gif": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/previews/dark-q6-phase-sweep.gif",
+      "bytes": 1620979,
+      "sha256": "93080a01ecd91b8498ffa1774c22f94d2f8d396a6bfbf44b9554f757cc2e4cd3"
+    },
+    "previews/forest-q6-phase-sweep.gif": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/previews/forest-q6-phase-sweep.gif",
+      "bytes": 1393634,
+      "sha256": "06a9cd5d1966650e9ecb6f2d197bf692b032709b5805c51917f12a77c2e23950"
+    },
+    "quality-payload-temporal.png": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/quality-payload-temporal.png",
+      "bytes": 150826,
+      "sha256": "96acbbbd25eabfff3fb4086267f8ea7e7e5594791d605ab4328e88f650d86223"
+    },
+    "quality-payload-temporal.svg": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/quality-payload-temporal.svg",
+      "bytes": 89537,
+      "sha256": "a2e85d33f3978c52bbb60337ee483176af95b0fec4910e86172c22188ca90159"
+    },
+    "render_report.py": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/render_report.py",
+      "bytes": 5228,
+      "sha256": "df6f63356f9a22e843d4ab205d3904d7f0bc4886371646b72d70b32d7da4f250"
+    },
+    "temporal.csv": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-integration/temporal.csv",
+      "bytes": 547,
+      "sha256": "6ac756f8b8bf877d3de80d5756142bf6bdc0f77849aa9bd64ddbeb72308d8b91"
+    },
+    "dualplane-pico-native/README.md": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/README.md",
+      "bytes": 1682,
+      "sha256": "44342b68e93c282644636dd8c8c439d1519056657f63f8e8ef65af2664123485"
+    },
+    "dualplane-pico-native/SHA256SUMS": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/SHA256SUMS",
+      "bytes": 744,
+      "sha256": "ea15ad2d9016c22872e27bd611ff73f655d16db6525d131ee9219b57d74a52aa"
+    },
+    "dualplane-pico-native/error-summary.csv": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/error-summary.csv",
+      "bytes": 831,
+      "sha256": "a4a63f86cfb4fadd14c2a7d4d6933fd40f42fef67d6b96ca33668bae6e51259b"
+    },
+    "dualplane-pico-native/fixture-manifest.json": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/fixture-manifest.json",
+      "bytes": 1959,
+      "sha256": "05d26592abf18b65fbcb0561916ba6af7ea5bbf7a19c26c0610750a677a7a1c2"
+    },
+    "dualplane-pico-native/gpu-medians.svg": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/gpu-medians.svg",
+      "bytes": 2885,
+      "sha256": "2cc579cf566728b4f3102db6dcccf477d6f11e4e2f461bac6a36450b05c51edf"
+    },
+    "dualplane-pico-native/run-manifest.json": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/run-manifest.json",
+      "bytes": 3337,
+      "sha256": "75c455bb90e4a88027c03028e65223485b9b84a496ea004a57e9314aa09f2057"
+    },
+    "dualplane-pico-native/samples-astc.csv": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/samples-astc.csv",
+      "bytes": 4174,
+      "sha256": "97d13860c7565080fff7c7df0b81aa309d921eb2d333cf01cdf144c2384599fb"
+    },
+    "dualplane-pico-native/summary.csv": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/summary.csv",
+      "bytes": 537,
+      "sha256": "7037691a75f1b1f4b471d830b1b814214cd4156b8116ffaa0c1cce1c8e1316aa"
+    },
+    "dualplane-pico-native/thermal-after.txt": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/thermal-after.txt",
+      "bytes": 1670,
+      "sha256": "e9c4c19bc7ae72a46286f79980e3365477a089b1cf9292e40f598710c70cf64b"
+    },
+    "dualplane-pico-native/thermal-before.txt": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-pico-native/thermal-before.txt",
+      "bytes": 1672,
+      "sha256": "867056b63a691db0e3659bddb0a257e15782bfa65f6d0590f7ba5e94f7b4c921"
+    }
+  },
+  "scope": "final dual-plane integration report; no source, runtime, or repository README edits",
+  "wire_behavior": "same 128-bit ASTC 8x8 CEM8 mode 0x442; existing ASTC sampler; no smaller spatial block",
+  "native_c": {
+    "apk_sha256": "a6a3f44a538057b91e5489d970bbfaa1a6c6653fcdd9ca6da57e2f9dcbb166a5",
+    "start_utc": "2026-10-04T04:22:35.380083+00:00",
+    "end_utc": "2026-10-04T04:23:00.304864+00:00",
+    "protocol": "six wakeups at 3-second intervals; existing stationary WayVR; no demo",
+    "server_nonblack_windows": 20,
+    "server_idle_black_windows": 2,
+    "client_fps_summaries": [
+      42.0,
+      23.0,
+      24.2,
+      48.2,
+      52.6,
+      46.0,
+      65.0
+    ],
+    "app_gpu_pass_ms": [
+      2.0,
+      2.1,
+      2.0,
+      1.9,
+      1.9,
+      1.9,
+      2.1
+    ],
+    "activity_churn_counts": {
+      "input_profile_loaded": 183,
+      "runtime_swapchain_create": 182,
+      "pctp_upload": 182,
+      "gpu_policy_setting": 91,
+      "xr_performance_level_api_calls": 548
+    },
+    "capture_limits": "No complex motion, photon latency, perceived-quality, or sustained 90 Hz proof; not a matched codec A/B. Thermal reading supplied by run operator: current HAL 42 C/status 0; cached 85 C is stale.",
+    "cpu_stage_cost_ms": "per eye: LZ4 about 0.6, Zstd-3 about 1.0; packet about 0.005; eye-0 fence about 1.7 and eye-1 about 0.002 (operator-measured summary)",
+    "pacing_trace": "23\u201365 client iterations/s despite 1.9\u20132.1 ms app GPU; decode-to-selection rose to 27.2 ms in last sampled render window; 788 no-common-frame warnings and 48 no-shard messages.",
+    "source_hypothesis": "scene focus churn correlates with activity; stream readiness checks nonempty retained frames without freshness while watchdog stalls on >1 s selected-frame age. Plausible resume/stall loop, not confirmed from log-only trace.",
+    "xr_state_excerpt": "FOCUSED->VISIBLE 06:22:39.352; STOPPING 06:22:44.993; IDLE 06:22:45.001; READY 06:22:46.708; VISIBLE 06:22:46.749",
+    "status": "failed pacing check; does not validate 90 Hz; focus/readiness churn hypothesis remains unconfirmed and no native rerun validates a fix."
+  }
+}

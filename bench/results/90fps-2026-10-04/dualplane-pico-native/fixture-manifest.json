@@ -1,0 +1,37 @@
+{
+  "method": "tile 272 distinct, externally decoded q6 production ASTC blocks in a row, repeat row for 272 rows; baseline source original CEM8 5x5 mode; stress source blocks all mode 0x442",
+  "fixtures": [
+    {
+      "name": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176/fixtures/baseline.astc",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176/fixtures/baseline.rgba",
+      "source_astc": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/dark-baseline-canonical-q6.astc",
+      "source_astc_sha256": "cc1441f64b92adc46f6243107f32fe51d743adb4cb20a92eac61bb4d78bb1e9a",
+      "selected_source_blocks": 272,
+      "output_blocks": 73984,
+      "dualplane_blocks": 0,
+      "astc_sha256": "39b2cfe80b818a4716fd59c2ffe2041a81cbcea5ff94dcecef7d3a1ddbaba0fb",
+      "rgba_sha256": "35884704ff975118bb9b3dd69c77ffd3e0f6f617e05fd456887db7aaf347a68a",
+      "dimensions": [
+        2176,
+        2176
+      ]
+    },
+    {
+      "name": "all-0x442",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176/fixtures/all-0x442.astc",
+      "rgba": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176/fixtures/all-0x442.rgba",
+      "source_astc": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/dark-candidate-canonical-q6.astc",
+      "source_astc_sha256": "0fe3143562939d61ea10da96b15a0c35cf08422058552dce7fec63d40c116bd0",
+      "selected_source_blocks": 272,
+      "output_blocks": 73984,
+      "dualplane_blocks": 73984,
+      "astc_sha256": "570c619941456e6f5a04cd0006fa967e389d0b2e4b9bfdc8e3fcb9ecd0355835",
+      "rgba_sha256": "7d7ecc4e97e77474b0de5d2d3dd22b717d992e079bfa2e8c866574b44b1fc7b9",
+      "dimensions": [
+        2176,
+        2176
+      ]
+    }
+  ]
+}

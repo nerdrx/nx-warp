@@ -1,0 +1,52 @@
+{
+  "order": [
+    "baseline-a",
+    "all-0x442",
+    "baseline-b"
+  ],
+  "source_manifest": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-colour-perf-review-job-20261004/pico-native-2176/fixture-manifest.json",
+  "pico_binary_sha256": "3cb21893b9e3ad540fd2f9c5ecf94ad61b23aa26ed56703395c031086bb9f3a5",
+  "framebuffer": [
+    2176,
+    2176
+  ],
+  "warmup_runs": 12,
+  "timed_runs": 30,
+  "rows": [
+    {
+      "run": "baseline-a",
+      "fixture": "baseline",
+      "exit_code": 0,
+      "max_channel_error": 1,
+      "pixels_over_tol2": 0,
+      "input_astc_sha256": "39b2cfe80b818a4716fd59c2ffe2041a81cbcea5ff94dcecef7d3a1ddbaba0fb",
+      "reference_rgba_sha256": "35884704ff975118bb9b3dd69c77ffd3e0f6f617e05fd456887db7aaf347a68a",
+      "device_output_rgba_sha256": "797ed8d257ac80e428683ab48b1ed9a58f698e4333d6bb610d88d8ea7e2e092d",
+      "result_txt": "ASTC=8x8 input=2176x2176 framebuffer=2176x2176 lz4=0 alternate=0\nastc_raw_payload n=30 gpu_upload_median_us=167.552 gpu_sample_median_us=1899.32 gpu_total_median_us=2065.26 gpu_total_p95_us=2106.87 cpu_call_median_us=3704.22 cpu_call_p95_us=3966.88\nraw_rgba n=30 gpu_upload_median_us=857.396 gpu_sample_median_us=1830.68 gpu_total_median_us=2687.5 gpu_total_p95_us=2697.66 cpu_call_median_us=9762.29 cpu_call_p95_us=10764.7\nmax_error=1 mae=0.0179515 over_tolerance_pixels=0 tolerance=2\n"
+    },
+    {
+      "run": "all-0x442",
+      "fixture": "all-0x442",
+      "exit_code": 0,
+      "max_channel_error": 1,
+      "pixels_over_tol2": 0,
+      "input_astc_sha256": "570c619941456e6f5a04cd0006fa967e389d0b2e4b9bfdc8e3fcb9ecd0355835",
+      "reference_rgba_sha256": "7d7ecc4e97e77474b0de5d2d3dd22b717d992e079bfa2e8c866574b44b1fc7b9",
+      "device_output_rgba_sha256": "25c63dd77b628c60e4093f135b9e032d8845d9873b4440b572b610c822d5f287",
+      "result_txt": "ASTC=8x8 input=2176x2176 framebuffer=2176x2176 lz4=0 alternate=0\nastc_raw_payload n=30 gpu_upload_median_us=125.625 gpu_sample_median_us=1718.75 gpu_total_median_us=1844.74 gpu_total_p95_us=1850.05 cpu_call_median_us=2347.03 cpu_call_p95_us=2394.64\nraw_rgba n=30 gpu_upload_median_us=1004.79 gpu_sample_median_us=1840.68 gpu_total_median_us=2846.15 gpu_total_p95_us=2856.25 cpu_call_median_us=8743.12 cpu_call_p95_us=10831.1\nmax_error=1 mae=0.0208525 over_tolerance_pixels=0 tolerance=2\n"
+    },
+    {
+      "run": "baseline-b",
+      "fixture": "baseline",
+      "exit_code": 0,
+      "max_channel_error": 1,
+      "pixels_over_tol2": 0,
+      "input_astc_sha256": "39b2cfe80b818a4716fd59c2ffe2041a81cbcea5ff94dcecef7d3a1ddbaba0fb",
+      "reference_rgba_sha256": "35884704ff975118bb9b3dd69c77ffd3e0f6f617e05fd456887db7aaf347a68a",
+      "device_output_rgba_sha256": "797ed8d257ac80e428683ab48b1ed9a58f698e4333d6bb610d88d8ea7e2e092d",
+      "result_txt": "ASTC=8x8 input=2176x2176 framebuffer=2176x2176 lz4=0 alternate=0\nastc_raw_payload n=30 gpu_upload_median_us=135 gpu_sample_median_us=1719.53 gpu_total_median_us=1855.1 gpu_total_p95_us=2095.36 cpu_call_median_us=3283.18 cpu_call_p95_us=3849.95\nraw_rgba n=30 gpu_upload_median_us=856.562 gpu_sample_median_us=1830.52 gpu_total_median_us=2687.29 gpu_total_p95_us=2700.62 cpu_call_median_us=9625.05 cpu_call_p95_us=10696.1\nmax_error=1 mae=0.0179515 over_tolerance_pixels=0 tolerance=2\n"
+    }
+  ],
+  "thermal_before_exit": 0,
+  "thermal_after_exit": 0
+}

@@ -1,0 +1,731 @@
+{
+  "purpose": "Cropped visual preview of density-agent final exact-photo pan output; no full images copied.",
+  "input_manifest": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/inputs.json",
+  "source_photo_sha256": {
+    "dark": "425d6c2e822758d901e27007842b00429b3cf961e37972863f5665ffedbe73af",
+    "forest": "278e5daf25d477bd38b59ff989448e5b2b0a7ab10ab1583abb3517889a94148d"
+  },
+  "source_files": {
+    "pan_crop_sha_list": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops.sha256",
+      "sha256": "80ca0535a17af197a88b4f5279f120857377b24af9c2abbf6ef666ccd33fa56f"
+    },
+    "selected_q6_pan_crop_sha_list": {
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops.sha256",
+      "sha256": "17c5509c3fedbab11d0de954fe484026b069fd5436a3bdac24737c962c62a930"
+    }
+  },
+  "synthetic_motion": "Eight phases from the agent-supplied one-pixel camera-pan fixture; synthetic pan is not VR/headset motion evidence.",
+  "crop_limit_px": 512,
+  "dimensions": {
+    "width": 512,
+    "height": 512
+  },
+  "cases": [
+    {
+      "name": "dark-fur",
+      "q": 2,
+      "selected_gate": "0.95",
+      "source_roi": {
+        "x": 320,
+        "y": 240,
+        "width": 512,
+        "height": 512
+      }
+    },
+    {
+      "name": "dark-fur",
+      "q": 6,
+      "selected_gate": "0.80",
+      "source_roi": {
+        "x": 320,
+        "y": 240,
+        "width": 512,
+        "height": 512
+      }
+    },
+    {
+      "name": "forest-face-hair",
+      "q": 2,
+      "selected_gate": "0.95",
+      "source_roi": {
+        "x": 704,
+        "y": 128,
+        "width": 512,
+        "height": 512
+      }
+    },
+    {
+      "name": "forest-face-hair",
+      "q": 6,
+      "selected_gate": "0.80",
+      "source_roi": {
+        "x": 704,
+        "y": 128,
+        "width": 512,
+        "height": 512
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": "animated-preview",
+      "role": "webp",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/dark-fur-q2-8phase.webp",
+      "sha256": "4e350daea8692548530c1b2eba76ed02544ab867017eeb0618ac0a93754386a9",
+      "size_bytes": 1463014
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": "contact-sheet",
+      "role": "png",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/dark-fur-q2-8phase.png",
+      "sha256": "370216e37358495b2ee23220c8236a6004705a988f5d8625d24760b11daff2ea",
+      "size_bytes": 1566804
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": "animated-preview",
+      "role": "webp",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/dark-fur-q6-8phase.webp",
+      "sha256": "b4ba229f185d5b99b06f1c52fe2d282f23b861bd7494dabaa7749f60a769465c",
+      "size_bytes": 1314648
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": "contact-sheet",
+      "role": "png",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/dark-fur-q6-8phase.png",
+      "sha256": "84cd30edf4bfc8d9e86960b39089f36443c620596340ee009624579c76baa38c",
+      "size_bytes": 1656214
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": "animated-preview",
+      "role": "webp",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/forest-face-hair-q2-8phase.webp",
+      "sha256": "ed722ea37254b12a00d61e0d72c732af39c5870de8788a95fd01fb81f1412f49",
+      "size_bytes": 1052548
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": "contact-sheet",
+      "role": "png",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/forest-face-hair-q2-8phase.png",
+      "sha256": "769e0a14b08d435797e76c7136d7320e075b8ab36cba3a9c3c027ab46b38dcca",
+      "size_bytes": 1167971
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": "animated-preview",
+      "role": "webp",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/forest-face-hair-q6-8phase.webp",
+      "sha256": "ce486301cd97c9d1ec759245e389bd6e246b5af19434553d5e02ca860898067f",
+      "size_bytes": 1234048
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": "contact-sheet",
+      "role": "png",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/forest-face-hair-q6-8phase.png",
+      "sha256": "a11e5d4890b72150bf42aa404a16b67e6f9ae3a8790f43b7a873b41f3b438149",
+      "size_bytes": 1554990
+    },
+    {
+      "case": "all",
+      "q": "q2/q6",
+      "phase": "summary",
+      "role": "svg",
+      "path": "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/dualplane-motion-preview/temporal-rms.svg",
+      "sha256": "6bfedb5f1b3dfea602a7830c3ad81a3c79e35dfa7128fda5ea9cd42fde961207",
+      "size_bytes": 1819
+    }
+  ],
+  "input_frames": [
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 0,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p0.rgba",
+      "sha256": "9f0f0b35d04a776da2880f6cd45e10ec074185eb6ebba0e6aa57263b2affef11",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 0,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p0.rgba",
+      "sha256": "8b73dc543af4865e08808076bde07909e6a751c3f58d8bb25d71d2b4c6d2c2db",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 1,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p1.rgba",
+      "sha256": "7b2010d37356f32c9bfe2883637e497f2effcc36253204e5cc76b8f83ea6a0c4",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 1,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p1.rgba",
+      "sha256": "632e21455495b1d89fe9558ab9eb0bf844123e74e1f0ce5efeb95918c0fdb902",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 2,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p2.rgba",
+      "sha256": "8597b2b3195fbb669e4bdaa9beb506d44641ff2c42ff982d14f5d4155d5fc9b9",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 2,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p2.rgba",
+      "sha256": "7d3efbc2c437b4576425c2cd0dff5270949d92d499d2bb4ba8170ea32fbe788d",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 3,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p3.rgba",
+      "sha256": "fe9857d8c9471d897f0bc82ae8d53a318f43e6283e6aed3a3b0368ebbeed6f8e",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 3,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p3.rgba",
+      "sha256": "1d805019e4bf83e4f93bd0933fd345af7d201d83a96f1127ae4890a6ceb33b73",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 4,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p4.rgba",
+      "sha256": "d08ef499bd8b860de104244ec322cfd97814ebc4bc207a4b33324f26b59a9d40",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 4,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p4.rgba",
+      "sha256": "428e9bf600a944727235a784034b359006b897fb4ec2423727ef350f8a9de9bd",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 5,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p5.rgba",
+      "sha256": "5c87894d1a824ee853d599d96310d21a603c77019e1e80b5bdb38caf0399aeb6",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 5,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p5.rgba",
+      "sha256": "a6a0f0ab30109abf2377cf2a06f343aa2591ce55bde2281028acf4e856e041f8",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 6,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p6.rgba",
+      "sha256": "420685bd7432d9431f077f197028325e3dddc32cacd242c2d684a106c8c0a295",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 6,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p6.rgba",
+      "sha256": "505260045a6e23bf74f39d9b4d9dae8d5f2fc10a2c67e925d9b64bfa3a51af2f",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 7,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-baseline-q2-p7.rgba",
+      "sha256": "d18dd2cda160a99664b1d20ac1eea1f532ec00c3c63982abcabeb31287c79755",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 2,
+      "phase": 7,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/dark-candidate-q2-p7.rgba",
+      "sha256": "d95925c1f74656678d4f55d51f64cbb2777aea4f2e7538e06802f8de593aac04",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 0,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p0.rgba",
+      "sha256": "910db4123cac142a61ca9ac29da0e608f89d2492fa7974c9c5561b644f54d171",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 0,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p0.rgba",
+      "sha256": "5a5c98412b92a34e19652255ad937a2f96de58046cbb3aa17b613fcc5645145d",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 1,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p1.rgba",
+      "sha256": "a71e8f62846309cdd605affca946e47c05e302baae2cd8df09fd5866895b46d7",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 1,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p1.rgba",
+      "sha256": "d3b04381b1542510db9cecc2ab5614b1fa96ced314a81ffa362e7d6300f3759a",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 2,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p2.rgba",
+      "sha256": "ef041920712bbf6cedd5145f1b1717e1a1c4a185b6f15f8ed47968fe4fddc99c",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 2,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p2.rgba",
+      "sha256": "4ded0094c5ba42d1e92a3fa416998ecba36a29d21b62c63a54f274d252f8bac5",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 3,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p3.rgba",
+      "sha256": "817ba636dec13f5535b0ecc60e8036e1f9ce92f59920242d9137e9c40f5f57d7",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 3,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p3.rgba",
+      "sha256": "ff10f1434418ba391ccaee4af65e3a3abd6eb08d984038718188ee247fe52123",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 4,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p4.rgba",
+      "sha256": "e492d44b09b3c485e16620fd28d556c54c1f252e91a416e1febfb2acd24dcbef",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 4,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p4.rgba",
+      "sha256": "469670174d5d12ede7070b988946830a8734725e973f1168e575cb305faaf558",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 5,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p5.rgba",
+      "sha256": "0e33355f1cdb9bea7b152e35b0b132f170daf2656d684f2fccaf25b76591f72b",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 5,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p5.rgba",
+      "sha256": "cac457f8693545f1ef59f2e67ae6a8bfef027478419a81a097565a4e2c5d9bdb",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 6,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p6.rgba",
+      "sha256": "d1ac2e2ca042380e7612aa38b7addd10325750bfcdd43d613209479142831cea",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 6,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p6.rgba",
+      "sha256": "6cf224429c65dcde24995de7bd8b4e9bf9f5020fca847f01ad61e7e5810e6ed4",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 7,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-baseline-q6-p7.rgba",
+      "sha256": "54e88059650b5fb3b2d0ff9adb822088f379d606801c6936d5f2d039ab71b3c0",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "dark-fur",
+      "q": 6,
+      "phase": 7,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/dark-candidate-q6-p7.rgba",
+      "sha256": "2f978becbc460537f0e585d6432052355b2fa70267e0ac1b9a0f9d58a0cd4819",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 0,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p0.rgba",
+      "sha256": "ce1d5a95b6ad6ab82ef6716c13f975903de160bbc67cad8f8d1eaff396bd91a5",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 0,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p0.rgba",
+      "sha256": "f964377a79f77f6dfb5e583d6a8711ee7f34d310a5eb7e9299c7d3ea877e35aa",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 1,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p1.rgba",
+      "sha256": "1a0fa78e79ee6d107216a596494c4b992902502f13015a60c05106fca3b4da15",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 1,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p1.rgba",
+      "sha256": "4d4cec92ecd11893c48cbc2355ce1e7fdf7545785252fb58f0d6a84f9af01495",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 2,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p2.rgba",
+      "sha256": "2ca3d14499fd2bacbf18bd2ce6a9ab34633e31a95d9c69de762aaefefa09785a",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 2,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p2.rgba",
+      "sha256": "d2ae60729a5c9b62c729b5434f8f8adf69adcb02102bc374bf4e7094233a0632",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 3,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p3.rgba",
+      "sha256": "81186d2a4996f8c52ef30ba98aa1fa414fcd3049a977889216655c43ac83a565",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 3,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p3.rgba",
+      "sha256": "aac02bfa71347a985bcd67cdef644d06bf04d82324d1be796619cce19db0260c",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 4,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p4.rgba",
+      "sha256": "b4936ad3b8ae9e3c314ce84029c7760710c074c50c41d7e8485142a8ab75d07b",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 4,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p4.rgba",
+      "sha256": "4b29eebe821bdc68d3ff01af780705d8f6f0db1dad3b6a3d405dbd9e00872248",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 5,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p5.rgba",
+      "sha256": "fafe58069c5aed92f4060e8e2c3761fe4529d5e70c32753e172dc42d70b80684",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 5,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p5.rgba",
+      "sha256": "33e74680d9baadb81269a8ee23e290bfad1c01d19052f64d19e6683150bb4aa1",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 6,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p6.rgba",
+      "sha256": "cf9d98cb5e1eca1b3ad2f50f9a2284c3fda3c9872fd8b455b63f846305681c76",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 6,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p6.rgba",
+      "sha256": "dadfd2f5e4731c54a5f89d5fd22905a74749ba8e27ec2ef90fc263e92dec0493",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 7,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-baseline-q2-p7.rgba",
+      "sha256": "694caa648f6356a0fdc10d1e3b782747efe3fca6892696ca0e14b912021c01f8",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 2,
+      "phase": 7,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/pan-crops/forest-candidate-q2-p7.rgba",
+      "sha256": "befcfb23a4a1bf878df9b51fb237f442ad6db14907f3be2e2103792e39188591",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 0,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p0.rgba",
+      "sha256": "06fdf06d1f7427525dc0aac09e4f40d9291265ab46c597c34711850962fdc3a4",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 0,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p0.rgba",
+      "sha256": "3630aacfd5d5a694e4ce80bf4e61e0e00e88d1b62ec5c4872cd0c5aea1f73e32",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 1,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p1.rgba",
+      "sha256": "34496325610ac43d1eb63d98873ffa2657a070968dc08f0b446d15f2c1ce8f5e",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 1,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p1.rgba",
+      "sha256": "aee1471374dc1ecb73fbbcc18f2b8c3ed929c3104ab3a3fa759aa543b82f2b07",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 2,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p2.rgba",
+      "sha256": "6e6d3000aaa1ef233b02ba7024ba6891a206548456a729171d921a84439b550d",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 2,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p2.rgba",
+      "sha256": "97a9afae0b2df08aa4102acf79ab92f0b80274056d5f5e8c4701c21a98490530",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 3,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p3.rgba",
+      "sha256": "a23ef07b617de0d1cfaffa896e49efce4f8a27639be3375246624573c26e3eda",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 3,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p3.rgba",
+      "sha256": "f7c44d79bb7676308b5ab3bbe1cd8b3d4850c5e19403696b2f8464f8c21f6501",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 4,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p4.rgba",
+      "sha256": "ca809c7388e91dd9261b5061b9b5ce80f6925ad32985ff0d3c865e9acfaa6f25",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 4,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p4.rgba",
+      "sha256": "1c116fa357e59f3d82fb3582a3c9e642fe217ee05d8b371b3136a19627827256",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 5,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p5.rgba",
+      "sha256": "d87236e5f31b4c5aa67eb35bb22bcb8751aaeb46d661a35a3cadba2d009bf9f2",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 5,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p5.rgba",
+      "sha256": "853fe6354e64924babe9e882e2b62bdcfffb02ddefd4a2568e5f963544953bc3",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 6,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p6.rgba",
+      "sha256": "8bacb0b62122de16fd449bb3998b4b3e9dc29b1fa0427b5a5d64eed19640bbda",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 6,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p6.rgba",
+      "sha256": "dd27efbdf0cbd83013ab554e7b634567b6e3e32363ccc5132422f40f35a4bd0c",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 7,
+      "role": "baseline",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-baseline-q6-p7.rgba",
+      "sha256": "e1410814132dc8eaf49275b00612b491035a0c9eb0d98dd8ee8fa230dbeaade0",
+      "size_bytes": 1048576
+    },
+    {
+      "case": "forest-face-hair",
+      "q": 6,
+      "phase": 7,
+      "role": "dual",
+      "path": "/run/media/nerdrx/Lex/claude/nx-scratch/astc-dualplane-20261004/gpu/validation/quality-policy-20261004/q6-pan-crops/forest-candidate-q6-p7.rgba",
+      "sha256": "af78571aa4069832632385a1f171a5b3f3f05fb81a8de3f960f9cb68b5672a63",
+      "size_bytes": 1048576
+    }
+  ]
+}
