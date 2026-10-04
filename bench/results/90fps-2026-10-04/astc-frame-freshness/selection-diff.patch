@@ -1,0 +1,24 @@
+diff --git a/client/scenes/stream.cpp b/client/scenes/stream.cpp
+index 1ba4ae2c..b058f263 100644
+--- a/client/scenes/stream.cpp
++++ b/client/scenes/stream.cpp
+@@ -98 +98 @@ static bool direct_nearest_enabled()
+-		spdlog::info("NX direct selection mode: {}", on ? "nearest-target" : "newest-direct");
++		spdlog::info("NX independent selection mode: {}", on ? "nearest-target" : "newest-complete");
+@@ -1176 +1176 @@ std::array<std::shared_ptr<shard_accumulator::blit_handle>, scenes::stream::deco
+-		// Independent direct frames prioritize freshness. Their server display timestamps
++		// Independent direct and ASTC frames prioritize freshness. Their server display timestamps
+@@ -1179 +1179,7 @@ std::array<std::shared_ptr<shard_accumulator::blit_handle>, scenes::stream::deco
+-		if (not direct_nearest_enabled() && std::ranges::all_of(common_frames, [](auto frame) { return frame->direct_valid; }))
++		// Honor an active de-jitter delay for ASTC. The common-frame intersection above keeps
++		// separately decoded eyes synchronized; choosing newest adds no GPU work.
++		const bool newest_astc = not alpha && dejitter.delay_ns() == 0 &&
++		                         video_stream_description &&
++		                         video_stream_description->codec[0] == video_codec::nxastc &&
++		                         video_stream_description->codec[1] == video_codec::nxastc;
++		if (not direct_nearest_enabled() && (newest_astc || std::ranges::all_of(common_frames, [](auto frame) { return frame->direct_valid; })))
+@@ -3345,0 +3352,4 @@ void scenes::stream::setup(const to_headset::video_stream_description & descript
++	if (description.codec[0] == video_codec::nxastc && description.codec[1] == video_codec::nxastc)
++		spdlog::info("ASTC frame selection: {} (de-jitter {})",
++		             direct_nearest_enabled() ? "nearest-target" : "newest-complete when playout delay is zero",
++		             application::get_config().dejitter ? "on" : "off");

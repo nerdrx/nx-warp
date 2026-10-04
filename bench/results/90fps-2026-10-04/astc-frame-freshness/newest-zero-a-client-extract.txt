@@ -1,0 +1,100 @@
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: 180 iterations in 2.0 s (89.9/s), 179 submitted a layer, 174 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.1 ms
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: selected source transitions forward 174 backward 0 repeat 5, greatest forward gap 1826
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: this app's own GPU pass 1.8 ms per iteration
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 5 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: 174 GPU submissions, 5 cached refreshes without GPU submission
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.8) | queries 0.0 | submit 0.0 | whole render() 0.7 ms
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: selection-to-defoveate CPU 0.055 ms mean (max 0.122) over 174 actual defoveate calls; not GPU/photon latency
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: jit on | wake slack 33.2 ms | slept 0.7 ms mean (max 11.6, 179 of 180 iterations) | budget 16.7 = pass 15.7 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: source display-time offset 113.9 ms mean (worst 20279.9) over 179 frames | submit lead 31.8 ms mean (worst 19.4) | misses: 0 overrun 0 late 1 skipped refresh
+10-04 05:08:32.438 29464 22825 I WiVRn   : [2026-10-04 05:08:32.438] [WiVRn] [info] render: source->first -45.3 ms | wire 2.7 | queue 0.0 | decode 2.0 | decode->selection 122.1 | selection->predicted 32.4 | sum 113.9 over 179 selected frames (0 invalid)
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 177 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: selected source transitions forward 177 backward 0 repeat 2, greatest forward gap 2
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: this app's own GPU pass 1.9 ms per iteration
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: 177 GPU submissions, 2 cached refreshes without GPU submission
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: per iteration fence 0.0 (worst 1.9) | queries 0.0 | submit 0.0 | whole render() 0.6 ms
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: selection-to-defoveate CPU 0.057 ms mean (max 0.126) over 177 actual defoveate calls; not GPU/photon latency
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: jit on | wake slack 32.9 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 14.9 = pass 13.9 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: source display-time offset 0.5 ms mean (worst 17.0) over 179 frames | submit lead 31.5 ms mean (worst 18.3) | misses: 0 overrun 0 late 1 skipped refresh
+10-04 05:08:34.443 29464 22825 I WiVRn   : [2026-10-04 05:08:34.443] [WiVRn] [info] render: source->first -46.2 ms | wire 2.7 | queue 0.0 | decode 1.8 | decode->selection 10.1 | selection->predicted 32.1 | sum 0.5 over 179 selected frames (0 invalid)
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: 180 iterations in 2.0 s (89.8/s), 180 submitted a layer, 180 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: selected source transitions forward 180 backward 0 repeat 0, greatest forward gap 1
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: this app's own GPU pass 2.6 ms per iteration
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: 180 GPU submissions, 0 cached refreshes without GPU submission
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: selection-to-defoveate CPU 0.056 ms mean (max 0.120) over 180 actual defoveate calls; not GPU/photon latency
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: jit on | wake slack 33.2 ms | slept 0.5 ms mean (max 0.5, 180 of 180 iterations) | budget 13.1 = pass 12.1 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: source display-time offset 0.3 ms mean (worst 0.4) over 180 frames | submit lead 32.2 ms mean (worst 31.2) | misses: 0 overrun 0 late 0 skipped refresh
+10-04 05:08:36.447 29464 22825 I WiVRn   : [2026-10-04 05:08:36.447] [WiVRn] [info] render: source->first -46.8 ms | wire 2.7 | queue 0.0 | decode 2.2 | decode->selection 9.6 | selection->predicted 32.6 | sum 0.3 over 180 selected frames (0 invalid)
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 175 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: selected source transitions forward 175 backward 0 repeat 4, greatest forward gap 2
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: this app's own GPU pass 2.5 ms per iteration
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 4 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: 175 GPU submissions, 4 cached refreshes without GPU submission
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: per iteration fence 0.0 (worst 2.5) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: selection-to-defoveate CPU 0.061 ms mean (max 0.119) over 175 actual defoveate calls; not GPU/photon latency
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: jit on | wake slack 33.7 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 11.4 = pass 10.4 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: source display-time offset 0.6 ms mean (worst 17.0) over 179 frames | submit lead 32.4 ms mean (worst 19.3) | misses: 0 overrun 0 late 1 skipped refresh
+10-04 05:08:38.452 29464 22825 I WiVRn   : [2026-10-04 05:08:38.452] [WiVRn] [info] render: source->first -46.1 ms | wire 2.8 | queue 0.0 | decode 2.6 | decode->selection 8.5 | selection->predicted 32.9 | sum 0.6 over 179 selected frames (0 invalid)
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: 179 iterations in 2.0 s (89.2/s), 179 submitted a layer, 177 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: selected source transitions forward 177 backward 0 repeat 2, greatest forward gap 2
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: this app's own GPU pass 2.7 ms per iteration
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 2 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: 177 GPU submissions, 2 cached refreshes without GPU submission
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: per iteration fence 0.0 (worst 2.4) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: selection-to-defoveate CPU 0.062 ms mean (max 0.113) over 177 actual defoveate calls; not GPU/photon latency
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: jit on | wake slack 32.9 ms | slept 0.7 ms mean (max 11.6, 179 of 179 iterations) | budget 9.6 = pass 8.6 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: source display-time offset 0.5 ms mean (worst 16.9) over 179 frames | submit lead 31.7 ms mean (worst 18.7) | misses: 0 overrun 0 late 1 skipped refresh
+10-04 05:08:40.458 29464 22825 I WiVRn   : [2026-10-04 05:08:40.458] [WiVRn] [info] render: source->first -45.4 ms | wire 2.8 | queue 0.0 | decode 2.8 | decode->selection 8.2 | selection->predicted 32.1 | sum 0.5 over 179 selected frames (0 invalid)
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: 180 iterations in 2.0 s (89.9/s), 179 submitted a layer, 175 new-source, 0 skipped by the repeat gate, 1 with nothing to show; display period 11.2 ms
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: selected source transitions forward 175 backward 0 repeat 4, greatest forward gap 253
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: this app's own GPU pass 2.6 ms per iteration
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 4 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: 175 GPU submissions, 4 cached refreshes without GPU submission
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: per iteration fence 0.0 (worst 2.4) | queries 0.0 | submit 0.0 | whole render() 0.5 ms
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: selection-to-defoveate CPU 0.060 ms mean (max 0.164) over 175 actual defoveate calls; not GPU/photon latency
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: jit on | wake slack 34.1 ms | slept 0.7 ms mean (max 11.6, 179 of 180 iterations) | budget 7.7 = pass 6.7 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: source display-time offset 0.8 ms mean (worst 17.0) over 179 frames | submit lead 32.9 ms mean (worst 19.3) | misses: 0 overrun 0 late 1 skipped refresh
+10-04 05:08:45.478 29464 22825 I WiVRn   : [2026-10-04 05:08:45.478] [WiVRn] [info] render: source->first -46.8 ms | wire 2.6 | queue 0.0 | decode 2.4 | decode->selection 9.2 | selection->predicted 33.3 | sum 0.8 over 179 selected frames (0 invalid)
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: 180 iterations in 2.0 s (89.8/s), 180 submitted a layer, 180 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.1 ms
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: selected source transitions forward 180 backward 0 repeat 0, greatest forward gap 1
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: this app's own GPU pass 3.1 ms per iteration
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: defoveate 2176x2176 per eye x2 = 9.47 Mpx/frame at scale 1.00 atlas-prototype 0; 0 re-presented from the cache (reduce_gpu_load on)
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: shader path sharpness 0.00 fsr false alpha false motion false blend false glow 0.00 vignette 0.00 deband 0.00 lowpoly 0.00 levels 0 full-kernel false
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: 180 GPU submissions, 0 cached refreshes without GPU submission
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: per iteration fence 0.0 (worst 0.0) | queries 0.0 | submit 0.0 | whole render() 0.4 ms
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: source-clock pose shifts 0
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: motion fields matched 0 active 0 pose-applied 0 pose-missing 0 pose-unsafe 0 mean active step 0.000
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: selection-to-defoveate CPU 0.054 ms mean (max 0.135) over 180 actual defoveate calls; not GPU/photon latency
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: jit on | wake slack 32.9 ms | slept 0.5 ms mean (max 0.5, 180 of 180 iterations) | budget 5.9 = pass 4.9 + margin 1.0 | sleep cap 0.5 ms
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: source display-time offset 0.4 ms mean (worst 0.8) over 180 frames | submit lead 32.1 ms mean (worst 31.4) | misses: 0 overrun 0 late 0 skipped refresh
+10-04 05:08:47.483 29464 22825 I WiVRn   : [2026-10-04 05:08:47.483] [WiVRn] [info] render: source->first -46.4 ms | wire 2.7 | queue 0.0 | decode 2.4 | decode->selection 9.3 | selection->predicted 32.4 | sum 0.4 over 180 selected frames (0 invalid)
+10-04 05:08:49.488 29464 22825 I WiVRn   : [2026-10-04 05:08:49.488] [WiVRn] [info] render: 179 iterations in 2.0 s (89.3/s), 179 submitted a layer, 176 new-source, 0 skipped by the repeat gate, 0 with nothing to show; display period 11.2 ms
+10-04 05:08:49.488 29464 22825 I WiVRn   : [2026-10-04 05:08:49.488] [WiVRn] [info] render: ready wait attempts 0 success 0 total 0.000 ms | selected older than available 0
