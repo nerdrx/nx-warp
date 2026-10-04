@@ -1,0 +1,103 @@
+{
+  "purpose": "PC-only exact-source q6 comparison; one-seed CEM8 partition replaces qualifying projected-line baseline blocks, compared with the guarded selected dual-plane policy output",
+  "policy_comparator": {
+    "name": "selected dual-plane q6, guarded .80 policy",
+    "candidate_spv_sha256": "b8447734bf2ac2e5618522a8c923d3f37c96d4dd401a30f609bceaf1647ec4d2",
+    "method": "ASTC block payloads reconstructed from q6 candidate .blocks.lz4, fixed matching 8x8 1920x1080 ASTC header prepended, decoded by Basis Universal ASTC LDR decoder. The reconstruction reproduces prior reported full RGB PSNRs 30.821332 dark and 36.767441 forest exactly."
+  },
+  "partition_candidate": {
+    "method": "Existing one-seed two-partition CEM8 GPU queue output. Baseline orthogonal-RGB residual >=8192 and actual modeled candidate error < 95% of baseline; otherwise retain projected-line baseline tile.",
+    "gpu_timing": "Prior exact-user q6 run in the same harness: baseline+finalize+candidate 0.13424 ms dark / 0.13284 ms forest; baseline-only 0.02744 / 0.02728 ms. Not compared against selected encoder timings from a different harness."
+  },
+  "source_hashes": {
+    "dark": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+    "forest": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2"
+  },
+  "mask_definitions": "High chroma: RGB range >=40. Chroma edges: RGB range >=24 and right/down adjacent max-channel step >=20. RGB metric over full frame or selected pixel mask; alpha excluded.",
+  "results": [
+    {
+      "scene": "dark",
+      "source_sha256": "32da2ce4583d75137791f4cab3ebc46b75ca55636514cd202aeb26d4f6c43fcd",
+      "guarded_policy_spv_sha256": "b8447734bf2ac2e5618522a8c923d3f37c96d4dd401a30f609bceaf1647ec4d2",
+      "guarded_blocks_lz4_sha256": "4ea59e062c570659861c434f355e7caccf067385661f0620a36cd7d6a79e7676",
+      "guarded_astc_sha256": "22b5ff40c0c87e93040c832a8a6111cb1919814e8ed6e85bf272de4cd2452913",
+      "guarded_rgba_sha256": "848ab7ae58bcaa8dcff767577519bbbc9aab2970e7682ad940df8c5ad9d4085a",
+      "partition_astc_sha256": "0fd2e4dbce22492c2f0f53690436686533991ef78a9f63bc520235d121075fa3",
+      "partition_rgba_sha256": "c6381f0a697f6b2eca41ce3586bb7bc580b9f8e5f893976b72bfeeccf5c8a591",
+      "raw_astc_bytes_each": "518416",
+      "guarded_zstd3_bytes": "208331",
+      "partition_zstd3_bytes": "208374",
+      "zstd3_delta_bytes": "43",
+      "guarded_mode442_blocks": "543",
+      "partition_mode053_blocks": "82",
+      "high_chroma_pixels": "311548",
+      "chroma_edge_pixels": "75799",
+      "full_guarded_dualplane_psnr_db": "30.82133",
+      "full_guarded_dualplane_mse": "53.82043",
+      "full_partition_psnr_db": "30.29608",
+      "full_partition_mse": "60.73971",
+      "full_partition_minus_guarded_db": "-0.52526",
+      "high_chroma_pixels_guarded_dualplane_psnr_db": "24.16204",
+      "high_chroma_pixels_guarded_dualplane_mse": "249.38861",
+      "high_chroma_pixels_partition_psnr_db": "23.43152",
+      "high_chroma_pixels_partition_mse": "295.07192",
+      "high_chroma_pixels_partition_minus_guarded_db": "-0.73051",
+      "chroma_edges_guarded_dualplane_psnr_db": "19.11139",
+      "chroma_edges_guarded_dualplane_mse": "797.88607",
+      "chroma_edges_partition_psnr_db": "18.55263",
+      "chroma_edges_partition_mse": "907.43935",
+      "chroma_edges_partition_minus_guarded_db": "-0.55877"
+    },
+    {
+      "scene": "forest",
+      "source_sha256": "27631c928d43cfc2c085720a379678456ce14aa5658274dce18fb14964231ad2",
+      "guarded_policy_spv_sha256": "b8447734bf2ac2e5618522a8c923d3f37c96d4dd401a30f609bceaf1647ec4d2",
+      "guarded_blocks_lz4_sha256": "72a8f057215a37ed8267a105a3147a42a7e7e7f179ab4b659e5c8d80c71ab6f2",
+      "guarded_astc_sha256": "9eaa81eb327ad495f69a06e8e30df2b8f9588a5bb64a05eccbc26a3750cfc5a4",
+      "guarded_rgba_sha256": "63a45ed0b1ca11c1350accae04c06b29bd2873a135bbff40c7006a082ca94798",
+      "partition_astc_sha256": "ea0c1a26415a52ad2097980da8d7fddd17c13375e72ccdcfef7c215b4d15498f",
+      "partition_rgba_sha256": "3f4541885951e343bf94789631d11d09033ca8d9ab0d6bdf514124d1ceaa5509",
+      "raw_astc_bytes_each": "518416",
+      "guarded_zstd3_bytes": "151120",
+      "partition_zstd3_bytes": "151171",
+      "zstd3_delta_bytes": "51",
+      "guarded_mode442_blocks": "35",
+      "partition_mode053_blocks": "17",
+      "high_chroma_pixels": "483221",
+      "chroma_edge_pixels": "19351",
+      "full_guarded_dualplane_psnr_db": "36.76744",
+      "full_guarded_dualplane_mse": "13.68788",
+      "full_partition_psnr_db": "36.69138",
+      "full_partition_mse": "13.92971",
+      "full_partition_minus_guarded_db": "-0.07606",
+      "high_chroma_pixels_guarded_dualplane_psnr_db": "34.30669",
+      "high_chroma_pixels_guarded_dualplane_mse": "24.12189",
+      "high_chroma_pixels_partition_psnr_db": "34.14382",
+      "high_chroma_pixels_partition_mse": "25.04371",
+      "high_chroma_pixels_partition_minus_guarded_db": "-0.16287",
+      "chroma_edges_guarded_dualplane_psnr_db": "21.31478",
+      "chroma_edges_guarded_dualplane_mse": "480.39877",
+      "chroma_edges_partition_psnr_db": "21.24482",
+      "chroma_edges_partition_mse": "488.20094",
+      "chroma_edges_partition_minus_guarded_db": "-0.06997"
+    }
+  ],
+  "superseded_scratch_artifacts": {
+    "policy_label": "Experimental later .95-scored q6 files; not the guarded selected .80 policy comparison. Their external decode produced 30.907666 dark / 36.783793 forest RGB full-frame PSNR.",
+    "candidate_spv_sha256": "4b6f6be4adb589c7a861ad79c05d87e082b0f349a012fe51f7df048fcbe0629e",
+    "dark_astc_sha256": "0fe3143562939d61ea10da96b15a0c35cf08422058552dce7fec63d40c116bd0",
+    "forest_astc_sha256": "ce154a0ac82e18eedc8c3bc99609d325f4760407348c55f441e3757a1f9d2850",
+    "dark_external_rgba_sha256": "b8cd17a7545d8cf559f68c6c39adf057402da9e38c6c08b1e0c8f30e337036fd",
+    "forest_external_rgba_sha256": "cda99d62761da2cef4f5a00c5ae51b89f09fb7088c3cd8cc22ebad99308527a6",
+    "changed_astc_blocks_vs_guarded_policy": {
+      "dark": 401,
+      "forest": 24
+    }
+  },
+  "artifact_hashes": {
+    "README.md": "7eb1ed4247693efde184c4a5e123ed7d1445a127e94b9cb2e24dad9eaa5f05cc",
+    "compare.py": "7ecccc4d0f6c9f9b6f13abcc3f87985fdb4ff252affdede75478ebbd048bdaa7",
+    "comparison.csv": "2c100a0f1dfa8534af6252bca7cb1ef0baa7f7182e31f5e51a9cd5643ffdcfe4",
+    "reconciliation.csv": "06df9dc5b8349b5fcc3168a0e377aef166dd72dc68b546928919bc7f8dc08a05"
+  }
+}

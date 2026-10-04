@@ -1,0 +1,75 @@
+{
+  "fixture_provenance": "Experimental q6 from earlier .95 policy; not shipped guarded .80 q6",
+  "harness_sha256": "be85e296644e00b50f9935bd06cf7a6f1756dfb1899c89e5a6f9a772b30943d0",
+  "thermal_status": 0,
+  "hal_before_c": {
+    "cpu_range": [
+      38.0,
+      40.3
+    ],
+    "gpu": 38.4,
+    "skin": 40.605
+  },
+  "order": "Zstd-3, Zstd-1, Zstd-3",
+  "warmups": 12,
+  "measured_samples": 30,
+  "runs": [
+    {
+      "order": 1,
+      "scene": "forest",
+      "level": 3,
+      "payload_bytes": 151138,
+      "payload_sha256": "3469be52f39dff8e37b388e8dc73515dbef76049f4248eaaa744e19adfda6b50",
+      "output_sha256": "acf150af120f3e1a777ef4b925e466a70f5339f8405060483c6f497f29d81b72",
+      "external_reference_max_channel_delta": 1,
+      "external_reference_differing_channels": 144910,
+      "decode_copy_reported_p50_us": 1189.58,
+      "decode_copy_p95_us": 1672.24,
+      "gpu_upload_p50_us": 50.8854,
+      "gpu_sample_p50_us": 761.354,
+      "gpu_total_p50_us": 811.667,
+      "wall_p50_us": 2627.4,
+      "wall_p95_us": 3108.28,
+      "raw_samples_file": "samples/repeat/run1-zstd3.csv",
+      "raw_samples_sha256": "0f2ab43ede0d440fd644eb25f4bebc52522d443607a6b6d074f1b28b27f8f120"
+    },
+    {
+      "order": 2,
+      "scene": "forest",
+      "level": 1,
+      "payload_bytes": 158102,
+      "payload_sha256": "3de7dcbf48eab9239ad5e82a47f574d59e16b225f0c4189838917e7cca3ed140",
+      "output_sha256": "acf150af120f3e1a777ef4b925e466a70f5339f8405060483c6f497f29d81b72",
+      "external_reference_max_channel_delta": 1,
+      "external_reference_differing_channels": 144910,
+      "decode_copy_reported_p50_us": 1392.81,
+      "decode_copy_p95_us": 2205.89,
+      "gpu_upload_p50_us": 50.4167,
+      "gpu_sample_p50_us": 764.844,
+      "gpu_total_p50_us": 815.208,
+      "wall_p50_us": 2737.66,
+      "wall_p95_us": 3592.76,
+      "raw_samples_file": "samples/repeat/run2-zstd1.csv",
+      "raw_samples_sha256": "b848bb22015db8b40344056b37b73fb3a25e86b8b57c128ac62ece18786c6762"
+    },
+    {
+      "order": 3,
+      "scene": "forest",
+      "level": 3,
+      "payload_bytes": 151138,
+      "payload_sha256": "3469be52f39dff8e37b388e8dc73515dbef76049f4248eaaa744e19adfda6b50",
+      "output_sha256": "acf150af120f3e1a777ef4b925e466a70f5339f8405060483c6f497f29d81b72",
+      "external_reference_max_channel_delta": 1,
+      "external_reference_differing_channels": 144910,
+      "decode_copy_reported_p50_us": 1077.97,
+      "decode_copy_p95_us": 1395.94,
+      "gpu_upload_p50_us": 51.25,
+      "gpu_sample_p50_us": 762.656,
+      "gpu_total_p50_us": 814.062,
+      "wall_p50_us": 2706.2,
+      "wall_p95_us": 3502.29,
+      "raw_samples_file": "samples/repeat/run3-zstd3.csv",
+      "raw_samples_sha256": "0294e861d4d08b3e76e5ff7ce6a6e395aa331f1e3eac5840c9a33e8157174d74"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "device": "Adreno (TM) 650",
+  "thermal_status_before_after": 0,
+  "battery_before_after": "100%, 29.0 C",
+  "device_temp_hal_before_c": {
+    "cpu_range": [
+      48.3,
+      51.9
+    ],
+    "gpu": 48.3,
+    "skin": 47.994
+  },
+  "device_temp_hal_after_c": {
+    "cpu_range": [
+      44.8,
+      46.9
+    ],
+    "gpu": 42.8,
+    "skin": 44.592
+  },
+  "warmups_per_case": 12,
+  "measured_samples_per_case": 30,
+  "astc_header_excluded_from_payload": true,
+  "host_zstd_roundtrip_exact": true,
+  "device_scratch_removed": true,
+  "files": {
+    "README.md": {
+      "bytes": 3921,
+      "sha256": "c21917047fe358d2d0b620c05398c03d1d55dbb4a218387a1ee002a70a7c36e9"
+    },
+    "comparison.csv": {
+      "bytes": 2119,
+      "sha256": "b3abb62bb9e3c7f7a942398a6b6ae19b836dcc744e98d9cf05499f9967414d15"
+    },
+    "decode-vs-size.png": {
+      "bytes": 78052,
+      "sha256": "0bca58958e06419a9bc88444144050fb59da8c4e2ed088056c009b229dc3776d"
+    },
+    "device-results.json": {
+      "bytes": 8563,
+      "sha256": "6847199671108fea2134369633f6b675f0984f3f73cf1130c1dc63bdfce6a85b"
+    },
+    "repeat-forest-313.json": {
+      "bytes": 2799,
+      "sha256": "76f4629dec3da5ddec512c9ff3742453093fcadbddae2382892e8fe2e00e9196"
+    },
+    "samples/dark-q6-zstd1.csv": {
+      "bytes": 1498,
+      "sha256": "8fe99d3096bc08b2f681625288464aac0f632ea017bf6d76ee73fd55d4d8893f"
+    },
+    "samples/dark-q6-zstd3.csv": {
+      "bytes": 1521,
+      "sha256": "5cc6c148bbd04646047d9223d5e58e3dd53c6d05153a44760b612f35d2c5988f"
+    },
+    "samples/dark-q6-zstd5.csv": {
+      "bytes": 1510,
+      "sha256": "c9b9f7e9c8dc4a05618f6c620725ba11e4ba44ede75be56d4643bb81273caebd"
+    },
+    "samples/forest-q6-zstd1.csv": {
+      "bytes": 1509,
+      "sha256": "3d0f37371f79da951cc7e7dde458244801a9b38e9ab3ae3d545aea47e8e17c9f"
+    },
+    "samples/forest-q6-zstd3.csv": {
+      "bytes": 1522,
+      "sha256": "731ca5161f2663dc3672eab58e0d90abf8f14a2f33a8429b03404a86087c6888"
+    },
+    "samples/forest-q6-zstd5.csv": {
+      "bytes": 1520,
+      "sha256": "b5e12cb9df877244a47a6224a6b59afc68471ab9561b103948ffe5f84f74dee2"
+    },
+    "samples/repeat/run1-zstd3.csv": {
+      "bytes": 1515,
+      "sha256": "0f2ab43ede0d440fd644eb25f4bebc52522d443607a6b6d074f1b28b27f8f120"
+    },
+    "samples/repeat/run2-zstd1.csv": {
+      "bytes": 1512,
+      "sha256": "b848bb22015db8b40344056b37b73fb3a25e86b8b57c128ac62ece18786c6762"
+    },
+    "samples/repeat/run3-zstd3.csv": {
+      "bytes": 1522,
+      "sha256": "0294e861d4d08b3e76e5ff7ce6a6e395aa331f1e3eac5840c9a33e8157174d74"
+    }
+  },
+  "test_harness_sha256": "be85e296644e00b50f9935bd06cf7a6f1756dfb1899c89e5a6f9a772b30943d0",
+  "fixture_provenance": "Experimental q6 inputs from earlier .95 quality policy; not the shipped guarded .80 q6 path"
+}

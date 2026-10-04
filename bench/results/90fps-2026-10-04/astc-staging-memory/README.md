@@ -17,6 +17,6 @@ Median CPU decode-path time, microseconds:
 
 The queue behavior stayed identical: ASTC upload and sampling were separate submissions to one queue, with no intermediate CPU wait or semaphore; the final sampling fence gated readback and buffer reuse. GPU upload/sample medians were effectively unchanged across the three CPU paths. Each fixture/codec produced identical GPU readback hashes across all paths. Hardware sampling differed from the external RGBA references by at most one channel value, with no values over tolerance 2.
 
-These are bounded harness timings, not production-stream throughput or an app performance claim. The synthetic mode-0x442 image is repeated texture content; the two q6 cases use exact 1920×1080 ASTC outputs. No full source photos or payloads are included.
+These are bounded harness timings, not production-stream throughput or an app performance claim. The synthetic mode-0x442 image is repeated texture content. The two q6 cases use exact 1920×1080 ASTC outputs from a superseded experimental .95-scored artifact, not the guarded .80 selected production policy; their fixture hashes and timings are preserved as measured, not as selected-policy photo performance. No full source photos or payloads are included.
 
 `summary.csv` has per-run medians and hashes; `samples.csv` preserves all 540 measured samples; `readbacks.csv` lists input, payload, and output hashes plus pixel deltas. `manifest.json` records source paths/hashes and allocation properties. `probe.cpp` and `run_vma_probe.py` preserve the harness method.
