@@ -1,0 +1,17 @@
+Source head: d3f428bb302c0b63e0ac62845b8c4af875adc23e
+GPU: AMD Radeon RX 7900 XTX (RADV NAVI31)
+Queue timestamps: valid bits=64, timestampPeriod=10 ns
+Extent: 2176x2176, q6, fit3, 8x8 ASTC, generated one-eye RGBA32F input
+
+Build:
+  cmake -S . -B build -G Ninja
+  cmake --build build -j4
+Result: success; current production ASTC shader and includes compiled.
+
+First attempt:
+  nice -n 10 ./native_pass_fusion
+Result: query retrieval failed because the fused command leaves query 3 unwritten while the harness requested WAIT on four queries. No measurement rows were produced. No physical GPU fault inferred.
+
+Corrected run:
+  nice -n 10 timeout 480s ./native_pass_fusion
+Result: exit 0; four warmups per variant, 12 matched alternating pairs; 73,984 ASTC blocks per output; 0 differing words across pairwise output comparisons. See scope-alternating.csv.

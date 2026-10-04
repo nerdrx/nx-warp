@@ -243,3 +243,7 @@ Source **8d339452** makes completeness queries constant time and skips slot walk
 ### Attribute the large CPU fence wait before changing the pipeline
 
 A pushed default-off server diagnostic records same-queue ASTC compute-through-readback timestamps separately from the existing CPU fence interval. A generated 64 KiB compute/copy test deliberately holds its input semaphore for 10 ms: host fence-wait mean changes0.493→10.368 ms while GPU bracket mean remains8.253→8.517 µs. Every run-specific output check passes; a separate Khronos validation run has no messages. This validates timestamp placement on that queue, not production queue delay, ASTC performance or latency. The diagnostic is built but remains off. [Runnable scope gate, raw samples, figure and limitations](gpu-timing-scope/README.md).
+
+### Native pass fusion: deleting a pass can repeat more work
+
+The identity colour pass plus current ASTC shader takes 1.540 ms GPU mean on a generated 2176² single-eye fixture. Moving colour conversion into every ASTC `pixel()` call produces identical blocks but takes 1.696 ms: repeated tile fitting repeats the conversion. This naive version is rejected in that scope; no production integration. A separate tile-cache follow-up tests converting once per tile. [Exact shaders, 12 matched pairs, graph and source-image ownership gates](native-pass-fusion/README.md).
