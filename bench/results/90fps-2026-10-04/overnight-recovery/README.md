@@ -32,6 +32,19 @@ result or proof of sustained 90 fresh frames/s.
 
 ![Same texture bytes versus isolated Pico decode cost](compact/compact-results.png)
 
+## Same-device Vulkan follow-up
+
+The offscreen two-eye test now includes both native image dispatches, readback,
+fence waits and packet compression on one RX 7900 XTX device/queue. Async eye
+processing reduces complete-call p50/p95 from **13.865/15.432 to
+11.364/13.007 ms**, with identical ASTC and packet bytes. GPU dispatch durations
+are unchanged; this is CPU overlap. Dominant CPU fence waits remain about 9ms
+and are being investigated. Upload is excluded; actual live compositor, Wi-Fi,
+viewer and photon latency are not measured. [Source, 100 interleaved pairs,
+external decode checks and graph](stereo-gpu/README.md).
+
+![Same-device full call versus shader durations](stereo-gpu/stereo-gpu.png)
+
 ## Small independent safety image
 
 ![Fixture payload and raw backup bandwidth bounds](thumbnail-budget.png)

@@ -44,13 +44,13 @@ The band payload estimate includes an 8-byte header per band, 1400-byte data fra
 | 512 px full-width bands | 474,101 B (+0.4%) | 292,844 B (+0.3%) | 88.1% / 49.9% | 92.1% / 63.5% |
 | 1024 px full-width bands | 473,182 B (+0.2%) | 292,429 B (+0.1%) | 79.8% / 29.6% | 86.0% / 43.6% |
 
-These bands add fewer compression boundaries and estimated bytes than square 256 px regions, while recovering less area when packets are lost. The separate observation that square 256 px region handling costs 2–3× whole-frame CPU on Pico is not remeasured here; band CPU cost is unknown. Bands can still combine pixels from different poses along horizontal seams, so this is not a pose-coherent XR solution. `native_band_loss.csv` also records burst cases and repeated-send counts; `native_band_payload.csv` contains fragment/FEC/header estimates. To rerun, provide local inputs with `--dark-q6`, `--forest-q6`, and optionally `--out-dir`.
+These bands add fewer compression boundaries and estimated bytes than square 256 px regions, while recovering less area when packets are lost. The initial one-shot square decode probe was expensive; matched reused-context CPU measurements now appear in the follow-up below. Bands can still combine pixels from different poses along horizontal seams, so this is not a pose-coherent XR solution. `native_band_loss.csv` also records burst cases and repeated-send counts; `native_band_payload.csv` contains fragment/FEC/header estimates. To rerun, provide local inputs with `--dark-q6`, `--forest-q6`, and optionally `--out-dir`.
 
 ![Horizontal band byte and modeled recovery tradeoff](native_band_tradeoff.png)
 
 ## Model scope and live WiVRn ASTC path
 
-The `native_*` band/region CSVs are idealized record-level loss simulations only. Their 1400-byte chunks and XOR 8+1 parity are experiment assumptions, not measured WiVRn wire framing, runtime bandwidth, or a latency/safety guarantee. They omit per-shard WiVRn serialization and the live adaptive FEC group layout. No NXT transport accounting applies here.
+The `native_*` band/region CSVs are idealized record-level loss simulations only. Their 1400-byte chunks and XOR 8+1 parity are experiment assumptions, not measured WiVRn wire framing, runtime bandwidth, or a latency/safety guarantee. They omit per-shard WiVRn serialization and the live adaptive FEC group layout. 
 
 The live WiVRn ASTC path carries `video_stream_data_shard`: `stream_item_idx`, 64-bit `frame_idx`, 16-bit `shard_idx`, optional `view_info`, optional `timing_info`, and payload. Current stream-item assignments are 0=left, 1=right, 2=alpha, 3=promoted quad layer. The first shard carries `view_info` (display target, per-eye pose/FOV/foveation, and optional quad metadata); the last carries timing fields (`encode_begin`, `encode_end`, `send_begin`, `send_end`). `display_time` is the predicted headset display target, not source capture time; the shard has no source-capture timestamp.
 
@@ -60,7 +60,7 @@ The shard payload cap is 1400 bytes before FEC reserve and first-shard `view_inf
 
 For a 20 Mbit/s aggregate link the gross budget is 27.8 kB/frame at 90 Hz (34.7 kB at 72 Hz), before external transport overhead. This value alone does not establish spare headroom: the live source exposes per-encoder bitrate and path/pacing behavior, but no dedicated auxiliary reserve or priority queue across video streams. Encoders share a sender worker and the UDP queue is FIFO, with up to eight whole frames retained before oldest-frame drops. A safety feed could therefore delay the primary if it enters that queue ahead of it. A strict no-stall policy needs shared admission control that protects primary bytes/deadlines and skips auxiliary frames when the remaining budget is unavailable.
 
-Adding auxiliary streams would require extending the current four-item mapping, video description/decoder setup, and codec interpretation; each stream still joins as a whole ASTC frame. A new band-record path avoids overloading those stream roles and enables partial ASTC assembly, but requires new wire metadata and headset reassembly/deadline behavior. The current source alone does not show which route meets latency or startup-readiness goals; that requires an integrated scheduler and live-path measurement. This report makes no CPU or photon-latency claims.
+Adding auxiliary streams would require a negotiated use of spare stream slots (or a larger mapping), updated video description/decoder setup, and explicit codec/role interpretation; each stream still joins as a whole ASTC frame. A new band-record path avoids overloading those stream roles and enables partial ASTC assembly, but requires new wire metadata and headset reassembly/deadline behavior. The current source alone does not show which route meets latency or startup-readiness goals; that requires an integrated scheduler and live-path measurement. This report makes no CPU or photon-latency claims.
 
 ## Matched Pico CPU follow-up
 

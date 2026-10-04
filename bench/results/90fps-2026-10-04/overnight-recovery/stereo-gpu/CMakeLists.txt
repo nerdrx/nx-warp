@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(overnight_stereo_gpu LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+find_package(Vulkan REQUIRED)
+find_library(ZSTD_LIB zstd REQUIRED)
+add_executable(stereo-gpu src/main.cpp)
+target_link_libraries(stereo-gpu PRIVATE Vulkan::Vulkan ${ZSTD_LIB} lz4)
+target_compile_options(stereo-gpu PRIVATE -O3 -Wall -Wextra -Wpedantic)
