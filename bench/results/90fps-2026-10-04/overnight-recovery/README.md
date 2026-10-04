@@ -2,7 +2,7 @@
 
 **Source experiments; live profile unchanged.** The live profile stays native ASTC 8×8. Three questions are being tested: can independent packets carry identical detail
 in fewer bytes, can the PC encode both eyes concurrently, and can smaller
-independent delivery units cover losses before bitrate adaptation catches up? Neither question is a measured photon-latency
+independent delivery units cover losses before bitrate adaptation catches up? None of these tests is a measured photon-latency
 result or proof of sustained 90 fresh frames/s.
 
 ## Completed source experiments
@@ -10,8 +10,8 @@ result or proof of sustained 90 fresh frames/s.
 - **Parallel eye packing, opt-in:** the CPU-only two-eye batch falls from
   **3.516/4.096 to 2.130/2.474 ms p50/p95** using a right-eye async task and the
   existing left-eye worker. Packet bytes are identical. Host/server build and
-  ownership review pass. Real GPU fence waits, sender pacing and live motion
-  remain unverified. [Method, samples and figure](stereo-packing/README.md).
+  ownership review pass. The same-device Vulkan follow-up below adds fence
+  waits; actual sender pacing and live motion remain unverified. [Method, samples and figure](stereo-packing/README.md).
 - **Compact independent records, opt-in:** removing fixed ASTC mode bits saves
   **5.01–5.77%** on two native fixtures with identical decoded texture bytes.
   Pico strict CPU decode adds about **0.055–0.126 ms per eye**. It uses one Zstd
@@ -110,6 +110,24 @@ prevent backwards selection; its age cannot prove content or photon latency.
 - The old session's UI/font activity was not reproduced as a current bug.
   Current readiness transitions already have fixes; it is not evidence that
   font loading caused the present delivery problem.
+
+## Small context-reuse probe
+
+Reusing a strict Zstd decode context saves **33–36 microseconds per eye** on
+validated native2176² Pico inputs, with no meaningful PC gain. All decoded
+bytes match, and malformed-then-valid reuse checks pass ASan/UBSan. This is
+about3–4% of the isolated CPU decode stage; it is too small to justify another
+production option by itself. The live decoder is unchanged.
+[Method, raw measurements and hashes](context-reuse/results.txt).
+
+A calibrated GPU/CPU timestamp diagnostic failed its own ordering sanity check:
+its mapped GPU completion appeared after the host fence had already returned,
+beyond the reported calibration uncertainty. Its derived queue-delay numbers
+are discarded. The independent wall-clock and GPU-duration measurements above
+remain separate measurements; they do not identify a driver cause. A later
+read-only snapshot found99% GPU activity while probes were active; it cannot
+separate test work from other applications. Upcoming wait probes serialize
+our own GPU jobs and record load between runs, leaving user apps untouched.
 
 ## Reproduction and limits
 

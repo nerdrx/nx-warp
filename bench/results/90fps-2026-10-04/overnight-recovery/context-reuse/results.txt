@@ -1,0 +1,42 @@
+Strict ASTC production decoder: one-shot ZSTD_decompress vs reused ZSTD_DCtx
+Native full-eye q6 photos; 2026-10-04. No production files changed.
+
+Source validation: `/tmp/nx-astc-quality-test/results/{dark,forest}-q6.astc` are ASTC 8x8, 2176x2176, depth 1; file size 1,183,760 bytes. Each has a valid 16-byte ASTC header and 1,183,744 raw ASTC block bytes (=272*272*16). Their full-file hashes match existing device inputs at `/data/local/tmp/nx-astc14-20261004/` exactly: dark 65acc7e748d3152cbf3c7a2b660cf71f6ca30093215b024c6b495181563edc63; forest facfe5271375cb0dd1dca58c5f2ae90076d2e2658f0abd201ba3e91fdc7f9840. The 1920x1080 fixture run is preserved separately in `results-nonnative-1920x1080.txt` and does not support native-photo claims.
+
+Method: host preparation validates the ASTC magic, block dimensions, width, height, depth, and exact raw length, strips only the 16-byte file header, then generates v2 full-block and v4 14-byte/block Zstd level-3 payloads. Identical payload files were pushed to Pico and SHA256-checked there. A scratch copy of `common/nxastc_packet_decode.h` adds an optional `ZSTD_DCtx*` (default null); current production packet parsing, frame strictness, declared content-size/exact-length checks, and v4 in-place expansion remain used. Each case has 20 warmups + 200 measured decodes per path, alternating path order. Timed region is `decode_payload`; packet parsing and byte-exact output comparison are outside timing.
+
+PC, Zstd 1.5.7, p50/p95 microseconds:
+
+dark v2 payload 416379B: one-shot 510.88/572.72; reused 511.90/537.22 (median +0.20%)
+dark v4 payload 392362B: one-shot 580.38/731.83; reused 588.57/693.92 (+1.41%)
+forest v2 payload 258371B: one-shot 365.03/406.34; reused 364.69/389.56 (-0.09%)
+forest v4 payload 245437B: one-shot 469.04/526.15; reused 476.46/579.83 (+1.58%)
+
+Pico A8110 / Adreno 650, Zstd 1.5.7, p50/p95 microseconds. Device stayed asleep with display off; CPU0 frequency was 1.5168GHz before/after and thermal_zone0 41.8C/44.9C. Not clock-locked.
+
+dark v2: one-shot 1023.96/1087.92; reused 987.87/1053.70 (-3.52%; 36.09us saved/eye)
+dark v4: one-shot 1079.43/1134.06; reused 1043.39/1085.21 (-3.34%; 36.04us/eye)
+forest v2: one-shot 760.68/807.29; reused 727.08/787.81 (-4.42%; 33.59us/eye)
+forest v4: one-shot 884.90/930.57; reused 851.82/894.32 (-3.74%; 33.07us/eye)
+
+Validation: ASan+UBSan native-fixture run passed strict rejection of truncated frame, trailing bytes, unknown content size, and wrong content size, then decoded a valid payload with the same reused context. All four v2/v4 outputs were byte-exact to the native raw fixtures on PC and Pico. Context reuse saved about 33–36us/eye on this Pico run, with no meaningful PC gain; it is a small, limited-sample result, not end-to-end frame evidence.
+
+Native-derived input SHA256:
+dark raw 0e75956bcf154f0444733c282edc7ce53a2fb6f3fac1e62a0a2cca3220a9e6b7
+dark v2 3605b14b7e569281c3b7f17520299ff5bd0ed458c40c1868834568c2535b8be3
+dark v4 44e9aaad790c06136ba6d6bb1c563ca5e78bab3fc577b076c2fb7926f1997406
+forest raw 540015408b28c178cf7443f54411c7feb9b4ffeb934bf418b5de87cba1371c98
+forest v2 aea62d36ead69557da594afb6d0131132bc754fc052be68fb7c1666a7b20bf80
+forest v4 bc790d034550c7147fbf1881729e19c11705c8b89899dffa09050702ff140a72
+bench_native.cpp d5bcd9a2d38ddfbfb6c5d537b0aa243c5f13bc48a29d1b28d346a44201842dc8
+scratch strict header f5693d90de673359bf3f0bb72a3d8639de8ef7df96ac35bc829d3b511abafb8f
+PC binary 5ac2aaf1b962d3e01e62979087368f0ce80046a52041578eb37a5169a1275492
+Pico binary bafb9dba4f8a22464255f7b8dcda3c440df9da2dafaebd468b895f2feafb6258
+
+Build commands:
+g++ -std=c++20 -O3 -DNDEBUG -I common bench_native.cpp -lzstd -llz4 -o bench-native
+g++ -std=c++20 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I common bench_native.cpp -lzstd -llz4 -o bench-native-asan
+NDK r29: aarch64-linux-android29-clang -O3 -DNDEBUG -I <nx_lz4-src/lib> -c <nx_lz4-src/lib/lz4.c> -o lz4-arm64.o
+aarch64-linux-android29-clang++ -std=c++20 -O3 -DNDEBUG -g0 -s -static-libstdc++ -I common -I <nx_zstd-src/lib> -I <nx_lz4-src/lib> bench_native.cpp lz4-arm64.o <zstd-android-build/lib/libzstd.a> -o bench-native-pico
+
+Device run used only the temporary executable and input files under `/data/local/tmp/nx-astc-strict-dctx-native-20261004`; no app, UI, property, or clock changes.
