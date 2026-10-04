@@ -1,0 +1,15 @@
+Pico exact packet decode benchmark (updated alternating execution order)
+Date: 2026-10-04
+Source: wt-pyrowave-probe tests/nxastc_compact_test.cpp sha256 84852131f362ba43afce1274186708f0bbd1f21f50f7100e2834689da33ed291
+Android test binary sha256 9aaea2730faa4452250c928b8867609d93a39a0e1917d88d91d7812a7cd3918e
+Fixture dark-q6.astc sha256 65acc7e748d3152cbf3c7a2b660cf71f6ca30093215b024c6b495181563edc63
+Fixture forest-q6.astc sha256 facfe5271375cb0dd1dca58c5f2ae90076d2e2658f0abd201ba3e91fdc7f9840
+ARM64 compile command:
+/run/media/nerdrx/Lex/claude/tools/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++ -std=c++23 -O2 -Wall -Wextra -Werror -Ibuild-server/_deps/nx_zstd-src/lib -Ibuild-server/_deps/nx_lz4-src/lib tests/nxastc_compact_test.cpp /run/media/nerdrx/Lex/claude/nx-scratch/20260923-until8/zstd-android-build/lib/libzstd.a build/android-arm64/common/libwivrn-lz4.a -static-libstdc++ -Wl,--gc-sections -o /run/media/nerdrx/Lex/claude/nx-scratch/overnight-structural-20261004/nxastc_compact_test_pico
+Device was asleep/display off before and after. cpu0 scaling_cur_freq=1804800 kHz before/after; thermal status 0.
+Runs in execution order:
+NX ASTC compact v4, in-place expansion, malformed frames, and legacy v1-v3: PASS
+decode /data/local/tmp/nx-astc14-20261004/forest-q6.astc 2176x2176 astc=1183744 base_zstd=258371 compact_zstd=245437 baseline_p50/p95=760.6/825.1 compact_inplace_p50/p95=886.6/926.5 us
+decode /data/local/tmp/nx-astc14-20261004/dark-q6.astc 2176x2176 astc=1183744 base_zstd=416379 compact_zstd=392362 baseline_p50/p95=1024.9/1094.1 compact_inplace_p50/p95=1079.5/1141.4 us
+decode /data/local/tmp/nx-astc14-20261004/dark-q6.astc 2176x2176 astc=1183744 base_zstd=416379 compact_zstd=392362 baseline_p50/p95=1019.3/1076.0 compact_inplace_p50/p95=1073.4/1149.3 us
+decode /data/local/tmp/nx-astc14-20261004/forest-q6.astc 2176x2176 astc=1183744 base_zstd=258371 compact_zstd=245437 baseline_p50/p95=762.0/804.5 compact_inplace_p50/p95=887.9/947.9 us

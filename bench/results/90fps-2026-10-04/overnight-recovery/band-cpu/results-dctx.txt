@@ -1,0 +1,55 @@
+Matched reused-ZSTD_DCtx follow-up (original one-shot-decompress results remain in results.txt)
+Date: 2026-10-04
+Each whole decoder and each independent-region decoder reuses a dedicated ZSTD_DCtx allocated before the timed loop; partial and comparator paths likewise have separate reused contexts. Each context receives 20 warmups and 200 measured calls. Output and byte-exact validation remain after each timed interval. Square region benchmark includes region decompression plus scatter merge; horizontal band benchmark decompresses directly into contiguous final ASTC output rows (no merge copy). PC/Pico timings use the same harness shape; no GPU/network memory timing.
+
+Source hashes:
+bench.cpp current reused-DCtx sha256 92fb1582980150cfd081111b84f2c9913de23fb1f882484dd594bd39bcba735d; original one-shot source hash is listed in results.txt
+addbands.cpp 5d7fa2ff305cd7bfff57491c2d5cdd23d79d43e5a61b7dd99433f753fafd310d
+PC binaries: bench-dctx cc9d1685d4f6333ed45da8a985e8177eac1dce550ad8cb3a9b3de483fb951561 ; addbands-dctx 58767c2b08e1aca18784b80db683356166e26e3874e5511fae60f7e3c9e3b0d4
+Android binaries: bench-dctx-pico bf2dfa5485ecbcd0fd0a8152eb1efb62d93ddeb8e246904bc69fd820154a0b7f ; addbands-dctx-pico 9df7d995df2bd2774119c73978a5a87b32ff51f63a2990fd538bef63b5bccc39
+
+PC square regions, p50/p95 microseconds:
+full dark 256px 81 regions: whole 515.8/521.1; region decode+scatter 652.1/658.4; whole wire 416403B; regional payload/estimated wire 417672/418320B.
+full forest 256px 81 regions: whole 378.9/383.6; region decode+scatter 485.4/490.4; whole wire 258395B; regional payload/estimated wire 263210/263858B.
+partial dark->forest 256px 72/81 regions, 88.6% area updated, 1048576B output written: full 379.2/384.2; partial 438.6/443.8; estimated wire full 258395B vs partial 237854B.
+full dark 128px 289 regions: whole 520.3/526.5; regions 832.4/839.4; regional payload/estimated wire 438266/440578B vs whole 416403B.
+full forest 128px 289 regions: whole 381.1/387.0; regions 546.4/551.9; regional payload/estimated wire 280831/283143B vs whole 258395B.
+partial dark->forest 128px 260/289 regions, 90.0% area updated, 1064960B output written: full 380.4/385.3; partial 494.4/500.0; estimated wire full 258395B vs partial 254444B.
+
+PC horizontal full-width bands, p50/p95 microseconds:
+full dark 256px 9 bands: whole 510.9/515.5; band direct 521.1/526.1; estimated wire 416403B whole vs 421004B bands.
+full forest 256px 9 bands: whole 371.0/375.2; band direct 380.4/385.1; estimated wire 258395B vs 260210B.
+partial dark->forest 256px retain final 128px band: 8/9 bands updated, 94.12% area, 1114112B raw updated; whole 369.5/374.4; partial 351.1/355.7; estimated wire 258395B vs 243743B.
+full dark 512px 5 bands: whole 541.6/680.8; band direct 554.3/692.2; estimated wire 416403B vs 418101B.
+full forest 512px 5 bands: whole 373.5/421.0; band direct 376.8/430.5; estimated wire 258395B vs 259244B.
+partial dark->forest 512px retain final 128px band: 4/5 updated, 94.12% area; whole 360.7/364.6; partial 335.6/339.4; estimated wire 258395B vs 242777B.
+full dark 1024px 3 bands: whole 505.8/511.3; band direct 510.1/516.1; estimated wire 416403B vs 417182B.
+full forest 1024px 3 bands: whole 359.5/363.7; band direct 362.8/367.1; estimated wire 258395B vs 258829B.
+partial dark->forest 1024px retain final 128px band: 2/3 updated, 94.12% area; whole 356.5/360.3; partial 332.9/337.0; estimated wire 258395B vs 242362B.
+
+Pico status before/after: mWakefulness=Asleep; display OFF; CPU0 scaling_cur_freq=1804800kHz; thermal status 0. No app/UI/live profile/property/clock actions.
+Pico square regions, p50/p95 microseconds:
+full dark 256px: whole 1007.6/1070.4; regions 1314.7/1398.0.
+full forest 256px: whole 743.6/778.6; regions 974.8/1059.0.
+partial dark->forest 256px 88.6% area: full 744.6/785.3; partial 894.4/956.6.
+full dark 128px: whole 1009.9/1107.0; regions 1611.5/1728.8.
+full forest 128px: whole 745.2/818.9; regions 1053.3/1097.9.
+partial dark->forest 128px 90% area: full 747.4/816.4; partial 966.9/1048.0.
+Pico horizontal bands, p50/p95 microseconds:
+full dark 256px: whole 988.2/1059.5; bands 1035.1/1097.2.
+full forest 256px: whole 726.9/767.2; bands 760.5/818.9.
+partial dark->forest 256px, 94.12% area: full 732.7/811.2; partial 712.3/781.8.
+full dark 512px: whole 984.7/1042.3; bands 987.1/1064.7.
+full forest 512px: whole 725.7/781.6; bands 724.5/738.0.
+partial dark->forest 512px, 94.12% area: full 731.9/805.2; partial 671.4/748.8.
+full dark 1024px: whole 988.0/1046.0; bands 989.2/1044.4.
+full forest 1024px: whole 725.3/802.1; bands 731.0/772.8.
+partial dark->forest 1024px, 94.12% area: full 728.4/799.3; partial 679.6/721.1.
+
+Takeaway: matched contexts substantially reduce the earlier square-region penalty, but 256px square decode+scatter remains materially slower on Pico; 128px remains worse. Full-width bands are near whole-frame decode cost at all tested sizes, with no scatter copy. Holding the final edge band (5.88% of the image) removes about 5.7-6.2% estimated wire bytes in this fixture pair and measures 20-61us faster than full forest decode on Pico, but retains previous-frame pixels in that bottom strip. Packet framing estimate is 8B per band plus standard 24B whole header; actual transport overhead/loss behavior is not implemented here. These timings do not prove live-network/render net benefit.
+
+Builds:
+Host square: c++ -std=c++20 -O2 -Wall -Wextra -Werror bench.cpp -lzstd -o bench-dctx
+Host bands: c++ -std=c++20 -O2 -Wall -Wextra -Werror addbands.cpp -lzstd -o addbands-dctx
+Android square: /run/media/nerdrx/Lex/claude/tools/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++ -std=c++20 -O2 -Wall -Wextra -Werror -Ibuild-server/_deps/nx_zstd-src/lib bench.cpp /run/media/nerdrx/Lex/claude/nx-scratch/20260923-until8/zstd-android-build/lib/libzstd.a -static-libstdc++ -Wl,--gc-sections -o bench-dctx-pico
+Android bands: same command with addbands.cpp input and addbands-dctx-pico output.

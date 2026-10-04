@@ -1,0 +1,32 @@
+Native ASTC independent Zstd region CPU experiment
+Date: 2026-10-04
+Fixtures (private q6 2176x2176 ASTC; container header excluded):
+ dark-q6.astc sha256 65acc7e748d3152cbf3c7a2b660cf71f6ca30093215b024c6b495181563edc63
+ forest-q6.astc sha256 facfe5271375cb0dd1dca58c5f2ae90076d2e2658f0abd201ba3e91fdc7f9840
+Harness source sha256 a5b4cccdb9fb26e8fbe1abfbe6c8a4febc9177784e10e41ac8ca628ceaf7ee25
+Host binary sha256 c2e1b3a0f4171e8d3e80baa26334b817ed197f996d1b31dcf9f8866560a690e5
+Android binary sha256 448fb3a95d973222856f7f9aec75278ba35d572e995f3ebbdf3dcca9592bdc68
+
+Method: Zstd3 whole ASTC frame vs independently Zstd3-compressed regions gathered as contiguous ASTC blocks. Exact region decodes are merged into the proper 16B/block texture layout and byte-compared to input. Pixel edge regions are cropped at image bounds (2176/256 = 8 full + 128px edge; 2176/128 = 17 exact regions). Partial path retains dark-q6 as old buffer and decodes selected forest-q6 regions into it, skipping each 10th region; expected mixed buffer is byte-compared. Max tile scratch is allocated once outside timings. Decompress+merge timed; whole decode timed as comparator. Header sizes are estimates only and excluded from timed decode: 24B whole packet vs 8B/region. Each benchmark has 20 warmups + 200 measured iterations; whole and region/full order alternates each iteration, and full vs partial order alternates. Host and Pico perform compression/fixture setup before timing; this measures CPU vector memory, not mapped GPU memory, network or transport scheduling.
+
+PC output (microseconds p50/p95):
+full dark region=256px 81 regions raw=1183744 whole_wire=416403 regional_payload=417672 regional_wire_est=418320 whole=534.5/567.0 regions=680.8/720.5
+full forest region=256px 81 regions raw=1183744 whole_wire=258395 regional_payload=263210 regional_wire_est=263858 whole=387.3/394.8 regions=496.2/504.9
+partial dark->forest 256px updated=72/81 (88.6% area) raw_write=1048576 regional_payload=237278 estimated_wire=237854 full=384.6/409.4 update=446.2/473.2
+full dark region=128px 289 regions raw=1183744 whole_wire=416403 regional_payload=438266 regional_wire_est=440578 whole=526.7/536.8 regions=849.4/878.1
+full forest region=128px 289 regions raw=1183744 whole_wire=258395 regional_payload=280831 regional_wire_est=283143 whole=387.1/396.9 regions=563.0/585.7
+partial dark->forest 128px updated=260/289 (90.0% area) raw_write=1064960 regional_payload=252364 estimated_wire=254444 full=388.4/454.1 update=508.2/576.7
+
+Pico output (microseconds p50/p95):
+full dark region=256px 81 regions raw=1183744 whole_wire=416403 regional_payload=417672 regional_wire_est=418320 whole=1022.7/1115.9 regions=2360.2/3577.6
+full forest region=256px 81 regions raw=1183744 whole_wire=258395 regional_payload=263210 regional_wire_est=263858 whole=755.3/819.1 regions=1918.9/3192.1
+partial dark->forest 256px updated=72/81 (88.6% area) raw_write=1048576 regional_payload=237278 estimated_wire=237854 full=760.7/810.6 update=1684.7/2876.7
+full dark region=128px 289 regions raw=1183744 whole_wire=416403 regional_payload=438266 regional_wire_est=440578 whole=1033.4/1132.1 regions=6297.0/9411.2
+full forest region=128px 289 regions raw=1183744 whole_wire=258395 regional_payload=280831 regional_wire_est=283143 whole=766.5/838.6 regions=4814.0/8750.7
+partial dark->forest 128px updated=260/289 (90.0% area) raw_write=1064960 regional_payload=252364 estimated_wire=254444 full=764.7/824.7 update=4241.2/7850.0
+
+Read-only Pico status: asleep/display OFF before and after; CPU0 scaling_cur_freq 1804800 kHz before/after; no app/UI/property/clock actions. Results are an isolated CPU-only comparison. p95 region timings show notable scheduling/noise sensitivity; no headset render/network claim follows from these timings.
+
+Compile commands:
+Host: c++ -std=c++20 -O2 -Wall -Wextra -Werror bench.cpp -lzstd -o bench
+ARM64: /run/media/nerdrx/Lex/claude/tools/android-sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++ -std=c++20 -O2 -Wall -Wextra -Werror -Ibuild-server/_deps/nx_zstd-src/lib bench.cpp /run/media/nerdrx/Lex/claude/nx-scratch/20260923-until8/zstd-android-build/lib/libzstd.a -static-libstdc++ -Wl,--gc-sections -o bench-pico

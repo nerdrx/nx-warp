@@ -1,0 +1,9 @@
+PC Zstd3 encode benchmark (current test harness)
+Date: 2026-10-04
+Harness source sha256: 84852131f362ba43afce1274186708f0bbd1f21f50f7100e2834689da33ed291
+Fixtures dark-q6.astc / forest-q6.astc hashes are recorded in production-decode-pico.txt.
+Command: c++ -std=c++23 -O2 -Wall -Wextra -Werror tests/nxastc_compact_test.cpp -lzstd -llz4 -o /tmp/nxastc_compact_test; then /tmp/nxastc_compact_test --bench <fixture>
+NX ASTC compact v4, in-place expansion, malformed frames, and legacy v1-v3: PASS
+/tmp/nx-astc-quality-test/results/dark-q6.astc 2176x2176 blocks=73984 bytes=1183744 zstd=416379 compact+zstd=392362 saved=5.77% encode_us base=2036.0/2452.3 pack=85.2/102.5 candidate=1922.7/2276.4 decode_inplace=586.0/645.5
+/tmp/nx-astc-quality-test/results/forest-q6.astc 2176x2176 blocks=73984 bytes=1183744 zstd=258371 compact+zstd=245437 saved=5.01% encode_us base=1309.0/1439.4 pack=81.0/110.2 candidate=1304.9/1577.4 decode_inplace=479.9/545.8
+Interpretation: encode times are Zstd3 raw vs compact packing + Zstd3, not dual-compress gating. Decode timing in this PC harness is not GPU mapped-memory evidence.

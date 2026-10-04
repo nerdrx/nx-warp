@@ -17,6 +17,14 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 4 October: parallel eye packing and exact independent records
+
+Two source experiments now preserve native **2176² ASTC 8×8** detail. Packing independent eyes concurrently reduces a CPU-only two-eye batch from **3.516 / 4.096 to 2.130 / 2.474 ms p50/p95**. Removing fixed mode bits saves **5.01–5.77% payload**, with **0.055–0.126 ms extra Pico CPU decode per eye** in isolated checks. Both options are **off by default**; PC/Android builds and byte-exact checks pass. These are stage measurements, not live FPS, HEVC parity or photon latency. [Graphs, source, compatibility and limits](bench/results/90fps-2026-10-04/overnight-recovery/README.md).
+
+![Native PC compression batch with serial and parallel eye workers](bench/results/90fps-2026-10-04/overnight-recovery/stereo-packing/stereo-packing.png)
+
+Independent region delivery also substantially improves recovered area in a packet-loss model, but square-region CPU work is expensive on Pico and mixed-pose regions risk seams. Full-width bands with reused contexts now decode near whole-frame cost in isolated Pico CPU tests; partial transport and pose-safe presentation remain unimplemented. A separate coarse safety-image probe fits a plausible 20 Mbit/s budget at 192² per eye; two-frame live takeover remains unimplemented. [Delivery model, animation and budget](bench/results/90fps-2026-10-04/overnight-recovery/README.md).
+
 ### 4 October: lossless motion packing — experimental, default off
 
 A new guarded PC packing path saves **23.49% of bytes** on a photo-derived native **2176 × 2176** Pico fixture while reproducing identical ASTC blocks. The production CPU decoder takes **0.908 / 1.086 ms p50/p95**, versus **0.559 / 0.590 ms** for independent Zstd: about **0.35 ms extra per eye**. Recently decoded acknowledgements, bounded reference age, a 15% minimum saving and independent anchors guard the experiment. Host, Android and exact packet checks pass. **It is built and pushed, but not enabled in the live profile; moving-scene Wi-Fi smoothness and HEVC parity remain unproven.** [Graphs, rejected alternatives and measurement limits](bench/results/90fps-2026-10-04/motion-packing/README.md).
