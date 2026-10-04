@@ -90,3 +90,7 @@ Build with the include roots above, adding
 `-I /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client`, replacing
 the output with `/tmp/reassembly_deadline_stereo`, and using `stereo_replay.cpp`
 as the source.
+
+## Coherence audit
+
+A query of newer **decoded** common IDs is circular: ordered drain prevents that eye's newer complete frame from reaching the decoder while the front is blocked. The existing stream0 readiness ring also cannot prove stereo pairing. Keep the age trial off; do not add a decoded-history guard. [Ownership, causal ordering and rejected design](COHERENCE_AUDIT.md).
