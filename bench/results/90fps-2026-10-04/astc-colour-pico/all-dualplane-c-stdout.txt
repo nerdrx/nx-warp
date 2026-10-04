@@ -1,0 +1,5 @@
+device=Adreno (TM) 650 api=1.1 ASTC_LDR=1 ASTC8x8_sampled=1 compute=1
+ASTC=8x8 input=1920x1080 framebuffer=1920x1080 samples=12+30 lz4=0 alternate=0
+raw_rgba n=30 gpu_upload_median_us=419.062 gpu_sample_median_us=810.469 gpu_total_median_us=1229.27 gpu_total_p95_us=1234.95 cpu_call_median_us=3272.4 cpu_call_p95_us=3735.21
+astc_raw_payload n=30 gpu_upload_median_us=43.1771 gpu_sample_median_us=749.948 gpu_total_median_us=793.021 gpu_total_p95_us=794.687 cpu_call_median_us=1439.89 cpu_call_p95_us=1932.97
+correctness_reference=desktop_astc_decode_rgba8 max_channel_error=1 mae=0.0239891 over_tolerance_pixels=0 tolerance=2
