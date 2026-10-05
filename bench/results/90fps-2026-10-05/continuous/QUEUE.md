@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 10:48 UTC
+## Current verified state — 10:58 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed831aafed. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -27,9 +27,11 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 10. **Direct history-copy gate rejected:** normal/ASan/UBSan/TSan correctness passes; 30 retained matched pairs give mean processCPU −3.1803µs/eye-frame (30/30), wall −5.5388µs (27/30, one large legacy outlier). Exact blobs; historyon/FECoff/directprimary payloadmodel only. Early publication differs from actual sender, so extra reservation/commit complexity is unjustified. No source change. [Runnable code, raw rows, logs and paired figure](history-direct-gate/README.md).
 
+11. **Post-refit endpoint coarsening rejected by quality gate:** ordinary CEM8/Q64 endpoint fields only; exact modes/weights and other blocks preserved, 17/4 orientation flips guarded. Native packets save7.71/8.99%, RGBPSNR falls0.995/3.981dB. Meets5%byte target, fails≤0.1dB quality limit. Normal/SAN rows match; root independently rebuilds and replays public wrapper, exactCSV. No distraction/motion/speed claim, no production change. [Raw metrics, runnable checks, failure boundary and figure](q6-coarse-endpoints-gate/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Cheap Luna `zstd_worker_gate`, bounded20min CPU-only ordinary-q6 endpoint gate. Audit confirms post-refit q6 coarsening differs from ordinary q5. Preserve exact modes/weights, dual-plane and other blocks unchanged; guard endpoint-order flips; use matched private native inputs, legal parse/reference decode, Zstd3 bytes and raw metrics. Predeclared practical gate: ≥5% bytes saved on BOTH fixtures and ≤0.1dB PSNR loss each. No shader/source/runtime changes, private pixel publication or speed claim. Scratch `overnight-recovery/q6-coarse-endpoints-gate`. [Audit and dispatch scope](ENDPOINT_PRECISION_AUDIT.md).
+- Cheap Luna `deadline_patch_finish`, bounded20min queue-diagnostic APK preparation from the correctly configured RelWithDebInfo arm64 cache. Inspect packaged manifest/lib hash/diagnostic string, retain build logs and reproduction; no install/property activation/restart/source edits/signing-secret output. Stop at missing credentials or two failures. Scratch `overnight-recovery/queue-diagnostic-apk`. No timed jobs active. Root preparing no live session.
 - Root: repair-history source audit reviewed and NACK lock/publication boundary corrected; published. Balanced6x6 gate independently replayed/rejected; report/figure published. Native-paired Q2 candidate independently replayed/rejected; report/figure published. Both ASTC synthetic gates independently replayed; labeled figures inspected and published. Public oracle main now explicitly returns0 for warning-free helper inclusion; results unchanged. Queue diagnostic/source/docs evidence published; send batching audit reviewed and rejected as a worthwhile current optimization. Preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
 
 ## Next bounded gates
@@ -38,6 +40,8 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 - Fixed-job timing has variable tails under normal desktop load. Before enabling, measure actual live fresh stereo delivery and game-load contention with explicit opt-in, preserving active user sessions.
 
 ## Do not repeat
+
+- Uniform step-two rounding of retained q6 CEM8 endpoints: failed quality gate on both native fixtures; no further tie-rounding/threshold microprobes without stronger evidence.
 
 - Direct history-copy microbenchmark: tiny CPU saving and unsafe sender publication shortcut. Do not spend another gate on this without evidence of material history contention.
 
