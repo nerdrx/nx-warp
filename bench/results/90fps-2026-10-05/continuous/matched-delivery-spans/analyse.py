@@ -42,7 +42,7 @@ for k,v in G.items():
  if k in expected:assert abs(v-expected[k])<1000,(k,v)
  else:assert v==D[k],(k,v,D[k])
 with (root/'summary.csv').open('w') as f:
- w=csv.DictWriter(f,fieldnames=summary[0].keys());w.writeheader();w.writerows(summary)
+ w=csv.DictWriter(f,fieldnames=summary[0].keys(),lineterminator="\n");w.writeheader();w.writerows(summary)
 report={'noisy_rows_per_mode':122400,'capacity_byte_exact':cap,'focused_cases_pass':19,'pacing_only_all_rows_byte_exact':True,'limitations':['Virtual control traces, not throughput or photon tests.','Sender service and pacing regimes are models, not measured sender spans.','Loss-only bandwidth_estimate exposes controller fallback when no sample exists; not a wire sample.']}
 (root/'gates.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))
