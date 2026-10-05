@@ -4,12 +4,14 @@ Source revision: [`7b7ae3600951d90b07466053bbcda45f7dcc9b3a`](https://github.com
 
 Root executed the published `run.sh` with a private scratch output directory: **exit 0**. It independently rebuilt/reran both actual-selector checks and replay under normal and strict sanitizers. NACK checks:832; replay checks:468; failures:0. Root-generated CSV equals the retained agent CSV. The agent ran `cmake --build build-server -j2 --target wivrn-server`:exit0. This verifies the current disk build only; nothing was installed or launched. `server-build.log` has the local source prefix redacted.
 
+The public replay was reduced from1048 to488lines by removing unexecuted copied tests; its executable cases and assertions are unchanged. The published run.sh was rerun after reduction:exit0, same468 checks and exact matching CSV.
+
 Root inspected the rendered recovery graph and verified the ten CSV rows, two-round bounds, reply totals and readiness against injected fixture losses. The adapter directly calls the production history selector, but does not instantiate the private encoder method or send sockets. Production codec/env gating, timing validation and counter/budget glue were reviewed. Live duplicate traffic, loss feedback and deadline behavior remain unmeasured.
 
 ## SHA256
 
 ```text
-0ad87c95fcc6aa5683fb9abf1d6b9efedadd6eb61d21fa8738a8f5f43030db4f  endpoint_probe.cpp
+c4cde663f9dbbd33d1f5a996ca5c60a83c90d45d5d346776bf2fdd5e6a0f7881  endpoint_probe.cpp
 4066c15039793fc6c7c7c4b59e290dc534c1fe65941da3c6e9d464d6d4ceeb73  results.csv
 4066c15039793fc6c7c7c4b59e290dc534c1fe65941da3c6e9d464d6d4ceeb73  results-sanitizer.csv
 290ace261b979f731f66a4bc5409f5dda7ac1ecdf6050d53ca0574f744d1b166  run.sh
