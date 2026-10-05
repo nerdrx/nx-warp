@@ -2,9 +2,9 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 11:29 UTC
+## Current verified state — 11:39 UTC
 
-- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed a98d5ac; remote hash verified. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
+- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, base a98d5ac pushed/remote-verified; owned slot-wait diagnostic edits under review. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
 - Use cheap Luna, Ponytail, Caveman, RTK. Offscreen tests only; no mouse/focus/global runtime/routes/drivers/clocks/user app manipulation. Pico testing only when verified unused. Serialise owned timed workloads; CPU/GPU component or viewer-loop timings never prove freshFPS, HEVCparity, livequality or photon latency.
 
@@ -37,10 +37,12 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 15. **Partition architecture audit corrected:** root executes actual bundled weight-mode parser;0x0E1/0x1BF/0x141 legal,0x1AE invalid. Corrected bit capacity/padding/Q2 interpolation and1920x1080 prior fitter scope. Existing evidence rejects that fitter, not every partition idea. No new photo/GPU/Pico probe/source feature justified. [Actual-parser check and scoped decision](two-partition-audit/README.md).
 
+16. **Fence attribution boundaries corrected:** existing offscreen GPU/host rows cannot isolate compositor slot contention or semaphore/queue delay. Base CPU busy wait precedes subclass GPU fence; encode timeout doesnot clear slot validity. Root keeps guards and plots retained20 serial samples with distinct boundaries; no new run/current-source/live claim. [Actual source audit and scientific figure](fence-attribution/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Cheap Luna `zstd_worker_gate`: bounded15min read-only audit of existing PC fence/GPU attribution coverage and matching slot/query generation. Reuse retained evidence, no builds/timed jobs/GPU/Pico/source work, no CPU-minus-GPU queue-delay inference. Scratch `overnight-recovery/fence-attribution-audit`. Do not duplicate.
-- Root: final source/report publication verification. Sender diagnostic source reviewed; root actual-source mock execution passes, full configured server build passes. No active build/timed job remains. No WiVRn server/dashboard observed at resume; current Pico state unverified, no device work.
+- Cheap Luna `deadline_patch_finish`: bounded20min default-off native-ASTC base slot-busy wait diagnostic; no added clocks/counters when disabled/non-ASTC,180-call mean/max including idle and skipped-frame waits. Keep Vulkan fence guard unchanged. Actual-source mock check and configured full server build; root reviews before commit. Scratch `overnight-recovery/slot-busy-diagnostic`. No activation/install/restart/Pico; sole source writer, do not duplicate.
+- Root: publish corrected fence attribution audit and a figure from retained20 offscreen serial rows; no new GPU/timed run. Base busy wait precedes subclass GPU fence; encode timeout may release base idle with GPU outstanding. No guard removal justified. No WiVRn server/dashboard observed at resume; current Pico state unverified, no device work.
 - Preserve unrelated README/brand/bisect/scratch and private photos. All instrumentation remains default off. Do not silently start a live test.
 
 ## Next bounded gates
