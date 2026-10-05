@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 13:10 UTC
+## Current verified state — 14:02 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed6902940f; source hashes match tested code. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -50,13 +50,15 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 21. **Native late-feedback probe guard held:** candidate steady-state admission suppresses both deliberately raised probes during synthetic display drops (both eyes or one eye), clean/input-boundary dynamics unchanged. Root reproduces all28,800 actual-controller/pacer rows; normal/SAN BBR90checks, five suites/3extras and full server build pass. Recovery trajectory fails:425→297.5Mbps cut despite no injected loss, and ≥840Mbps returns0.5virtualseconds later. Actual production log shows recent500Mbps/slowdown2.00/util0.43/lost0; fresh capacity maximum conflicts with older window. Candidate archived, source restored to6902940f, baseline server rebuilt; no install/live activation. [Raw traces, exact patch, runnable gates, three-panel scientific figure and limits](native-probe-headroom/README.md).
 
+22. **Fresh-peak recovery variants held:** clean actual-controller replays reproduce the stale-p90/max conflict. A removes rise cuts but overshoots in20/47 steady burst phases. B confirms12 post-peak samples and recovers0.764/1.022 virtualseconds sooner at3/10s rises, yet nine probe-phase bursts inflate24Mbps link targets to50Mbps. C bounds positive growth and caps those spikes at26.4Mbps, but20s recovery delays20.833→23.900s. Existing normal/SAN suites pass; temporaryB adds90BBRchecks/fullserverbuild, then allowned source changes revert to6902940f and baseline server rebuild passes. Public wrapper independently reproduces12B/14C CSVs; seven scientific panels, raw/hashes and bounded next-design audit retained. No install/live activation or latency/FPS claim. [Complete held gate](fresh-peak-confirmation/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- No child or owned benchmark jobs remain after this gate. Source6902940f clean/pushed; configured server rebuilt from restored baseline. Owned report publication only. No install, restart, option activation or Pico work.
+- No running owned benchmark/compiler job or Luna task at this checkpoint. Baseline source6902940f is clean; baseline fullserver rebuilt after heldB rollback. Scratch retained: `rate-alignment-audit`, `rate-alignment-gate`, `rate-alignment-root`, `rate-alignment-candidate`, `rate-alignment-confirmed`, `rate-alignment-growth-bounded`, `rate-alignment-next`. Verify state/jobs before resuming; no Pico work or live activation.
 
 ## Next bounded gates
 
-- Gate aligned evidence for the BBR slowdown detector: distinguish a newly rising capacity maximum from genuinely worse delivery. Preserve real loss/radio/capacity-collapse backoff; include step-up/down, stale/app-limited windows and missing feedback. Reconsider the held native late-probe guard only when recovery trajectory improves. No timer/gain cut or merged NX-direct utilisation shortcut justified.
+- Next bounded rate-growth gate: read `fresh-peak-confirmation/NEXT_GATE.md`; test a narrower material-divergence guard and explicit probe-exit drain instead of C's blanket p90 cap. Preserve B's clean rise trajectory and reject new probe overshoots/delayed recovery. All3/5/10/20s rises, both collapse controls, all47 steady/probe offsets and no-burst control required. Do not repeat A/B/C unchanged. Gate aligned evidence for the BBR slowdown detector: distinguish a newly rising capacity maximum from genuinely worse delivery. Preserve real loss/radio/capacity-collapse backoff; include step-up/down, stale/app-limited windows and missing feedback. Reconsider the held native late-probe guard only when recovery trajectory improves. No timer/gain cut or merged NX-direct utilisation shortcut justified.
 - Matched accounting still needs actual per-stream arrival/byte correlation. Pair those with producer/slot waits and fresh stereo delivery before any live benefit claim; default-off diagnostic source exists. No silent install/activation of an active session.
 
 - Diagnose queue dwell before changing drop policy. Do not bypass repair/history or motion-reference ownership based on source speculation.
