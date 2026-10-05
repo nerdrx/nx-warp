@@ -1,0 +1,44 @@
+diff --git a/common/wivrn_sockets.cpp b/common/wivrn_sockets.cpp
+index 07af2679..ff4ab8b7 100644
+--- a/common/wivrn_sockets.cpp
++++ b/common/wivrn_sockets.cpp
+@@ -584,7 +584,8 @@ wivrn::deserialization_packet wivrn::TCP::receive_raw()
+ 	}
+ 	else
+ 	{
+-		uint32_t payload_size = *reinterpret_cast<uint32_t *>(data.data());
++		uint32_t payload_size;
++		memcpy(&payload_size, data.data(), sizeof(payload_size));
+ 		if (payload_size > max_payload)
+ 			throw std::runtime_error("Invalid packet: size " + std::to_string(payload_size));
+ 		expected_size = payload_size + sizeof(uint32_t) - data.size_bytes();
+@@ -596,7 +597,8 @@ wivrn::deserialization_packet wivrn::TCP::receive_raw()
+ 		                                   4096);
+ 		auto old = std::move(buffer);
+ 		buffer = std::make_shared_for_overwrite<uint8_t[]>(new_size);
+-		memcpy(buffer.get(), data.data(), data.size_bytes());
++		if (not data.empty())
++			memcpy(buffer.get(), data.data(), data.size_bytes());
+ 		data = std::span(buffer.get(), data.size());
+ 		capacity_left = new_size - data.size_bytes();
+ 	}
+@@ -624,7 +626,8 @@ wivrn::deserialization_packet wivrn::TCP::receive_raw()
+ 	if (data.size_bytes() < sizeof(uint32_t))
+ 		return {};
+ 
+-	uint32_t payload_size = *reinterpret_cast<uint32_t *>(data.data());
++	uint32_t payload_size;
++	memcpy(&payload_size, data.data(), sizeof(payload_size));
+ 	if (payload_size == 0)
+ 		throw std::runtime_error("Invalid packet: 0 size");
+ 
+@@ -641,7 +644,8 @@ wivrn::deserialization_packet wivrn::TCP::receive_pending()
+ 	if (data.size_bytes() < sizeof(uint32_t))
+ 		return {};
+ 
+-	uint32_t payload_size = *reinterpret_cast<uint32_t *>(data.data());
++	uint32_t payload_size;
++	memcpy(&payload_size, data.data(), sizeof(payload_size));
+ 	if (payload_size == 0)
+ 		throw std::runtime_error("Invalid packet: 0 size");
+ 

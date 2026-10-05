@@ -1,0 +1,15 @@
+[0/2] Re-checking globbed directories...
+[1/23] cd /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server && /usr/bin/cmake -D GIT_EXECUTABLE=/usr/bin/git -D INPUT_FILE=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/version.cpp.in -D OUTPUT_FILE=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/version.cpp -D INPUT_FILE_1=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/u_git_tag.cpp.in -D OUTPUT_FILE_1=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/u_git_tag.cpp -D GIT_TAG="" -D GIT_DESC="" -D GIT_COMMIT="" -P /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/cmake/GitVersion.cmake
+-- Setting version to nx-1.4.1-402-g2f53c2cb from git
+-- Setting commit to 2f53c2cbcd3ba08202b92c53f8bb7ba4ef6685ac
+[2/23] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/version.cpp for CXX dependencies
+[3/23] Generating CXX dyndep file common/CMakeFiles/wivrn-common-base.dir/CXX.dd
+[4/21] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp for CXX dependencies
+[5/21] Generating CXX dyndep file common/CMakeFiles/wivrn-common.dir/CXX.dd
+[6/13] Building CXX object common/CMakeFiles/wivrn-common-base.dir/__/version.cpp.o
+[7/13] Linking CXX static library common/libwivrn-common-base.a
+[8/13] Building CXX object _deps/monado-build/src/xrt/auxiliary/util/CMakeFiles/aux_util.dir/__/__/__/__/__/__/u_git_tag.cpp.o
+[9/13] Linking CXX static library _deps/monado-build/src/xrt/auxiliary/util/libaux_util.a
+[10/13] Building CXX object common/CMakeFiles/wivrn-common.dir/wivrn_sockets.cpp.o
+[11/13] Linking CXX static library common/libwivrn-common.a
+[12/13] Linking CXX executable server/wivrn-server

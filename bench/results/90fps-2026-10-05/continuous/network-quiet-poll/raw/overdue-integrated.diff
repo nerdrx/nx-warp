@@ -1,0 +1,49 @@
+diff --git a/client/decoder/nack_deadline.h b/client/decoder/nack_deadline.h
+index e3b54c33..715a4f31 100644
+--- a/client/decoder/nack_deadline.h
++++ b/client/decoder/nack_deadline.h
+@@ -59,8 +59,9 @@ inline std::chrono::milliseconds nack_poll_timeout(
+ {
+ 	if (not due or max_wait.count() <= 0)
+ 		return max_wait;
++	// The caller services due repairs after poll, then recomputes the deadline.
+ 	if (now >= *due)
+-		return std::chrono::milliseconds{1};
++		return std::chrono::milliseconds{0};
+ 
+ 	// Both times are positive and ordered (guaranteed by nack_poll_deadline).
+ 	const uint64_t remaining = uint64_t(*due) - uint64_t(now);
+diff --git a/docs/ASTC_RECOVERY_POLL.md b/docs/ASTC_RECOVERY_POLL.md
+index 767eb015..822a5163 100644
+--- a/docs/ASTC_RECOVERY_POLL.md
++++ b/docs/ASTC_RECOVERY_POLL.md
+@@ -13,8 +13,12 @@ The timeout supplier runs after pending stream, control, and secondary packets
+ have been drained. It uses each incomplete frame's existing last-shard/NACK
+ timestamps and 2.5 ms quiet gate. An exact missing-shard check is deferred until
+ that gate is due, preserving unknown-tail and parity suppression; at most two
+-existing NACK rounds are possible. Completion checks can scan shard metadata;
+-only exact missing-hole scans are deferred until due. A successful poll services NACKs on the same
++existing NACK rounds are possible. Completion checks use the received-count invariant;
++exact missing-hole scans are deferred until due. Already-confirmed due repairs
++use a zero poll timeout, avoiding an extra 1 ms wait; future deadlines still round
++up to whole milliseconds. Servicing a repair advances its last-NACK timestamp
++or exhausts its two-round budget before the next deadline calculation.
++A successful poll services NACKs on the same
+ network thread under the existing decoder-array shared lock. Enabled polling
+ adds two XR-clock queries per poll cycle, not per shard; device overhead and
+ scheduler delays remain measurement gates. Send errors retain
+diff --git a/tests/accumulator_test.cpp b/tests/accumulator_test.cpp
+index 3336220e..14b639b6 100644
+--- a/tests/accumulator_test.cpp
++++ b/tests/accumulator_test.cpp
+@@ -615,6 +615,10 @@ void part_h()
+ 	CHECK(due(first_due) == first_due);
+ 	CHECK(missing == std::vector<uint16_t>{1});
+ 	CHECK(wivrn::nack_poll_timeout(first_due - 1, due(first_due - 1), std::chrono::milliseconds(100)).count() == 1);
++	CHECK(wivrn::nack_poll_timeout(first_due, due(first_due), std::chrono::milliseconds(100)).count() == 0);
++	CHECK(wivrn::nack_poll_timeout(first_due + 1, due(first_due + 1), std::chrono::milliseconds(100)).count() == 0);
++	CHECK(wivrn::nack_poll_timeout(first_due - quiet, due(first_due - quiet), std::chrono::milliseconds(100)).count() == 3);
++	CHECK(wivrn::nack_poll_timeout(first_due, due(first_due), std::chrono::milliseconds(0)).count() == 0);
+ 	CHECK(wivrn::nack_poll_timeout(1, 1'000'000'001, std::chrono::milliseconds(200)).count() == 100);
+ 	holes.nack_rounds = 1;
+ 	holes.nack_last = first_due;
