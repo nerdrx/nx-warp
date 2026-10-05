@@ -1,0 +1,1 @@
+Initial mode2 disabled history. Before final acceptance it changed to enabled history with no stored blobs, exercising an actual lookup miss. Normal/ASan/UBSan outputs before and after both pass80 assertions with identical outcome counts. Initial sanitizer used O1; final uses O0, with no performance comparison. Original generated CPP remains in owned scratch.

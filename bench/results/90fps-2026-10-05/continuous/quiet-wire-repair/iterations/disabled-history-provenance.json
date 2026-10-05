@@ -1,0 +1,32 @@
+{
+  "head": "6e2293d58acc8b7a20e9276ae25f5e97257b37d9",
+  "generated_cpp_sha256": "5d6dfb7c9370143230a6675efb4e0ce412a203bbc3518c46c937c21f69aa9731",
+  "process_packets": {
+    "lines": [
+      53,
+      105
+    ],
+    "production_sha256": "ce0c80a82a3640d68b3ec651862fb7282bdd538efa8c18d0a1d77695c421c0ca",
+    "projected_sha256": "29deee33f3322b4303ae7002b6afec3a4d9efcfa9defc4978c94fffb0418c49c"
+  },
+  "poll_cpp_sha256": "d60db6dc1399649a2519044cbae9615e77190886eebad2385a036ed63571c83f",
+  "accumulator_cpp_sha256": "b3a66a8e0150d7c4246f2279a7529c216d6a53cc89e9e476683289db3fb02fb6",
+  "scope": "Host typed UDP arrivals and exact push/poll/service bodies; accumulator constructor, parity drain, config, scene, XR and decoder are substitutes.",
+  "exact_push_shard": {
+    "source_sha256": "0167a6f28e9b6110c2606f5a53f76055c873a1e09dead737a2b6ff919f6a7429",
+    "source_lines": [
+      176,
+      214
+    ],
+    "scope": "exact production method; drain_parity stubbed because fixture carries data shards only"
+  },
+  "fixture": "typed IPv6 localhost UDP data shards -> exact process_packets poll visitor -> exact extracted push_shard; steady_clock now() stand-in; fake XR, decoder, scene, parity drain; no Android/network server",
+  "wire_join_scope": "Typed UDP reverse NACK receive, actual enabled-primary history collect/FEC blob decode, typed data reply into exact push_shard. Synchronous peer before next poll; not actual server handler or radio.",
+  "wire_dependency_hashes": {
+    "server/encoder/shard_history.h": "4ab418b9b23e3f5f92e59f481273e7ba17c12c8df27ec4c323a39dd9f8f7eb80",
+    "common/fec.h": "7b15a9c41ba83cbc0a7841776fa882a9d7944eba21a3de9aba716de6486712be",
+    "common/wivrn_packets.h": "a12c3ba86742cd8a25d7cd7a0460607d03535f2ad5fbecce894b5e1f53a031bc",
+    "common/wivrn_sockets.cpp": "de1ecc1cd41749eeeb62801f43a48f5307ca5115a387fff60adff2f192226661",
+    "common/wivrn_sockets.h": "a54947f326e9d28977781f6dcc2ebc27f38e4d614eb8aa626c1d8fa6c4e84334"
+  }
+}

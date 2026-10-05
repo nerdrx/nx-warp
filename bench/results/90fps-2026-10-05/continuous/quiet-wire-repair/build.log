@@ -1,0 +1,56 @@
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/fec.h:22,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:3:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp: In function ‘data_shard make_wire_shard(uint64_t, uint16_t, bool)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:667:301: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::pose’ [-Wmissing-field-initializers]
+  667 | static data_shard make_wire_shard(uint64_t frame,uint16_t index,bool terminal=false){data_shard d{};d.stream_item_idx=0;d.frame_idx=frame;d.shard_idx=index;auto&b=wire_bytes[frame][index];b.fill(uint8_t(0x20+frame*4+index));d.payload=b;if(index==0)d.view_info=data_shard::view_info_t{.display_time=42};if(terminal)d.timing_info=data_shard::timing_info_t{1,2,3,4};return d;}
+      |                                                                                                                                                                                                                                                                                                             ^
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:667:301: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::fov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:667:301: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::foveation’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:667:301: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::alpha’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:667:301: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::quad’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp: In lambda function:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-wire-repair/public-final/kernel-gate.cpp:692:60: warning: missing initializer for member ‘pollfd::revents’ [-Wmissing-field-initializers]
+  692 |   pollfd ready{.fd=session.udp_peer.get_fd(),.events=POLLIN};
+      |                                                            ^
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.h:24,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:20:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘std::pair<wivrn::deserialization_packet, sockaddr_in6> wivrn::UDP::receive_from_raw()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:320:30: warning: comparison of integer expressions of different signedness: ‘ssize_t’ {aka ‘long int’} and ‘long unsigned int’ [-Wsign-compare]
+  320 |                 if (received < sizeof(uint64_t))
+      |                     ~~~~~~~~~^~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘wivrn::deserialization_packet wivrn::UDP::receive_raw()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  410 |                 };
+      |                 ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘size_t wivrn::UDP::send_many_raw(std::span<wivrn::serialization_packet>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  547 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size() + 1}});
+      |                         ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_iov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  549 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size()}});
+      |                         ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_iov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
