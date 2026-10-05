@@ -1,0 +1,9 @@
+# Host timing patch review
+
+Read-only review of current compositor diff and `extract_host.py`; no source edits, GPU/session run, or production build.
+
+The instrumentation is guarded correctly: `dump_timings_enabled()` is sampled once, and every new monotonic clock call plus `std::format`/CSV emission is behind `host_timing`. The stage array is local to the serialized multi-system worker callback. `host_dump` runs only after stage end stamps, so CSV flushes are outside reported intervals, though the per-row `std::endl` flushes can perturb later frames. CSV output uses existing `dump_time` field order; `uint8_t(-1)` is emitted as integer `255`, matching the extractor. The shared compositor/pacer frame IDs follow the same `pacer.predict` frame id.
+
+Intervals map coherently: retirement poll (only when pending), image acquisition, command-pool reset through `cmd.end` recording, queue-mutex acquisition, reset-fence/`submit2`, encoder `present_image` calls, timeline wait, query-result wait, and deferred GC. The encoder-present interval ends before `encode_request.exchange/notify`, so it excludes that notification. Missing intervals for skipped/error paths are absent, not measured as zero. `extract_host.py --self-check` passed; those fixtures are synthetic only. The parser validates field count, bounds, sentinel stream and outcome, rejects duplicate frame/stage rows, and keeps raw rows; summary percentiles group by stage and outcome, with N shown.
+
+The corrected `compositor_encoder_present` name describes the timed method calls; it is not actual display/presentation, and may include encoder-side slot waiting. Other scope limits: frames rejected by the earlier busy/disconnected/session gate produce no host rows; CSV flush overhead is excluded from intervals but can influence subsequent frames. No other control-flow, locking, lifetime, disabled-path, or parser defect found in this source review.

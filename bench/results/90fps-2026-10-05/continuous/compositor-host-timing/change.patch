@@ -1,0 +1,163 @@
+diff --git a/server/compositor/compositor.cpp b/server/compositor/compositor.cpp
+index db9b6d19..061489e3 100644
+--- a/server/compositor/compositor.cpp
++++ b/server/compositor/compositor.cpp
+@@ -806,12 +806,36 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		return XRT_SUCCESS;
+ 	}
+ 
++	// Collect host intervals locally: CSV flushing must not enter a later interval.
++	const bool host_timing = session.dump_timings_enabled();
++	const uint64_t host_frame_id = frame.rendering.id;
++	static constexpr std::array host_stage_names{
++	        "compositor_retirement_poll", "compositor_acquire", "compositor_record",
++	        "compositor_queue_lock", "compositor_submit", "compositor_encoder_present",
++	        "compositor_timeline_wait", "compositor_query_wait", "compositor_gc"};
++	std::array<int64_t, 2 * host_stage_names.size()> host_times{};
++	auto host_stamp = [&](size_t index) {
++		if (host_timing)
++			host_times[index] = os_monotonic_get_ns();
++	};
++	auto host_dump = [&](uint64_t frame_id, const char * outcome) {
++		if (host_timing)
++			for (size_t stage = 0; stage < host_stage_names.size(); ++stage)
++				if (host_times[2 * stage] and host_times[2 * stage + 1])
++					session.dump_time(host_stage_names[stage], frame_id, host_times[2 * stage + 1], uint8_t(-1),
++					                  std::format(",{},{}", host_times[2 * stage], outcome).c_str());
++	};
++
+ 	// Never reset recording resources while the previous submission is pending.
+ 	// A compute timeline wait does not cover a later mirror transfer.
+ 	if (submission_pending)
+ 	{
+-		if (vk.device.waitForFences(*submission_fence, true, 0) == vk::Result::eTimeout)
++		host_stamp(0);
++		const auto retirement = vk.device.waitForFences(*submission_fence, true, 0);
++		host_stamp(1);
++		if (retirement == vk::Result::eTimeout)
+ 		{
++			host_dump(host_frame_id, "retirement_timeout");
+ 			comp_frame_clear_locked(&frame.rendering);
+ 			return XRT_SUCCESS;
+ 		}
+@@ -819,9 +843,12 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		motion_unsafe = false;
+ 	}
+ 
++	host_stamp(2);
+ 	int i = acquire_image();
++	host_stamp(3);
+ 	if (i < 0)
+ 	{
++		host_dump(host_frame_id, "no_image");
+ 		comp_frame_clear_locked(&frame.rendering);
+ 		return XRT_SUCCESS;
+ 	}
+@@ -848,6 +875,7 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 
+ 	session.dump_time("begin", frame.rendering.id, os_monotonic_get_ns());
+ 
++	host_stamp(4);
+ 	cmd_pool.reset();
+ 	cmd.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+ 
+@@ -1160,6 +1188,7 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ #endif
+ 
+ 	cmd.end();
++	host_stamp(5);
+ 
+ 	const vk::SemaphoreSubmitInfo sem_info{
+ 	        .semaphore = *sem,
+@@ -1171,7 +1200,10 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		vk::CommandBufferSubmitInfo cmd_info{
+ 		        .commandBuffer = cmd,
+ 		};
++		host_stamp(6);
+ 		std::unique_lock lock{vk.queue.mutex};
++		host_stamp(7);
++		host_stamp(8);
+ 		vk.device.resetFences(*submission_fence);
+ 		vk.queue.queue.submit2(vk::SubmitInfo2{
+ 		        .commandBufferInfoCount = 1,
+@@ -1181,6 +1213,7 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		}, *submission_fence);
+ 		sem_value = sem_info.value;
+ 		submission_pending = true;
++		host_stamp(9);
+ 	}
+ 
+ #if WIVRN_USE_PIPEWIRE
+@@ -1194,6 +1227,7 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 	pacer.mark_timing_point(COMP_TARGET_TIMING_POINT_SUBMIT_END, frame.rendering.id, os_monotonic_get_ns());
+ 	auto info = pacer.present_to_info(frame.rendering.desired_present_time_ns);
+ 
++	host_stamp(10);
+ 	for (auto & encoder: encoders)
+ 	{
+ 		if (not encoder)
+@@ -1216,6 +1250,7 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		        view_info);
+ 	}
+ 
++	host_stamp(11);
+ 	auto j = encode_request.exchange(i);
+ 	encode_request.notify_all();
+ 	assert(j == -1);
+@@ -1227,12 +1262,15 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 
+ 	comp_frame_clear_locked(&frame.rendering);
+ 
+-	if (vk.device.waitSemaphores(vk::SemaphoreWaitInfo{
++	host_stamp(12);
++	const auto timeline = vk.device.waitSemaphores(vk::SemaphoreWaitInfo{
+ 	                                     .semaphoreCount = 1,
+ 	                                     .pSemaphores = &*sem,
+ 	                                     .pValues = &sem_info.value,
+ 	                             },
+-	                             U_TIME_1S_IN_NS) == vk::Result::eTimeout)
++	                             U_TIME_1S_IN_NS);
++	host_stamp(13);
++	if (timeline == vk::Result::eTimeout)
+ 	{
+ 		U_LOG_IFL_W(log_level, "compositor timeout");
+ 		// The submission may still be running, and it may hold estimator work.
+@@ -1245,12 +1283,14 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 	{
+ 		motion_unsafe = false;
+ 
++		host_stamp(14);
+ 		auto [res, ts] = query_pool.getResults<uint64_t>(
+ 		        0,
+ 		        5,
+ 		        5 * sizeof(uint64_t),
+ 		        sizeof(uint64_t),
+ 		        vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait);
++		host_stamp(15);
+ 
+ 		if (res == vk::Result::eSuccess)
+ 		{
+@@ -1267,7 +1307,10 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 	}
+ 
+ 	// Now is a good point to garbage collect.
++	host_stamp(16);
+ 	comp_swapchain_shared_garbage_collect(&cscs);
++	host_stamp(17);
++	host_dump(info.frame_id, timeline == vk::Result::eTimeout ? "timeline_timeout" : "submitted");
+ 
+ 	return XRT_SUCCESS;
+ }
+diff --git a/server/driver/wivrn_session.h b/server/driver/wivrn_session.h
+index 501a7741..64a75707 100644
+--- a/server/driver/wivrn_session.h
++++ b/server/driver/wivrn_session.h
+@@ -314,6 +314,8 @@ public:
+ 
+ 	void dump_time(const std::string & event, uint64_t frame, int64_t time, uint8_t stream = -1, const char * extra = "");
+ 
++	bool dump_timings_enabled() const { return feedback_csv.is_open(); }
++
+ 	// One video frame of one stream finished going out, with the number of bytes it put on
+ 	// the wire (parity shards included). Called from the encoder's send path; only the
+ 	// bandwidth estimating bitrate control law uses it, and it takes no lock of its own.
