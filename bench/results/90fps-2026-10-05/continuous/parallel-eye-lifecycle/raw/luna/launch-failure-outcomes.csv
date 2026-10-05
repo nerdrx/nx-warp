@@ -1,0 +1,12 @@
+scenario,overlap,max_active,left_calls,right_calls,aux_calls,image_busy_after,snapshot_alive_while_blocked,snapshot_expired_after_join,quad_calls
+option_absent_fallback,0,1,1,1,0,0,0,0,0
+option_off_fallback,0,1,1,1,0,0,0,0,0
+nonexact_flag_fallback,0,1,1,1,0,0,0,0,0
+hardware_fallback,0,1,1,1,0,0,0,0,0
+auxiliary_fallback,0,1,1,1,1,0,0,0,0
+missing_eye_fallback,0,1,1,0,0,0,0,0,0
+quad_fallback,0,1,1,1,0,0,0,0,1
+parallel_two_astc_snapshot_release,1,2,1,1,0,0,1,1,0
+left_exception,0,1,1,1,0,0,0,0,0
+right_exception,0,1,1,1,0,0,0,0,0
+injected_launch_failure_fallback,0,1,1,1,0,0,0,0,0

@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 15:52 UTC
+## Current verified state — 16:20 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed09e7951a; controller D hashes unchanged; exact built timing-diagnostic source verified. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -60,9 +60,11 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 26. **Matched sender/receiver G held; exact capture added:** root two timing regimes ×61,200rows/mode (244,800noisy total), 19 independent boundary cases and ten valid-metadata stereo capacity traces. Service model selected1.5× spike peak39.6→26.4Mbps and later minimum16.8→20.4; pacing-only all61,200rows exactD, including bad spike/cut. All ten capacity traces exactD;20s recovery unchanged20.833333125virtuals. Five normal/SAN suites pass (BBR101); G remains scratch, no fullserverbuild/integration/live claim. Source09e7951a adds seven CSV-guarded lines capturing exact feedback send/receive pairs and byte counts with existing WIVRN_DUMP_TIMINGS, no new clocks/formatting disabled. Fullserver build passes; parser checks/public replay retained. No install/restart/activation or Pico work. [Four-panel figure, raw data, held source, extractor and scope](matched-delivery-spans/README.md).
 
+27. **Parallel-eye lifecycle gate passes; retirement boundary audited:** exact current compositor control block, real CPU async threads, mocked encoder backends and current stream constants. Normal and ASan/UBSan each pass60checks; injected launch failure passes64. Root independently rebuilds/replays all four, checks observed invariants and matches extraction/provenance bytes. Controlled overlap, join-before-image-release, encoder snapshot lifetime, both standard exceptions and serial eligibility/fallback pass. No TSan/race-freedom/GPU/API/performance claim. Current shared compositor pool reset after timeout needs explicit retirement protection; source/spec concern, no reproduced Vulkan fault or driver diagnosis. No production/install/live change. [Raw evidence, runnable checks, observed-outcome figure and audit](parallel-eye-lifecycle/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Root matched-span independent gates and both bounded Luna prototype/semantics/diagnostic tasks completed. No owned tests remain at publication. Scratch `matched-spans-root` and `matched-spans-candidate` retained. Source09e7951a built/pushed; controller D unchanged, G held. Inspect actual jobs/state before resuming.
+- Root is publishing the completed actual-source CPU lifecycle gate. Cheap Luna `zstd_worker_gate` owns a read-only minimal compositor retirement proposal in scratch `pc-lifecycle-gate/RETIREMENT_PROPOSAL.md`; assess timeout→next-commit behavior, existing timeline APIs and ownership before any source change. No GPU/Pico jobs, production changes or runtime activation. Do not duplicate.
 
 ## Next bounded gates
 
