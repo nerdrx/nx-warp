@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-05/continuous/steady-evidence/validation/recovery-gate.py", line 5, in <module>
+    assert all(float(r["F_first_840Mbps_at_s"])<=float(r["D_first_840Mbps_at_s"]) for r in rows), "F delays clean capacity recovery; do not integrate"
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: F delays clean capacity recovery; do not integrate

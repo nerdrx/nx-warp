@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 14:46 UTC
+## Current verified state — 15:15 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed412a2bfe; source hashes match tested code. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -56,13 +56,15 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 24. **Noisy-feedback coverage and probe-only E candidate held:** root new17×2×1800 fixture gives61,200 rows/mode (baseline/D/E), including moderate/repeated timestamp bursts, tiny maxima, callback pauses, app-limited periods and loss/collapse. D suppresses pathological repeated-record oscillation in one new example, but moderate probe spikes remain33/39.6Mbps on an assumed24Mbps link. E lowers selected peaks to26.4/30.6Mbps (20/22.7%), yet retains steady growth spikes and false cuts. All eight legacy rise traces match D;250collapse exact;300collapse126rows differ≤47bps only, other fields exact. No-burst peak differs2bps only; strict exact acceptance fails and is retained. Five normal/SAN suites pass; root independently reproduces14 legacy E CSVs. Four-panel inspected scientific figure, raw checks/hashes retained. Production412a2bfe untouched; E not built into fullserver, installed or enabled. [Evidence and hold decision](noisy-feedback/README.md).
 
+25. **Steady-evidence F held; actual timestamp provenance audited:** F caps selected single/repeated1.5× noisy cases at ordinary26.4Mbps probe instead of30.6/39.6 and removes16.8Mbps cuts in those cases. Root61,200-row noisy dataset and independent14CSV legacy reproduction retained; five normal/SAN suites pass. Clean3/5/10 recovery timing unchanged, but20s ≥840Mbps recovery delays20.833→23.900s (+3.067virtuals); failed recovery gate retained, no production integration/build/install. Four-panel inspected figure and scoped audits show software receive timestamps and existing per-eye send metadata. [Evidence, source and research direction](steady-evidence/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Root noisy-feedback and independent E gates completed; both bounded Luna tasks completed. No owned test jobs running at publication. Source412a2bfe remains clean/pushed, last fullserver buildD; no runtime/Pico changes. Verify actual state before resuming. Scratch `noisy-feedback-root`, `noisy-feedback-audit`, `noisy-probe-candidate` retained; E held as public source snapshot.
+- Root F/noisy/stereo gates and bounded Luna source/test/timestamp audits completed; no owned test jobs running at publication. Source412a2bfe clean/pushed, last fullserver buildD; no runtime/Pico changes. Inspect actual state before resuming. Scratch `steady-evidence-root`, `steady-evidence-candidate`, `arrival-timestamp-audit` retained. E/F remain held public snapshots.
 
 ## Next bounded gates
 
-- Next bounded gate: decide how ordinary steady growth admits moderate fast outliers, preserving D’s exact clean-rise trajectories. Probe-only E moves/reduces excursions but does not solve steady maximum admission. Read `noisy-feedback/README.md`; do not repeat unchanged A/B/C/E. Keep missing/stale/app-limited and tiny-record controls; do not invent a jitter margin without defensible timestamp-resolution evidence. Reconsider held native late-probe suppression only with a combined recovery test against production412a2bfe. No timer/gain cut or merged NX-direct utilisation shortcut justified.
+- Next bounded gate: matched sender/receiver interval sampling using existing per-eye feedback send endpoints, rather than more percentile/growth heuristics. Read `steady-evidence/RESEARCH.md` and both actual-source audits. Test ACK/dispatch-compressed arrivals, complete matching streams, serial/overlapping eyes, clock-origin shifts, missing/zero/reversed metadata, repair/late completion and existing clean rises/collapses/noisy controls. Preserve receive-based utilisation and app-limited admission; no new protocol fields or arbitrary timestamp margin justified. Do not repeat unchanged A/B/C/E/F.
 
 - Matched accounting still needs actual per-stream arrival/byte correlation. Pair those with producer/slot waits and fresh stereo delivery before any live benefit claim; default-off diagnostic source exists. No silent install/activation of an active session.
 
