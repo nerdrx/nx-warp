@@ -1,0 +1,34 @@
+[0/2] Re-checking globbed directories...
+[1/88] cd <source>/build-server && /usr/bin/cmake -D GIT_EXECUTABLE=/usr/bin/git -D INPUT_FILE=<source>/common/version.cpp.in -D OUTPUT_FILE=<source>/build-server/version.cpp -D INPUT_FILE_1=<source>/server/u_git_tag.cpp.in -D OUTPUT_FILE_1=<source>/build-server/u_git_tag.cpp -D GIT_TAG="" -D GIT_DESC="" -D GIT_COMMIT="" -P <source>/cmake/GitVersion.cmake
+-- Setting version to nx-1.4.1-391-gd3f428bb from git
+-- Setting commit to d3f428bb302c0b63e0ac62845b8c4af875adc23e
+[2/80] Scanning <source>/server/compositor/quad_converter.cpp for CXX dependencies
+[3/80] Scanning <source>/server/compositor/compositor.cpp for CXX dependencies
+[4/80] Scanning <source>/server/encoder/encoder_settings.cpp for CXX dependencies
+[5/80] Scanning <source>/server/encoder/video_encoder.cpp for CXX dependencies
+[6/80] Scanning <source>/server/encoder/video_encoder_raw.cpp for CXX dependencies
+[7/80] Scanning <source>/server/encoder/video_encoder_pyrowave.cpp for CXX dependencies
+[8/80] Scanning <source>/server/encoder/video_encoder_astc.cpp for CXX dependencies
+[9/80] Scanning <source>/server/encoder/video_encoder_nvenc.cpp for CXX dependencies
+[10/80] Scanning <source>/server/encoder/ffmpeg/video_encoder_ffmpeg.cpp for CXX dependencies
+[11/80] Scanning <source>/server/encoder/ffmpeg/video_encoder_va.cpp for CXX dependencies
+[12/80] Scanning <source>/server/encoder/video_encoder_vulkan.cpp for CXX dependencies
+[13/80] Scanning <source>/server/encoder/video_encoder_vulkan_h264.cpp for CXX dependencies
+[14/80] Scanning <source>/server/encoder/video_encoder_vulkan_h265.cpp for CXX dependencies
+[15/80] Scanning <source>/server/encoder/video_encoder_x264.cpp for CXX dependencies
+[16/80] Generating CXX dyndep file server/CMakeFiles/wivrn-server.dir/CXX.dd
+[17/32] Building CXX object server/CMakeFiles/wivrn-server.dir/compositor/quad_converter.cpp.o
+[18/32] Building CXX object server/CMakeFiles/wivrn-server.dir/compositor/compositor.cpp.o
+[19/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/encoder_settings.cpp.o
+[20/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder.cpp.o
+[21/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_raw.cpp.o
+[22/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_pyrowave.cpp.o
+[23/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_astc.cpp.o
+[24/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_nvenc.cpp.o
+[25/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/ffmpeg/video_encoder_ffmpeg.cpp.o
+[26/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/ffmpeg/video_encoder_va.cpp.o
+[27/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_vulkan.cpp.o
+[28/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_vulkan_h264.cpp.o
+[29/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_vulkan_h265.cpp.o
+[30/32] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder_x264.cpp.o
+[31/32] Linking CXX executable server/wivrn-server
