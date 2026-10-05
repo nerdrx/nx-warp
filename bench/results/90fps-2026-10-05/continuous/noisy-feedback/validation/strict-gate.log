@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-05/continuous/noisy-feedback/validation/strict-gate.py", line 5, in <module>
+    assert (root/"gates-E/capacity/fall300-clean.csv").read_bytes()==(D/"capacity/fall300-clean.csv").read_bytes(), "E fails byte-exact 300 Mbps collapse control (only <=47 bps target rounding)"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: E fails byte-exact 300 Mbps collapse control (only <=47 bps target rounding)
