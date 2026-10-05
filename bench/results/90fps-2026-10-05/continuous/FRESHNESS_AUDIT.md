@@ -18,3 +18,21 @@ Audited checkout `wt-pyrowave-probe`, revision `7b7ae3600951d90b07466053bbcda45f
 The exact path does not currently report pending-queue dwell or count oldest-packet drops, so source inspection cannot show whether either queue actually reaches its limit. If runtime evidence later points here, the smallest useful diagnostic is a fixed-window count of server pending drops and decoder oldest-pending drops plus `frame_completed`-to-worker-dequeue age, tagged by stream and encoding mode. Keep it diagnostic-only; do not cancel in-flight decode or change queue policy until motion-reference behavior is separately proven. Existing ASTC worker timing reports decode/staging copy, prior upload fence, and submit-to-handoff, but not queue dwell (`client/decoder/astc/decoder.cpp:514-524`).
 
 This is a source audit only: no measured frame age, live queue occupancy, latency, Wi-Fi, or display result is claimed.
+
+## Diagnostic follow-up validation
+
+The separate bounded diagnostic change is in `client/decoder/astc/decoder.cpp` and `.h`: queue timestamps/counters are gated by exact Android property `debug.wivrn.nx.astc_queue_timing=1` and are included in the existing 180-success-frame summary as mean and maximum enqueue-to-dequeue dwell plus oldest-pending drop count. The previous summary was not otherwise opt-in; when the property is off, the old log format remains and the new timestamp/counter path does not run.
+
+The exact Android arm64 decoder object target first compiled successfully (exit 0):
+
+```sh
+ninja -C .cxx/Debug/0111g1i3/arm64-v8a client/CMakeFiles/wivrn.dir/decoder/astc/decoder.cpp.o
+```
+
+I also attempted the broader native target so consumers of the class header would rebuild:
+
+```sh
+ninja -C .cxx/Debug/0111g1i3/arm64-v8a wivrn -j4
+```
+
+That target stopped with exit 1 at an unrelated NXWarp compile because its Debug cache referenced a stale NXWarp source directory and `client/decoder/nxwarp/nxwarp_reassemble.h:52` could not find `nxvc/transport/common.h`. The full Debug output is retained in [`android-native-wivrn.log`](android-native-wivrn.log). The existing RelWithDebInfo arm64 cache pointed at `/run/media/nerdrx/Lex/claude/nx-warp`; its full `wivrn` target passed before and after the final max-dwell addition. The final incremental rebuild output is in [`android-relwithdebinfo-wivrn-final.log`](android-relwithdebinfo-wivrn-final.log), exit 0. No APK, installation, or runtime metric verification was attempted.
