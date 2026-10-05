@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 12:40 UTC
+## Current verified state — 13:10 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed6902940f; source hashes match tested code. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -47,13 +47,16 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 20. **Coupled serial-eye budget response reproduced:** actual controller/pacing-slot helpers, paired-ready ideal service, fully loaded media target,500Mbps/2Gbps assumed capacities. After1200virtual frames, narrow baseline estimates1Gbps/targets850Mbps; corrected estimates500/targets425Mbps. Wide control retains1Gbps ceiling. Root independently reproduces all4800rows byte-for-byte, including output path spaces and basic schedule checks. Unbounded ideal-service overrun is NOT actual sender backlog; queues/drops/FEC/encoder load/feedback delay omitted. Periodic probes still temporarily exceed the narrow capacity/deadline. No source/live change from this follow-up. [Raw traces, model limits, runnable gate and figure](stereo-rate-coupled/README.md).
 
+
+21. **Native late-feedback probe guard held:** candidate steady-state admission suppresses both deliberately raised probes during synthetic display drops (both eyes or one eye), clean/input-boundary dynamics unchanged. Root reproduces all28,800 actual-controller/pacer rows; normal/SAN BBR90checks, five suites/3extras and full server build pass. Recovery trajectory fails:425→297.5Mbps cut despite no injected loss, and ≥840Mbps returns0.5virtualseconds later. Actual production log shows recent500Mbps/slowdown2.00/util0.43/lost0; fresh capacity maximum conflicts with older window. Candidate archived, source restored to6902940f, baseline server rebuilt; no install/live activation. [Raw traces, exact patch, runnable gates, three-panel scientific figure and limits](native-probe-headroom/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- No running child or owned benchmark jobs after the completed gates. Source6902940f is clean/pushed; item19 report and item20 follow-up are owned publication work. Verify report remote after commit. No install, server restart, experimental flag activation or Pico work.
+- No child or owned benchmark jobs remain after this gate. Source6902940f clean/pushed; configured server rebuilt from restored baseline. Owned report publication only. No install, restart, option activation or Pico work.
 
 ## Next bounded gates
 
-- New coupled trace exposes short periodic probes whose modeled total serial interval exceeds the desired period even when max per-eye utilisation is below1. Review existing probe/ceiling controls and prior tests before considering a bounded native deadline-aware probe gate. Do not restore a merged utilisation envelope for unrelated NX-direct wire IDs, disable capacity rediscovery blindly or infer real missed refreshes from this model.
+- Gate aligned evidence for the BBR slowdown detector: distinguish a newly rising capacity maximum from genuinely worse delivery. Preserve real loss/radio/capacity-collapse backoff; include step-up/down, stale/app-limited windows and missing feedback. Reconsider the held native late-probe guard only when recovery trajectory improves. No timer/gain cut or merged NX-direct utilisation shortcut justified.
 - Matched accounting still needs actual per-stream arrival/byte correlation. Pair those with producer/slot waits and fresh stereo delivery before any live benefit claim; default-off diagnostic source exists. No silent install/activation of an active session.
 
 - Diagnose queue dwell before changing drop policy. Do not bypass repair/history or motion-reference ownership based on source speculation.

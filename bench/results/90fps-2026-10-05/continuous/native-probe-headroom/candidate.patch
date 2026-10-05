@@ -1,0 +1,113 @@
+diff --git a/server/driver/bitrate_controller.cpp b/server/driver/bitrate_controller.cpp
+index 6fb669d1..882971e6 100644
+--- a/server/driver/bitrate_controller.cpp
++++ b/server/driver/bitrate_controller.cpp
+@@ -1300,7 +1300,11 @@ std::optional<uint32_t> bitrate_controller::evaluate_bbr(clock::time_point now,
+ 				// One probe every probe_interval, to rediscover capacity that came
+ 				// back. Never into a falling radio: that is walking into the wall v1
+ 				// used to walk into with its blind additive increase.
+-				if (not radio_hold and now - last_probe >= (quality_mode ? std::chrono::milliseconds{500} : probe_interval) and bitrate < effective_ceiling())
++				// Ordinary video also waits while images reported decoded are dropped before
++				// presentation. This blocks extra load, not a loss-based backoff;
++				// direct quality mode already holds its target on this feedback below.
++				if (not radio_hold and (quality_mode or s.late == 0) and
++				    now - last_probe >= (quality_mode ? std::chrono::milliseconds{500} : probe_interval) and bitrate < effective_ceiling())
+ 				{
+ 					bbr_st = bbr_state::probe;
+ 					probe_until = now + probe_duration;
+diff --git a/server/driver/bitrate_controller.h b/server/driver/bitrate_controller.h
+index e4ff7950..f199f4b3 100644
+--- a/server/driver/bitrate_controller.h
++++ b/server/driver/bitrate_controller.h
+@@ -155,13 +155,15 @@ namespace wivrn
+ //          (the user walked towards the router again) is rediscovered instead of waiting for
+ //          the ten second maximum filter to age out. Skipped while the radio says the link is
+ //          degrading: probing into a fall is how v1's blind additive increase used to hurt.
++//          Ordinary video also postpones new probes while the feedback window contains
++//          images dropped before presentation; that alone does not trigger a bitrate cut.
+ //          A probe is a deliberate overshoot — on a link that is already the bottleneck it
+ //          will by construction stretch the frames past a frame period — so while one is
+-//          running its own overshoot is not read as congestion. Only frames actually lost or
+-//          dropped are, those are never worth a probe. Returning to steady right afterwards
++//          running its own overshoot is not read as congestion. Actual loss still counts,
++//          including loss alongside dropped images. Returning to steady right afterwards
+ //          is the drain, and it happens without waiting out the steady interval.
+ // backoff: on the same acute signals v1 treats as congestion — frames that never arrived,
+-//          frames decoded but never shown, utilisation at the ceiling — or on the slowdown
++//          decoded drops alongside loss, utilisation at the ceiling — or on the slowdown
+ //          above, the maximum filter is first capped to what the link is measurably doing
+ //          right now (its ten second memory has just been proven stale by an event rather
+ //          than aged out), and the bitrate goes to 0.7 times that. The state returns to
+diff --git a/tests/bitrate_bbr_test.cpp b/tests/bitrate_bbr_test.cpp
+index 81d1e548..49d3d3aa 100644
+--- a/tests/bitrate_bbr_test.cpp
++++ b/tests/bitrate_bbr_test.cpp
+@@ -138,7 +138,7 @@ struct harness
+ 
+ 	// One frame on stream 0, with an explicit byte count and wire time. Everything else
+ 	// derives from these two.
+-	void feed_raw(uint64_t bytes, int64_t wire, bool lost = false, bool late = false)
++	void feed_raw(uint64_t bytes, int64_t wire, bool lost = false, bool late = false, bool decode_reported = true)
+ 	{
+ 		const uint64_t index = frame++;
+ 
+@@ -156,8 +156,8 @@ struct harness
+ 		{
+ 			fb.received_last_packet = base + wire;
+ 			fb.sent_to_decoder = base + wire;
+-			fb.received_from_decoder = base + wire + period;
+-			if (not late)
++			fb.received_from_decoder = decode_reported ? base + wire + period : 0;
++			if (not late and decode_reported)
+ 			{
+ 				fb.blitted = base + wire + 2 * period;
+ 				fb.times_displayed = 1;
+@@ -333,6 +333,40 @@ bool near(uint32_t value, double expected, double tolerance = 0.08)
+ 	return std::abs(double(value) - expected) <= tolerance * expected;
+ }
+ 
++void native_late_feedback_holds_new_probes()
++{
++	std::printf("Native BBR: display drops hold new probes without loss backoff\n");
++	harness h(mode::bbr, 24e6);
++	const uint32_t steady = h.quiet();
++	uint32_t low = steady, high = steady;
++	for (int i = 0; i < 1800; ++i)
++	{
++		h.feed_frame(false, true);
++		low = std::min(low, h.current());
++		high = std::max(high, h.current());
++	}
++	// Rounding of modeled bytes can move the estimate by a few bits per second.
++	CHECK(high <= steady + 100);
++	CHECK(low + 100 >= steady);
++
++	// Do not latch the hold: clean feedback and returned capacity still recover.
++	h.capacity = 48e6;
++	h.seconds(20);
++	CHECK(near(h.quiet(), settled(48e6)));
++
++	// Decoder-input feedback has times_displayed == 0 too; it is not a drop.
++	harness early(mode::bbr, 24e6);
++	const uint32_t early_steady = early.quiet();
++	uint32_t early_high = early_steady;
++	for (int i = 0; i < 1800; ++i)
++	{
++		const auto bytes = early.frame_bytes();
++		early.feed_raw(bytes, early.wire_ns(bytes), false, false, false);
++		early_high = std::max(early_high, early.current());
++	}
++	CHECK(early_high > early_steady + 1'000'000);
++}
++
+ void part_a()
+ {
+ 	std::printf("Part A: a link with room to spare stays at the ceiling\n");
+@@ -750,6 +784,7 @@ int main(int argc, char ** argv)
+ 	verbose = argc > 1 and std::string(argv[1]) == "-v";
+ 
+ 	stereo_rate_uses_matching_stream_bytes_and_union_span();
++	native_late_feedback_holds_new_probes();
+ 	part_a();
+ 	part_b();
+ 	part_c();
