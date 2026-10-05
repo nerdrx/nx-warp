@@ -1,0 +1,11 @@
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/fec.h:22,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client/decoder/shard_set.h:22,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-service/root-checks/caller/caller-gate.cpp:22:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static constexpr void wivrn::serialization_traits<wivrn::data_holder>::type_hash(wivrn::details::hash_context&)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:65: warning: unused parameter ‘h’ [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                         ~~~~~~~~~~~~~~~~~~~~~~~~^

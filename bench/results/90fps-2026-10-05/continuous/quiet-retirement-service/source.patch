@@ -1,0 +1,127 @@
+commit 6e2293d58acc8b7a20e9276ae25f5e97257b37d9
+Author:     nerdrx <66845818+nerdrx@users.noreply.github.com>
+AuthorDate: Mon Oct 5 21:14:24 2026 +0200
+Commit:     nerdrx <66845818+nerdrx@users.noreply.github.com>
+CommitDate: Mon Oct 5 21:14:24 2026 +0200
+
+    Service opt-in ASTC retirement during quiet recovery polls
+
+diff --git a/client/decoder/shard_accumulator.cpp b/client/decoder/shard_accumulator.cpp
+index c77fc505..6a2b4236 100644
+--- a/client/decoder/shard_accumulator.cpp
++++ b/client/decoder/shard_accumulator.cpp
+@@ -26,6 +26,7 @@
+ #include "xr/instance.h"
+ 
+ #include <algorithm>
++#include <limits>
+ #include <span>
+ #include <vector>
+ #ifdef __ANDROID__
+@@ -115,10 +116,35 @@ std::optional<XrTime> shard_accumulator::next_nack_deadline(XrTime now)
+ 	return earliest;
+ }
+ 
++std::optional<XrTime> shard_accumulator::next_poll_deadline(XrTime now)
++{
++	auto due = next_nack_deadline(now);
++	if (not nxastc_codec or not astc_deadline_enabled or window.front().empty() or
++	    window.front().complete() or not window.has_newer_complete_than_front())
++		return due;
++
++	const auto scene = weak_scene.lock();
++	if (not scene)
++		return due;
++	const XrTime first = window.front().feedback.received_first_packet;
++	const XrDuration period = scene->display_period_ns();
++	if (first <= 0 or now < first or period <= 0 or
++	    period > (std::numeric_limits<XrTime>::max() - first) / 2)
++		return due;
++
++	const XrTime retirement = first + period * 2;
++	return due ? std::min(*due, retirement) : retirement;
++}
++
+ void shard_accumulator::poll_nacks(XrTime now)
+ {
+ 	if (nxastc_codec)
++	{
++		// Quiet traffic must service the same opt-in deadline as shard arrivals.
++		if (astc_deadline_enabled)
++			pump(now);
+ 		try_nack(now);
++	}
+ }
+ 
+ static void debug_why_not_sent(const shard_set & shards)
+diff --git a/client/decoder/shard_accumulator.h b/client/decoder/shard_accumulator.h
+index 81e8d509..ecea078e 100644
+--- a/client/decoder/shard_accumulator.h
++++ b/client/decoder/shard_accumulator.h
+@@ -123,6 +123,7 @@ public:
+ 		return nxastc_codec;
+ 	}
+ 	std::optional<XrTime> next_nack_deadline(XrTime now);
++	std::optional<XrTime> next_poll_deadline(XrTime now);
+ 	void poll_nacks(XrTime now);
+ 
+ 	vk::Sampler sampler()
+diff --git a/client/scenes/stream_network.cpp b/client/scenes/stream_network.cpp
+index f0125724..d651187c 100644
+--- a/client/scenes/stream_network.cpp
++++ b/client/scenes/stream_network.cpp
+@@ -73,7 +73,7 @@ void scenes::stream::process_packets()
+ 					std::shared_lock lock(decoder_mutex);
+ 					for (auto & item: decoders)
+ 						if (item.decoder and item.decoder->is_nxastc_codec())
+-							wait = std::min(wait, wivrn::nack_poll_timeout(now, item.decoder->next_nack_deadline(now), wait));
++							wait = std::min(wait, wivrn::nack_poll_timeout(now, item.decoder->next_poll_deadline(now), wait));
+ 					return wait;
+ 				};
+ 				network_session->poll(*this, std::chrono::milliseconds(100), timeout);
+diff --git a/docs/ASTC_RECOVERY_POLL.md b/docs/ASTC_RECOVERY_POLL.md
+index 822a5163..2cd404d1 100644
+--- a/docs/ASTC_RECOVERY_POLL.md
++++ b/docs/ASTC_RECOVERY_POLL.md
+@@ -1,9 +1,10 @@
+ # NXASTC recovery polling trial
+ 
+ This opt-in moves existing retransmit checks onto the stream poll's quiet period
+-when no video or control datagram arrives. It does not change the NACK policy,
+-frame retirement or FEC behavior. Disabled and ineligible states retain the
+-100 ms fallback.
++when no video or control datagram arrives. NACK and FEC policy stay unchanged.
++If the separate native ASTC frame deadline is enabled, quiet polling also
++services its existing retirement policy. Disabled and ineligible states retain
++the 100 ms fallback.
+ 
+ On Android, `debug.wivrn.nx.recovery_poll` must equal exactly `1` when the
+ network thread starts. Host builds accept `WIVRN_NX_RECOVERY_POLL=1` for local
+@@ -18,12 +19,26 @@ exact missing-hole scans are deferred until due. Already-confirmed due repairs
+ use a zero poll timeout, avoiding an extra 1 ms wait; future deadlines still round
+ up to whole milliseconds. Servicing a repair advances its last-NACK timestamp
+ or exhausts its two-round budget before the next deadline calculation.
+-A successful poll services NACKs on the same
++A successful poll services retirement and NACKs on the same
+ network thread under the existing decoder-array shared lock. Enabled polling
+ adds two XR-clock queries per poll cycle, not per shard; device overhead and
+ scheduler delays remain measurement gates. Send errors retain
+ the existing behavior, including consuming the round.
+ 
++With Android `debug.wivrn.nx.astc_deadline=1`, an incomplete, nonempty front
++frame and a newer complete frame also supply a wake-up at the front's first
++receipt plus two display periods. This remains scheduled after NACK rounds are
++exhausted or retransmission is disabled. The front is pumped before another
++NACK check, so a retired frame is not requested again. Empty/complete fronts,
++missing scenes and invalid clock/period values supply no retirement deadline;
++overflow is rejected. The deadline option remains default-off and is sampled
++when the accumulator is constructed.
++
++This is a scheduling target, not a two-frame wall-clock guarantee. Future
++timeouts round up to milliseconds; thread scheduling can delay service. Display
++period changes are observed on subsequent polls. Completely absent frames
++without a first-receipt timestamp keep the existing window/skew policy.
++
+ `tests/accumulator_test.cpp` exercises the shared production deadline helper and
+ real shard-set missing-hole rules. This validates deterministic scheduling logic;
+ it is not a live network, Android property, power, or headset result. Before

@@ -1,0 +1,3 @@
+# Fixture corrections before acceptance
+
+The initial focused fixture failed to compile under warning-as-error because two statements shared a misleadingly indented line. Virtual fixture expectations also needed corrections: last activity of the front was first+1 ns, not the newer frame's first+3 ns; disabled retransmission must retain an eligible retirement deadline. These were harness issues, not production failures. Final frozen method CPP and passing logs are retained here. Earlier scratch iterations remain at `/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-service/gate/results-first`, `results-debug`, and `results-stable`.

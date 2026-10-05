@@ -1,0 +1,1 @@
+The published run-all.sh regenerated both method and caller CPP byte-for-byte, with identical normal and sanitizer result logs. Wrapper exit 0; no production edits. Source 6e2293d58acc8b7a20e9276ae25f5e97257b37d9.
