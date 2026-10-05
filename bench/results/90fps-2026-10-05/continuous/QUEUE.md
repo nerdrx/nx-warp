@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 12:27 UTC
+## Current verified state — 12:40 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed6902940f; source hashes match tested code. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -45,12 +45,16 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 19. **Stereo delivery-rate scope corrected:** production BBR used aggregate eye bytes over one eye's widest span. Actual-controller serial fixture overestimated533.333 vs266.667Mbps. Source6902940f now samples matching per-stream bytes over interval union, excluding untimed/invalid bytes and idle gaps; app-limited threshold unchanged, requires matched-byte timing. Congestion utilisation and aggregate quality scaling unchanged. Normal/SAN BBR86checks; root five suites and3additional ordering/boundary cases pass; complete server builds. Single/overlap cases unchanged. Source pushed; no install/restart/live-change or live smoothness claim. [Raw rows, runnable checks, scientific figure and limits](stereo-rate-scope/README.md).
 
+20. **Coupled serial-eye budget response reproduced:** actual controller/pacing-slot helpers, paired-ready ideal service, fully loaded media target,500Mbps/2Gbps assumed capacities. After1200virtual frames, narrow baseline estimates1Gbps/targets850Mbps; corrected estimates500/targets425Mbps. Wide control retains1Gbps ceiling. Root independently reproduces all4800rows byte-for-byte, including output path spaces and basic schedule checks. Unbounded ideal-service overrun is NOT actual sender backlog; queues/drops/FEC/encoder load/feedback delay omitted. Periodic probes still temporarily exceed the narrow capacity/deadline. No source/live change from this follow-up. [Raw traces, model limits, runnable gate and figure](stereo-rate-coupled/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Cheap Luna `deadline_patch_finish`: bounded12min source-confirmed coupled serial-stereo pacing/controller CPU gate, scratch `overnight-recovery/stereo-rate-coupled`. Actual class baseline/patched traces under dynamic budget, narrow/wide capacity assumptions; preserve physical timestamp ordering and expose desired-vs-modeled cadence. First check prior tests and actual source pacing assumptions; do not fabricate exact network physics. No production edits/GPU/Pico/user-app/server/build/install. Stop if source model cannot be justified, retain scoped note. Do not duplicate.
-- Root: publish completed item19 checks/figure and verify remote hashes, preserving unrelated README/branding/private images. No WiVRn server/dashboard observed at resume; Pico state unverified, no device work. All opt-in diagnostics/experimental profiles remain off.
+- No running child or owned benchmark jobs after the completed gates. Source6902940f is clean/pushed; item19 report and item20 follow-up are owned publication work. Verify report remote after commit. No install, server restart, experimental flag activation or Pico work.
 
 ## Next bounded gates
+
+- New coupled trace exposes short periodic probes whose modeled total serial interval exceeds the desired period even when max per-eye utilisation is below1. Review existing probe/ceiling controls and prior tests before considering a bounded native deadline-aware probe gate. Do not restore a merged utilisation envelope for unrelated NX-direct wire IDs, disable capacity rediscovery blindly or infer real missed refreshes from this model.
+- Matched accounting still needs actual per-stream arrival/byte correlation. Pair those with producer/slot waits and fresh stereo delivery before any live benefit claim; default-off diagnostic source exists. No silent install/activation of an active session.
 
 - Diagnose queue dwell before changing drop policy. Do not bypass repair/history or motion-reference ownership based on source speculation.
 - Fixed-job timing has variable tails under normal desktop load. Before enabling, measure actual live fresh stereo delivery and game-load contention with explicit opt-in, preserving active user sessions.
