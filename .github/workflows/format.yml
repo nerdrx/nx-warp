@@ -22,7 +22,7 @@ jobs:
     # parallel; turn this into a hard gate once they have all had one format pass.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install clang-format
         run: |
@@ -80,7 +80,7 @@ jobs:
 
       - name: Upload the clang-format log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: clang-format-log
           if-no-files-found: ignore
@@ -97,9 +97,9 @@ jobs:
     # that flip costs nothing but the decision.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -129,7 +129,7 @@ jobs:
 
       - name: Upload the shader-lint log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shader-lint-log
           if-no-files-found: ignore
