@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 10:04 UTC
+## Current verified state — 10:40 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed831aafed. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -25,9 +25,11 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 9. **Repair-history cost audit:** ordinary FEC+history reuses one flattened blob, no warmed per-shard vector allocation. History-off/FEC-off snapshot removal is inapplicable; narrow history-on/FEC-off/direct-primary candidate could remove temporary flatten+ringcopy. Root source review: NACK collection doesnot take SendData outermutex; early direct-ring snapshot changespublicationorder. No source/timingwin inferred. [Actual paths and integration hazard](HISTORY_COST_AUDIT.md).
 
+10. **Direct history-copy gate rejected:** normal/ASan/UBSan/TSan correctness passes; 30 retained matched pairs give mean processCPU −3.1803µs/eye-frame (30/30), wall −5.5388µs (27/30, one large legacy outlier). Exact blobs; historyon/FECoff/directprimary payloadmodel only. Early publication differs from actual sender, so extra reservation/commit complexity is unjustified. No source change. [Runnable code, raw rows, logs and paired figure](history-direct-gate/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Reused cheap Luna `zstd_worker_gate`, bounded25min scratch actual-class direct-history prototype: historyon/FECoff/directprimaryonly. Exact serializedblob comparison/nonemptymetadata/roundtrip, wrap/eviction, disabled/secondary, producer-reader-toggle undernormal/ASan/TSan asavailable. Then30matchedwarm per-frame timingpairs at500Mbit/s90Hzstereo equivalentactualshards, processCPU/wall p50/p95. Scratch `overnight-recovery/history-direct-gate`. Prototype publishes before send, so lower-boundcopycostonly, not integration-equivalent. No sourceedit/unsafe exposedringview/GPU/Pico/app/options. Root cleared ownedtimedjobs and will avoid overlapping timedwork. Stopatbound and retain no/tinywins asrejections.
+- Cheap Luna `zstd_worker_gate`, bounded15min read-only endpoint-precision audit: first inspect prior rejected compression probes, then determine whether reducing already-refitted q6 endpoints while keeping exact weight grid/modes is genuinely new. No timed jobs, source/runtime changes or private pixels. Scratch `overnight-recovery/endpoint-precision-audit`. Reject duplicates and propose only one supported next gate.
 - Root: repair-history source audit reviewed and NACK lock/publication boundary corrected; published. Balanced6x6 gate independently replayed/rejected; report/figure published. Native-paired Q2 candidate independently replayed/rejected; report/figure published. Both ASTC synthetic gates independently replayed; labeled figures inspected and published. Public oracle main now explicitly returns0 for warning-free helper inclusion; results unchanged. Queue diagnostic/source/docs evidence published; send batching audit reviewed and rejected as a worthwhile current optimization. Preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
 
 ## Next bounded gates
@@ -36,6 +38,8 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 - Fixed-job timing has variable tails under normal desktop load. Before enabling, measure actual live fresh stereo delivery and game-load contention with explicit opt-in, preserving active user sessions.
 
 ## Do not repeat
+
+- Direct history-copy microbenchmark: tiny CPU saving and unsafe sender publication shortcut. Do not spend another gate on this without evidence of material history contention.
 
 - Rejected reused-endpoint8x8Q2 and6x6Q4 finer grids on native pairs. Hold further weight-mode microprobes without a new justified fitter/representation.
 - Rejected entropy layouts, weak motion savings, naive repeated conversion, packed shared-cache GPU probe, sender-wait relocation with missing old fixtures, unsafe early image release or idealised band transport.
