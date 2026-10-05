@@ -42,4 +42,6 @@ fig.text(0.5, 0.02, "Do not subtract CPU and GPU intervals to infer queue delay.
 fig.subplots_adjust(top=0.84, bottom=0.19, left=0.09, right=0.98, wspace=0.12)
 fig.savefig(base / "scope-comparison.png", dpi=180)
 fig.savefig(base / "scope-comparison.svg")
+svg = base / "scope-comparison.svg"
+svg.write_text("\n".join(line.rstrip() for line in svg.read_text().splitlines()) + "\n")
 print("PASS: 20 retained rows plotted; no new timing run")
