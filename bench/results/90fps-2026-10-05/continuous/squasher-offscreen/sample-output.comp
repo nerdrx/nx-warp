@@ -1,0 +1,10 @@
+#version 450
+layout(local_size_x=1) in;
+layout(set=0,binding=0) uniform sampler2D source_image;
+layout(std430,set=0,binding=1) buffer Result { vec4 samples[]; } result;
+layout(push_constant) uniform Eye { uint offset; } eye;
+void main() {
+    const vec2 coordinates[5] = vec2[5](vec2(.5,.5),vec2(.25,.25),vec2(.75,.75),vec2(.25,.75),vec2(.75,.25));
+    uint i=gl_GlobalInvocationID.x;
+    if (i<5) result.samples[eye.offset+i]=textureLod(source_image,coordinates[i],0);
+}

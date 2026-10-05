@@ -1,0 +1,18 @@
+/usr/bin/ld: /tmp/ccBf728x.ltrans4.ltrans.o: in function `wivrn::configuration::configuration()':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/configuration.cpp:154:(.text+0x425a): undefined reference to `wivrn::hostname[abi:cxx11]()'
+/usr/bin/ld: /tmp/ccBf728x.ltrans9.ltrans.o: in function `wivrn::view_list::update_tracking(wivrn::from_headset::tracking const&, wivrn::clock_offset const&)':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/view_list.cpp:45:(.text+0x7643): undefined reference to `xrt_cast(XrPosef const&)'
+/usr/bin/ld: /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/view_list.cpp:58:(.text+0x776c): undefined reference to `xrt_cast(XrFovf const&)'
+/usr/bin/ld: /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/view_list.cpp:61:(.text+0x77ce): undefined reference to `wivrn::pose_list::update_tracking(wivrn::from_headset::tracking const&, wivrn::clock_offset const&)'
+/usr/bin/ld: /tmp/ccBf728x.ltrans9.ltrans.o: in function `wivrn::view_list::get_at(long)':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/view_list.cpp:67:(.text+0x790e): undefined reference to `wivrn::pose_list::get_at(long)'
+/usr/bin/ld: /tmp/ccBf728x.ltrans9.ltrans.o: in function `wivrn::view_list::view_list()':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/view_list.h:41:(.text+0x8af7): undefined reference to `wivrn::pose_list::pose_list(wivrn::device_id)'
+/usr/bin/ld: /tmp/ccBf728x.ltrans9.ltrans.o: in function `wivrn::wivrn_hmd::wivrn_hmd(wivrn::wivrn_session*, wivrn::from_headset::headset_info_packet const&)':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_hmd.cpp:134:(.text+0x96c2): undefined reference to `xrt_cast(XrFovf const&)'
+/usr/bin/ld: /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_hmd.cpp:135:(.text+0x970b): undefined reference to `xrt_cast(XrFovf const&)'
+/usr/bin/ld: /tmp/ccBf728x.ltrans9.ltrans.o: in function `wivrn::wivrn_hmd::get_tracked_pose(xrt_input_name, long, xrt_space_relation*)':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_hmd.cpp:199:(.text+0x9f45): undefined reference to `wivrn::wivrn_session::add_tracking_request(wivrn::device_id, long, long, long)'
+/usr/bin/ld: /tmp/ccBf728x.ltrans9.ltrans.o: in function `wivrn::wivrn_hmd::get_view_poses(xrt_vec3 const*, long, xrt_view_type, unsigned int, xrt_space_relation*, xrt_fov*, xrt_pose*)':
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_hmd.cpp:234:(.text+0xa232): undefined reference to `wivrn::wivrn_session::add_tracking_request(wivrn::device_id, long, long, long)'
+collect2: error: ld returned 1 exit status

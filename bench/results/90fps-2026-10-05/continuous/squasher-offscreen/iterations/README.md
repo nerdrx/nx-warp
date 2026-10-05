@@ -1,0 +1,3 @@
+# Retained failed setup attempts
+
+Luna's bounded scratch draft compiled after interface fixes, but a reduced link closure lacked real HMD/configuration dependencies. Root's complete recorded server closure linked with only the two unused entrypoint globals defined verbatim. The initial runtime draft also used an unsupported Vulkan-Hpp pushConstants overload; the raw compile failure is retained. Root corrected eye sample offsets, descriptor-pool free flags, memory flush/invalidate checks, finite wait/cleanup and the incorrect no-submit helper comment before execution. Early draft compile logs were overwritten by the agent; the surviving logs are published without claiming a complete iteration archive. No failed draft was run on the GPU.

@@ -1,0 +1,16 @@
+In file included from [01m[K/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/squasher-offscreen/root-run/fixture.cpp:17[m[K:
+[01m[K/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/squasher-offscreen/root-run/runtime-check.h:[m[K In function ‘[01m[Kstd::array<float, 40>[01;32m[K record_squasher_color_check[m[K(wivrn::vk_bundle&, wivrn::layer_squasher&, std::array<basic_allocation<vk::Image>, 2>&, wivrn::wivrn_hmd&, const comp_frame&, const comp_layer_accum&, uint32_t, const std::filesystem::__cxx11::path&)[m[K’:
+[01m[K/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/squasher-offscreen/root-run/runtime-check.h:165:30:[m[K [01;31m[Kerror: [m[Kno matching function for call to ‘[01m[Kvk::raii::CommandBuffer::pushConstants(const vk::PipelineLayout&, vk::ShaderStageFlagBits, int, long unsigned int, const uint32_t*)[m[K’
+  165 |         [01;31m[Kcommand.pushConstants(*pipeline_layout, vk::ShaderStageFlagBits::eCompute,[m[K
+      |         [01;31m[K~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+  166 | [01;31m[K            0, sizeof(offset), &offset)[m[K;
+      |             [01;31m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+  • there is 1 candidate
+In file included from [01m[K/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/vk/allocation.h:25[m[K,
+                 from [01m[K/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/./compositor/layer_squasher.h:21[m[K,
+                 from [01m[K/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/squasher-offscreen/root-run/fixture.cpp:2[m[K:
+    • candidate 1: ‘[01m[Ktemplate<class ValuesType> void vk::raii::CommandBuffer::[01;32m[KpushConstants[m[K(vk::PipelineLayout, vk::ShaderStageFlags, uint32_t, const vk::ArrayProxy<const DataType>&) const[m[K’
+      [01m[K/run/media/nerdrx/Lex/claude/tools/local/include/vulkan/vulkan_raii.hpp:6672:12:[m[K
+       6672 |       void [01;36m[KpushConstants[m[K( VULKAN_HPP_NAMESPACE::PipelineLayout                       layout,
+            |            [01;36m[K^~~~~~~~~~~~~[m[K
+      • candidate expects 4 arguments, 5 provided
