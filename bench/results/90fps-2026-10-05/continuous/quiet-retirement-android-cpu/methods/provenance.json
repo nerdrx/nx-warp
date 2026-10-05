@@ -1,0 +1,65 @@
+{
+  "std::optional<XrTime> shard_accumulator::next_nack_deadline(XrTime now)": {
+    "lines": [
+      76,
+      117
+    ],
+    "sha256": "8a00e4a9764a1910dbede9dbc2105bc1c59a1c12b7885d7bc19ae666e479157c"
+  },
+  "std::optional<XrTime> shard_accumulator::next_poll_deadline(XrTime now)": {
+    "lines": [
+      119,
+      137
+    ],
+    "sha256": "b4202a6cbbf65e6b227697aa0e951455610e325c65c479d3bef913710dbc887d"
+  },
+  "void shard_accumulator::poll_nacks(XrTime now)": {
+    "lines": [
+      139,
+      148
+    ],
+    "sha256": "0f744e91a6ad881bcf62b35d85a29ddf3d5d975f7ee3928643e2560b6d73e198"
+  },
+  "void shard_accumulator::try_nack(XrTime now)": {
+    "lines": [
+      326,
+      409
+    ],
+    "sha256": "9b5b59fbe7105e0cfa0cea02f24fbd890b563140ab600ee0226cbab49d19aeb5"
+  },
+  "void shard_accumulator::pump(XrTime now)": {
+    "lines": [
+      248,
+      264
+    ],
+    "sha256": "8e25f1b4f5f0ba0ee00a5ef99bfc9640d74b5889c15a2b63a8ed12d8218e712e"
+  },
+  "shard_accumulator::window_t::step shard_accumulator::try_submit_front(shard_set & current)": {
+    "lines": [
+      436,
+      501
+    ],
+    "sha256": "987d262a7097f5294c21074b5268bcc3ff8f1442ecb7c88895a94047964d08c5"
+  },
+  "files": {
+    "client/decoder/shard_accumulator.cpp": "f10410ab4ba44a288cd75db7ebe2dc68a963b161f42ea2dfd18f0f2b2e497d98",
+    "client/decoder/shard_accumulator.h": "e2e939adcb90cf9b6c252b1d2ce9f3b6736189ca838b4c0b8d7f9a54df718b29",
+    "client/decoder/frame_window.h": "deb86c683aae304b01e86190432a617106b38d89322a1c98eb1a270634f1e5b4",
+    "client/decoder/shard_set.h": "d404a9f90deb57d82f7a33b51200848d2398b9480004d6f6097fbdcab2d73e05",
+    "client/decoder/nack_deadline.h": "7e873b35174684b4f9c7512230c67311fe8e951e18540172cd5ad6d9e85970f0",
+    "client/scenes/stream_network.cpp": "5e549778b9999ec9e701deed5449b11a5c4a7164ad073a8e2017844d79c350f1"
+  },
+  "process_packets_callsite": {
+    "file": "client/scenes/stream_network.cpp",
+    "lines": [
+      53,
+      105
+    ],
+    "sha256": "ce0c80a82a3640d68b3ec651862fb7282bdd538efa8c18d0a1d77695c421c0ca",
+    "structural_checks": [
+      "supplier uses next_poll_deadline",
+      "poll timeout is capped at 100ms",
+      "poll_nacks service follows network poll"
+    ]
+  }
+}

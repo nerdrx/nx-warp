@@ -1,0 +1,40 @@
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-android-cpu/kernel-gate.cpp:23:
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client/decoder/shard_set.h:22:
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/fec.h:22:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:21: warning: comparison of integers of different signs: 'int' and 'size_type' (aka 'unsigned long') [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~ ^ ~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:58: warning: unused parameter 'h' [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                                                 ^
+2 warnings generated.
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:20:
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.h:24:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:21: warning: comparison of integers of different signs: 'int' and 'size_type' (aka 'unsigned long') [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~ ^ ~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:58: warning: unused parameter 'h' [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                                                 ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:320:16: warning: comparison of integers of different signs: 'ssize_t' (aka 'long') and 'unsigned long' [-Wsign-compare]
+  320 |                 if (received < sizeof(uint64_t))
+      |                     ~~~~~~~~ ^ ~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:409:11: warning: missing field 'msg_name' initializer [-Wmissing-designated-field-initializers]
+  409 |                         },
+      |                         ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:3: warning: missing field 'msg_len' initializer [-Wmissing-designated-field-initializers]
+  410 |                 };
+      |                 ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:62: warning: missing field 'msg_name' initializer [-Wmissing-designated-field-initializers]
+  547 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size() + 1}});
+      |                                                                                   ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:63: warning: missing field 'msg_len' initializer [-Wmissing-designated-field-initializers]
+  547 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size() + 1}});
+      |                                                                                    ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:58: warning: missing field 'msg_name' initializer [-Wmissing-designated-field-initializers]
+  549 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size()}});
+      |                                                                               ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:59: warning: missing field 'msg_len' initializer [-Wmissing-designated-field-initializers]
+  549 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size()}});
+      |                                                                                ^
+9 warnings generated.

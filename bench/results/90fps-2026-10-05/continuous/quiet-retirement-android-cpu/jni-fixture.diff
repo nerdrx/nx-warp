@@ -1,0 +1,10 @@
+--- /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-android-cpu/kernel-gate.generated.cpp	2026-10-05 22:07:49.363952413 +0200
++++ /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-android-cpu/kernel-gate.cpp	2026-10-05 22:07:49.377218303 +0200
+@@ -29,6 +29,7 @@
+ #include <spdlog/spdlog.h>
+ namespace wivrn {
+ namespace application { struct config { bool shard_retransmit=true; }; inline config current{}; inline config& get_config(){return current;} }
++namespace application { struct jni_fixture { void setup_jni() {} }; inline jni_fixture& instance(){ static jni_fixture value; return value; } }
+ namespace scenes { struct stream { std::vector<from_headset::nack> requests; XrDuration period=11'111'111; void send_nack(const from_headset::nack&n){requests.push_back(n);} XrDuration display_period_ns()const{return period;} }; }
+ struct fake_instance { XrTime value=1; XrTime now()const{return value;} };
+ struct fake_decoder { std::function<void()> on_complete;

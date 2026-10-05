@@ -1,0 +1,1 @@
+Root byte-compares generated source to the accepted host fixture: identical. The Android CPP differs only by the recorded no-op JNI fixture declaration; removing that one added line restores identical bytes. The actual caller/poll bodies remain untouched. Local and remote ELF SHA256 match before execution. Source 6e2293d5 remains clean; no production edits.
