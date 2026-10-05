@@ -1,0 +1,15 @@
+case,virtual_now,request_count,frame,first_shard,requested_indices,rounds
+older_interior_before_due,2501001,0,-1,-1,,0
+older_interior_at_due,2501002,1,10,2,2,1
+older_interior_round2_before_due,5001001,0,-1,-1,,1
+older_interior_round2_at_due,5001002,1,10,2,2,2
+older_interior_after_round_limit,10001002,0,-1,-1,,2
+newest_confirmed_interior,2501502,1,15,2,2,1
+newest_unknown_tail,2502001,0,-1,-1,,0
+older_inferred_tail,2503002,1,30,2,2,1
+retransmit_off,2504001,0,-1,-1,,0
+non_astc,2505001,0,-1,-1,,0
+expired_scene,2506001,0,-1,-1,,0
+fec_repair_then_nack_other_hole,2507002,1,70,2,2,1
+nack_reply_completes_frame,7507002,0,-1,-1,,1
+checks=60 failures=0

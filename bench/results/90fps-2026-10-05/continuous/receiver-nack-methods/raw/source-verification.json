@@ -1,0 +1,35 @@
+{
+  "source_commit": "2f53c2cbcd3ba08202b92c53f8bb7ba4ef6685ac",
+  "methods": [
+    {
+      "name": "next_nack_deadline",
+      "sha256": "8a00e4a9764a1910dbede9dbc2105bc1c59a1c12b7885d7bc19ae666e479157c",
+      "exact_occurrences": 1
+    },
+    {
+      "name": "poll_nacks",
+      "sha256": "809652e5543def5bb4c133015a3bf85f5dad51407774985bf1aee5424545851c",
+      "exact_occurrences": 1
+    },
+    {
+      "name": "try_nack",
+      "sha256": "9b5b59fbe7105e0cfa0cea02f24fbd890b563140ab600ee0226cbab49d19aeb5",
+      "exact_occurrences": 1
+    }
+  ],
+  "window_alias": "using window_t = wivrn::frame_window<shard_set, 6, 3>;",
+  "source_sha256": {
+    "client/decoder/shard_accumulator.cpp": "8adba5d0f3a84a92fe668ebea0d0320c69cb72c2960c227ff379265d5eaa7265",
+    "client/decoder/shard_accumulator.h": "95bc4aee2ef6bbc8c3c6a462252f8f9a1a4e450e0d1b00900db05f015ec22afa",
+    "client/decoder/shard_set.h": "d404a9f90deb57d82f7a33b51200848d2398b9480004d6f6097fbdcab2d73e05",
+    "client/decoder/frame_window.h": "deb86c683aae304b01e86190432a617106b38d89322a1c98eb1a270634f1e5b4",
+    "client/decoder/nack_deadline.h": "d7dcb34651c34eca75ee4d62082ee8fca82e76cfec6ff77f5f7c0491577ff5a5",
+    "common/wivrn_packets.h": "a12c3ba86742cd8a25d7cd7a0460607d03535f2ad5fbecce894b5e1f53a031bc",
+    "common/fec.h": "7b15a9c41ba83cbc0a7841776fa882a9d7944eba21a3de9aba716de6486712be",
+    "common/smp.h": "456c9c627e76379218fa8cf7076b561d939e258e70c500e4751f70a3c57f8b7d",
+    "common/smp.cpp": "31b94f1ca3e3262ea78ce3d4865ab3a0c1cf683067593ace6d0963239ea3af3d",
+    "client/scenes/stream_network.cpp": "33441e7ca9e428eda384c0164c59aefeb808255c82cc783f963dcc3df2ad9842"
+  },
+  "root_generated_cpp_sha256": "4158064b8da1a154dc7f8b3c28d713bc1956c27a0e18e15dfcb7b8c02c7f88c4",
+  "root_log_matches_agent_normal_and_san": true
+}
