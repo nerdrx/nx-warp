@@ -2,9 +2,9 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 11:47 UTC
+## Current verified state — 12:27 UTC
 
-- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed dc012b1; remote hash verified. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
+- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed6902940f; source hashes match tested code. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
 - Use cheap Luna, Ponytail, Caveman, RTK. Offscreen tests only; no mouse/focus/global runtime/routes/drivers/clocks/user app manipulation. Pico testing only when verified unused. Serialise owned timed workloads; CPU/GPU component or viewer-loop timings never prove freshFPS, HEVCparity, livequality or photon latency.
 
@@ -41,10 +41,14 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 17. **Base slot busy-wait diagnostic built, default off:** source dc012b1 reports per-stream 180-call mean/max around the existing atomic busy gate before IDR skip. Disabled/non-ASTC adds no clocks/counters; skipped/idle calls count. Root executes actual-source mock checks and existing sender regression; complete server build and source diff checks pass. ASTC GPU guard unchanged; no live wait/latency value or optimization claim. [Checks, build evidence and scope](slot-busy-diagnostic/README.md).
 
+18. **Wire-budget contract audited:** FEC data-share reserve already accounts for parity payload; fixed framing and requested repairs lie outside ordinary frame-byte numerator. Arbitrary extra FEC multiplier rejected. Historical aggregate/max-span concurrency assumption scoped separately in item19. [Actual-source audit](WIRE_BUDGET_AUDIT.md).
+
+19. **Stereo delivery-rate scope corrected:** production BBR used aggregate eye bytes over one eye's widest span. Actual-controller serial fixture overestimated533.333 vs266.667Mbps. Source6902940f now samples matching per-stream bytes over interval union, excluding untimed/invalid bytes and idle gaps; app-limited threshold unchanged, requires matched-byte timing. Congestion utilisation and aggregate quality scaling unchanged. Normal/SAN BBR86checks; root five suites and3additional ordering/boundary cases pass; complete server builds. Single/overlap cases unchanged. Source pushed; no install/restart/live-change or live smoothness claim. [Raw rows, runnable checks, scientific figure and limits](stereo-rate-scope/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Cheap Luna `zstd_worker_gate`: bounded15min read-only native ASTC wire-budget contract audit, following adaptive bitrate -> per-eye media target -> FEC/metadata/repair feedback. Check prior reports first, no duplicate probes, no assuming distinct benchmark fixtures are real stereo. Scratch `overnight-recovery/wire-budget-contract`. No source/timing/build/GPU/Pico work; reject changes if compensation already exists.
-- Root: final slot diagnostic source/report publication checks. Actual extracted slot and sender checks pass, configured full server build passes, all diagnostics remain off. No WiVRn server/dashboard observed at resume; Pico state unverified, no device work. Preserve unrelated README/branding/private images.
+- Cheap Luna `deadline_patch_finish`: bounded12min source-confirmed coupled serial-stereo pacing/controller CPU gate, scratch `overnight-recovery/stereo-rate-coupled`. Actual class baseline/patched traces under dynamic budget, narrow/wide capacity assumptions; preserve physical timestamp ordering and expose desired-vs-modeled cadence. First check prior tests and actual source pacing assumptions; do not fabricate exact network physics. No production edits/GPU/Pico/user-app/server/build/install. Stop if source model cannot be justified, retain scoped note. Do not duplicate.
+- Root: publish completed item19 checks/figure and verify remote hashes, preserving unrelated README/branding/private images. No WiVRn server/dashboard observed at resume; Pico state unverified, no device work. All opt-in diagnostics/experimental profiles remain off.
 
 ## Next bounded gates
 
