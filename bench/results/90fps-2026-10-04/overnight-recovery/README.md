@@ -246,3 +246,7 @@ A pushed default-off server diagnostic records same-queue ASTC compute-through-r
 ### Native pass fusion: deleting a pass can repeat more work
 
 The identity colour pass plus current ASTC shader takes 1.540 ms GPU mean on a generated 2176² single-eye fixture. Moving colour conversion into every ASTC `pixel()` call produces identical blocks but takes 1.696 ms: repeated tile fitting repeats the conversion. This naive version is rejected in that scope; no production integration. The separate cache follow-up converts once per tile: its full interval drops83.62µs, but ASTC itself is not clearly faster and driver private scratch doubles48→96KiB/subgroup. Packing the cache halves reported scratch but adds30µs versus the vector cache; rejected as a speed optimization. [Release run, captured output and resource comparison](native-pass-fusion-packed-cache/README.md). [Cache timings, resource costs and exact bytes](native-pass-fusion-cache/README.md). [Exact shaders, 12 matched pairs, graph and source-image ownership gates](native-pass-fusion/README.md).
+
+### Matched overlap recheck
+
+A fresh ordinary-Zstd3 comparison keeps shader and both packet outputs identical and submits both eyes before any wait. Across20 alternating matched pairs, complete-call p50/p95 falls7.696/7.843→4.886/5.002ms; paired mean saves2.620ms, with every pair faster. GPU intervals stay unchanged. This confirms host overlap under this test context; source option remains default off. [Raw pairs, exact source/build and figure](fence-overlap-recheck/README.md).

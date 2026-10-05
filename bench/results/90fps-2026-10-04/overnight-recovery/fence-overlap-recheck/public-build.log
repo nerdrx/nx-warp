@@ -1,0 +1,274 @@
+-- The CXX compiler identification is GNU 16.2.1
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Vulkan: /usr/lib/libvulkan.so (found version "1.4.357") found components: glslc glslangValidator
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /tmp/nx-public-overlap-recheck
+[ 33%] Generating encode_primary.spv
+[ 33%] Built target shader
+[ 66%] Building CXX object CMakeFiles/stereo-gpu.dir/src/main.cpp.o
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp: In member function ‘Buf App::buffer(VkDeviceSize, VkBufferUsageFlags, VkMemoryPropertyFlags, bool)’:
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::pNext’ [-Wmissing-field-initializers]
+  151 |     VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+      |                                                               ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::size’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::usage’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::sharingMode’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::queueFamilyIndexCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:151:63: warning: missing initializer for member ‘VkBufferCreateInfo::pQueueFamilyIndices’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:158:67: warning: missing initializer for member ‘VkMemoryAllocateInfo::pNext’ [-Wmissing-field-initializers]
+  158 |     VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+      |                                                                   ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:158:67: warning: missing initializer for member ‘VkMemoryAllocateInfo::allocationSize’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:158:67: warning: missing initializer for member ‘VkMemoryAllocateInfo::memoryTypeIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp: In member function ‘void App::upload(Eye&, const std::vector<unsigned char>&)’:
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:168:76: warning: missing initializer for member ‘VkCommandBufferBeginInfo::pNext’ [-Wmissing-field-initializers]
+  168 |     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+      |                                                                            ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:168:76: warning: missing initializer for member ‘VkCommandBufferBeginInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:168:76: warning: missing initializer for member ‘VkCommandBufferBeginInfo::pInheritanceInfo’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::pNext’ [-Wmissing-field-initializers]
+  171 |     VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+      |                                                                  ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::srcAccessMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::dstAccessMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::oldLayout’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::newLayout’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::srcQueueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::dstQueueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::image’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:171:66: warning: missing initializer for member ‘VkImageMemoryBarrier::subresourceRange’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:195:61: warning: missing initializer for member ‘VkFenceCreateInfo::pNext’ [-Wmissing-field-initializers]
+  195 |     VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+      |                                                             ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:195:61: warning: missing initializer for member ‘VkFenceCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::pNext’ [-Wmissing-field-initializers]
+  197 |     VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      |                                                  ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::waitSemaphoreCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::pWaitSemaphores’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::pWaitDstStageMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::commandBufferCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::pCommandBuffers’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::signalSemaphoreCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:197:50: warning: missing initializer for member ‘VkSubmitInfo::pSignalSemaphores’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:167:51: warning: unused parameter ‘src’ [-Wunused-parameter]
+  167 |   void upload(Eye &e, const std::vector<uint8_t> &src) {
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp: In member function ‘void App::record(Eye&)’:
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:206:76: warning: missing initializer for member ‘VkCommandBufferBeginInfo::pNext’ [-Wmissing-field-initializers]
+  206 |     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+      |                                                                            ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:206:76: warning: missing initializer for member ‘VkCommandBufferBeginInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:206:76: warning: missing initializer for member ‘VkCommandBufferBeginInfo::pInheritanceInfo’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::pNext’ [-Wmissing-field-initializers]
+  222 |     VkBufferMemoryBarrier ob{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+      |                                                                     ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::srcAccessMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::dstAccessMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::srcQueueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::dstQueueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::buffer’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::offset’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:222:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::size’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::pNext’ [-Wmissing-field-initializers]
+  232 |     VkBufferMemoryBarrier hb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+      |                                                                     ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::srcAccessMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::dstAccessMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::srcQueueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::dstQueueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::buffer’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::offset’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:232:69: warning: missing initializer for member ‘VkBufferMemoryBarrier::size’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp: In function ‘Sample run(App&, Compressor&, Compressor&, bool, int, bool)’:
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::pNext’ [-Wmissing-field-initializers]
+  328 |   VkSubmitInfo si0{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      |                                                 ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::waitSemaphoreCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::pWaitSemaphores’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::pWaitDstStageMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::commandBufferCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::pCommandBuffers’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::signalSemaphoreCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:328:49: warning: missing initializer for member ‘VkSubmitInfo::pSignalSemaphores’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::pNext’ [-Wmissing-field-initializers]
+  333 |   VkSubmitInfo si1{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+      |                                                 ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::waitSemaphoreCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::pWaitSemaphores’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::pWaitDstStageMask’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::commandBufferCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::pCommandBuffers’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::signalSemaphoreCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:333:49: warning: missing initializer for member ‘VkSubmitInfo::pSignalSemaphores’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp: In lambda function:
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:351:66: warning: missing initializer for member ‘VkMappedMemoryRange::pNext’ [-Wmissing-field-initializers]
+  351 |     VkMappedMemoryRange inv{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+      |                                                                  ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:351:66: warning: missing initializer for member ‘VkMappedMemoryRange::memory’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:351:66: warning: missing initializer for member ‘VkMappedMemoryRange::offset’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:351:66: warning: missing initializer for member ‘VkMappedMemoryRange::size’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp: In function ‘int main(int, char**)’:
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:397:60: warning: missing initializer for member ‘VkApplicationInfo::pNext’ [-Wmissing-field-initializers]
+  397 |     VkApplicationInfo ai{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+      |                                                            ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:397:60: warning: missing initializer for member ‘VkApplicationInfo::pApplicationName’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:397:60: warning: missing initializer for member ‘VkApplicationInfo::applicationVersion’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:397:60: warning: missing initializer for member ‘VkApplicationInfo::pEngineName’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:397:60: warning: missing initializer for member ‘VkApplicationInfo::engineVersion’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:397:60: warning: missing initializer for member ‘VkApplicationInfo::apiVersion’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::pNext’ [-Wmissing-field-initializers]
+  400 |     VkInstanceCreateInfo ii{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+      |                                                                   ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::pApplicationInfo’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::enabledLayerCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::ppEnabledLayerNames’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::enabledExtensionCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:400:67: warning: missing initializer for member ‘VkInstanceCreateInfo::ppEnabledExtensionNames’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:437:74: warning: missing initializer for member ‘VkDeviceQueueCreateInfo::pNext’ [-Wmissing-field-initializers]
+  437 |     VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+      |                                                                          ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:437:74: warning: missing initializer for member ‘VkDeviceQueueCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:437:74: warning: missing initializer for member ‘VkDeviceQueueCreateInfo::queueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:437:74: warning: missing initializer for member ‘VkDeviceQueueCreateInfo::queueCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:437:74: warning: missing initializer for member ‘VkDeviceQueueCreateInfo::pQueuePriorities’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::pNext’ [-Wmissing-field-initializers]
+  441 |     VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+      |                                                               ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::queueCreateInfoCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::pQueueCreateInfos’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::enabledLayerCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::ppEnabledLayerNames’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::enabledExtensionCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::ppEnabledExtensionNames’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:441:63: warning: missing initializer for member ‘VkDeviceCreateInfo::pEnabledFeatures’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::pNext’ [-Wmissing-field-initializers]
+  446 |     VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+      |                                                                  ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::magFilter’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::minFilter’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::mipmapMode’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::addressModeU’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::addressModeV’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::addressModeW’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::mipLodBias’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::anisotropyEnable’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::maxAnisotropy’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::compareEnable’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::compareOp’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::minLod’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::maxLod’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::borderColor’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:446:66: warning: missing initializer for member ‘VkSamplerCreateInfo::unnormalizedCoordinates’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:461:60: warning: missing initializer for member ‘VkDescriptorSetLayoutCreateInfo::pNext’ [-Wmissing-field-initializers]
+  461 |         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+      |                                                            ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:461:60: warning: missing initializer for member ‘VkDescriptorSetLayoutCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:461:60: warning: missing initializer for member ‘VkDescriptorSetLayoutCreateInfo::bindingCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:461:60: warning: missing initializer for member ‘VkDescriptorSetLayoutCreateInfo::pBindings’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:468:54: warning: missing initializer for member ‘VkPipelineLayoutCreateInfo::pNext’ [-Wmissing-field-initializers]
+  468 |         VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+      |                                                      ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:468:54: warning: missing initializer for member ‘VkPipelineLayoutCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:468:54: warning: missing initializer for member ‘VkPipelineLayoutCreateInfo::setLayoutCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:468:54: warning: missing initializer for member ‘VkPipelineLayoutCreateInfo::pSetLayouts’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:468:54: warning: missing initializer for member ‘VkPipelineLayoutCreateInfo::pushConstantRangeCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:468:54: warning: missing initializer for member ‘VkPipelineLayoutCreateInfo::pPushConstantRanges’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:475:76: warning: missing initializer for member ‘VkShaderModuleCreateInfo::pNext’ [-Wmissing-field-initializers]
+  475 |     VkShaderModuleCreateInfo sm{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+      |                                                                            ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:475:76: warning: missing initializer for member ‘VkShaderModuleCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:475:76: warning: missing initializer for member ‘VkShaderModuleCreateInfo::codeSize’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:475:76: warning: missing initializer for member ‘VkShaderModuleCreateInfo::pCode’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:480:60: warning: missing initializer for member ‘VkPipelineShaderStageCreateInfo::pNext’ [-Wmissing-field-initializers]
+  480 |         VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+      |                                                            ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:480:60: warning: missing initializer for member ‘VkPipelineShaderStageCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:480:60: warning: missing initializer for member ‘VkPipelineShaderStageCreateInfo::stage’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:480:60: warning: missing initializer for member ‘VkPipelineShaderStageCreateInfo::module’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:480:60: warning: missing initializer for member ‘VkPipelineShaderStageCreateInfo::pName’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:480:60: warning: missing initializer for member ‘VkPipelineShaderStageCreateInfo::pSpecializationInfo’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:485:55: warning: missing initializer for member ‘VkComputePipelineCreateInfo::pNext’ [-Wmissing-field-initializers]
+  485 |         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+      |                                                       ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:485:55: warning: missing initializer for member ‘VkComputePipelineCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:485:55: warning: missing initializer for member ‘VkComputePipelineCreateInfo::stage’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:485:55: warning: missing initializer for member ‘VkComputePipelineCreateInfo::layout’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:485:55: warning: missing initializer for member ‘VkComputePipelineCreateInfo::basePipelineHandle’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:485:55: warning: missing initializer for member ‘VkComputePipelineCreateInfo::basePipelineIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:495:54: warning: missing initializer for member ‘VkDescriptorPoolCreateInfo::pNext’ [-Wmissing-field-initializers]
+  495 |         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+      |                                                      ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:495:54: warning: missing initializer for member ‘VkDescriptorPoolCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:495:54: warning: missing initializer for member ‘VkDescriptorPoolCreateInfo::maxSets’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:495:54: warning: missing initializer for member ‘VkDescriptorPoolCreateInfo::poolSizeCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:495:54: warning: missing initializer for member ‘VkDescriptorPoolCreateInfo::pPoolSizes’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:502:55: warning: missing initializer for member ‘VkDescriptorSetAllocateInfo::pNext’ [-Wmissing-field-initializers]
+  502 |         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+      |                                                       ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:502:55: warning: missing initializer for member ‘VkDescriptorSetAllocateInfo::descriptorPool’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:502:55: warning: missing initializer for member ‘VkDescriptorSetAllocateInfo::descriptorSetCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:502:55: warning: missing initializer for member ‘VkDescriptorSetAllocateInfo::pSetLayouts’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:509:75: warning: missing initializer for member ‘VkCommandPoolCreateInfo::pNext’ [-Wmissing-field-initializers]
+  509 |     VkCommandPoolCreateInfo cpi{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+      |                                                                           ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:509:75: warning: missing initializer for member ‘VkCommandPoolCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:509:75: warning: missing initializer for member ‘VkCommandPoolCreateInfo::queueFamilyIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:515:55: warning: missing initializer for member ‘VkCommandBufferAllocateInfo::pNext’ [-Wmissing-field-initializers]
+  515 |         VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+      |                                                       ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:515:55: warning: missing initializer for member ‘VkCommandBufferAllocateInfo::commandPool’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:515:55: warning: missing initializer for member ‘VkCommandBufferAllocateInfo::level’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:515:55: warning: missing initializer for member ‘VkCommandBufferAllocateInfo::commandBufferCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::pNext’ [-Wmissing-field-initializers]
+  525 |       VkImageCreateInfo ic{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+      |                                                               ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::imageType’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::format’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::extent’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::mipLevels’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::arrayLayers’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::samples’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::tiling’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::usage’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::sharingMode’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::queueFamilyIndexCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::pQueueFamilyIndices’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:525:63: warning: missing initializer for member ‘VkImageCreateInfo::initialLayout’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:537:69: warning: missing initializer for member ‘VkMemoryAllocateInfo::pNext’ [-Wmissing-field-initializers]
+  537 |       VkMemoryAllocateInfo ma{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+      |                                                                     ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:537:69: warning: missing initializer for member ‘VkMemoryAllocateInfo::allocationSize’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:537:69: warning: missing initializer for member ‘VkMemoryAllocateInfo::memoryTypeIndex’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::pNext’ [-Wmissing-field-initializers]
+  543 |       VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+      |                                                                        ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::image’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::viewType’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::format’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::components’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:543:72: warning: missing initializer for member ‘VkImageViewCreateInfo::subresourceRange’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:562:63: warning: missing initializer for member ‘VkFenceCreateInfo::pNext’ [-Wmissing-field-initializers]
+  562 |       VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+      |                                                               ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:562:63: warning: missing initializer for member ‘VkFenceCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:564:73: warning: missing initializer for member ‘VkQueryPoolCreateInfo::pNext’ [-Wmissing-field-initializers]
+  564 |       VkQueryPoolCreateInfo qci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+      |                                                                         ^
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:564:73: warning: missing initializer for member ‘VkQueryPoolCreateInfo::flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:564:73: warning: missing initializer for member ‘VkQueryPoolCreateInfo::queryType’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:564:73: warning: missing initializer for member ‘VkQueryPoolCreateInfo::queryCount’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-warp/bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/src/main.cpp:564:73: warning: missing initializer for member ‘VkQueryPoolCreateInfo::pipelineStatistics’ [-Wmissing-field-initializers]
+[100%] Linking CXX executable stereo-gpu
+[100%] Built target stereo-gpu

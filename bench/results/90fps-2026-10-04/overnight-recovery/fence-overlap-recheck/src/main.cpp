@@ -1,0 +1,716 @@
+#include "nxastc_packet_decode.h"
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <fstream>
+#include <future>
+#include <iostream>
+#include <lz4.h>
+#include <numeric>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <vulkan/vulkan.h>
+#include <zstd.h>
+using Clock = std::chrono::steady_clock;
+static double ms(Clock::time_point a, Clock::time_point b) {
+  return std::chrono::duration<double, std::milli>(b - a).count();
+}
+static void ck(VkResult r, const char *s) {
+  if (r != VK_SUCCESS)
+    throw std::runtime_error(std::string(s) + " Vulkan " + std::to_string(r));
+}
+static std::vector<uint32_t> spv(const char *p) {
+  std::ifstream f(p, std::ios::binary | std::ios::ate);
+  if (!f)
+    throw std::runtime_error(std::string("open ") + p);
+  auto n = f.tellg();
+  if (n <= 0 || n % 4)
+    throw std::runtime_error("bad SPIR-V");
+  std::vector<uint32_t> x(size_t(n) / 4);
+  f.seekg(0);
+  f.read((char *)x.data(), n);
+  return x;
+}
+static std::vector<uint8_t> load(const char *p, size_t n) {
+  std::ifstream f(p, std::ios::binary | std::ios::ate);
+  if (!f || uint64_t(f.tellg()) != n)
+    throw std::runtime_error(std::string("input length mismatch: ") + p);
+  std::vector<uint8_t> x(n);
+  f.seekg(0);
+  f.read((char *)x.data(), n);
+  if (!f)
+    throw std::runtime_error("input read");
+  return x;
+}
+struct Buf {
+  VkBuffer b{};
+  VkDeviceMemory m{};
+  void *map{};
+};
+struct Sample {
+  double start_s{}, wall{}, record{}, submit{}, wait0{}, wait1{}, gpu0{},
+      gpu1{}, gpuRead0{}, gpuRead1{}, zstd0{}, zstd1{}, compact0{}, compact1{},
+      pack0{}, pack1{}, launch{};
+  std::vector<uint8_t> raw0, raw1, pkt0, pkt1;
+};
+struct Compressor {
+  ZSTD_CCtx *ctx = ZSTD_createCCtx();
+  std::vector<char> zbuf, lbuf;
+  std::vector<uint8_t> compact;
+  Compressor() {
+    if (!ctx)
+      throw std::runtime_error("Zstd context");
+  }
+  ~Compressor() { ZSTD_freeCCtx(ctx); }
+};
+struct Eye {
+  VkImage image{};
+  VkDeviceMemory im{};
+  VkImageView view{};
+  Buf staging, output, readback;
+  VkDescriptorSet ds{};
+  VkCommandBuffer cmd{};
+  VkFence fence{};
+  VkQueryPool query{};
+};
+struct App {
+  VkInstance instance{};
+  VkPhysicalDevice physical{};
+  VkDevice device{};
+  VkQueue queue{};
+  uint32_t family{}, validBits{};
+  float timestampPeriod{};
+  VkPhysicalDeviceMemoryProperties mem{};
+  VkCommandPool pool{};
+  VkSampler sampler{};
+  VkDescriptorSetLayout dsl{};
+  VkPipelineLayout pl{};
+  VkPipeline pipeline{};
+  VkShaderModule shader{};
+  VkDescriptorPool dp{};
+  std::array<Eye, 2> eye{};
+  uint32_t sw = 2176, sh = 2176, tw = 2176, th = 2176;
+  uint64_t blocks{}, outBytes{};
+  ~App() {
+    if (device)
+      vkDeviceWaitIdle(device);
+    if (device) {
+      for (auto &e : eye) {
+        if (e.query)
+          vkDestroyQueryPool(device, e.query, 0);
+        if (e.fence)
+          vkDestroyFence(device, e.fence, 0);
+        if (e.view)
+          vkDestroyImageView(device, e.view, 0);
+        if (e.image)
+          vkDestroyImage(device, e.image, 0);
+        if (e.im)
+          vkFreeMemory(device, e.im, 0);
+        for (Buf *b : {&e.staging, &e.output, &e.readback}) {
+          if (b->map)
+            vkUnmapMemory(device, b->m);
+          if (b->b)
+            vkDestroyBuffer(device, b->b, 0);
+          if (b->m)
+            vkFreeMemory(device, b->m, 0);
+        }
+      }
+      if (pool)
+        vkDestroyCommandPool(device, pool, 0);
+      if (dp)
+        vkDestroyDescriptorPool(device, dp, 0);
+      if (pipeline)
+        vkDestroyPipeline(device, pipeline, 0);
+      if (shader)
+        vkDestroyShaderModule(device, shader, 0);
+      if (pl)
+        vkDestroyPipelineLayout(device, pl, 0);
+      if (dsl)
+        vkDestroyDescriptorSetLayout(device, dsl, 0);
+      if (sampler)
+        vkDestroySampler(device, sampler, 0);
+      vkDestroyDevice(device, 0);
+    }
+    if (instance)
+      vkDestroyInstance(instance, 0);
+  }
+  uint32_t mt(uint32_t bits, VkMemoryPropertyFlags flags) {
+    for (uint32_t i = 0; i < mem.memoryTypeCount; i++)
+      if ((bits & (1u << i)) &&
+          (mem.memoryTypes[i].propertyFlags & flags) == flags)
+        return i;
+    throw std::runtime_error("no memory type");
+  }
+  Buf buffer(VkDeviceSize n, VkBufferUsageFlags usage,
+             VkMemoryPropertyFlags flags, bool map) {
+    Buf x;
+    VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    ci.size = n;
+    ci.usage = usage;
+    ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ck(vkCreateBuffer(device, &ci, 0, &x.b), "create buffer");
+    VkMemoryRequirements mr;
+    vkGetBufferMemoryRequirements(device, x.b, &mr);
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    ai.allocationSize = mr.size;
+    ai.memoryTypeIndex = mt(mr.memoryTypeBits, flags);
+    ck(vkAllocateMemory(device, &ai, 0, &x.m), "allocate buffer");
+    ck(vkBindBufferMemory(device, x.b, x.m, 0), "bind buffer");
+    if (map)
+      ck(vkMapMemory(device, x.m, 0, VK_WHOLE_SIZE, 0, &x.map), "map buffer");
+    return x;
+  }
+  void upload(Eye &e, const std::vector<uint8_t> &src) {
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    ck(vkBeginCommandBuffer(e.cmd, &bi), "begin upload");
+    VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    b.srcAccessMask = 0;
+    b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = e.image;
+    b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(e.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, 0, 0, 0, 1, &b);
+    VkBufferImageCopy c{};
+    c.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    c.imageExtent = {sw, sh, 1};
+    vkCmdCopyBufferToImage(e.cmd, e.staging.b, e.image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+    b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdPipelineBarrier(e.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, 0, 0, 0, 1,
+                         &b);
+    ck(vkEndCommandBuffer(e.cmd), "end upload");
+    VkFence f{};
+    VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    ck(vkCreateFence(device, &fi, 0, &f), "upload fence");
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1;
+    si.pCommandBuffers = &e.cmd;
+    ck(vkQueueSubmit(queue, 1, &si, f), "upload submit");
+    ck(vkWaitForFences(device, 1, &f, VK_TRUE, UINT64_MAX), "upload wait");
+    vkDestroyFence(device, f, 0);
+    ck(vkResetCommandBuffer(e.cmd, 0), "reset after upload");
+  }
+  void record(Eye &e) {
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    ck(vkBeginCommandBuffer(e.cmd, &bi), "begin dispatch");
+    vkCmdResetQueryPool(e.cmd, e.query, 0, 4);
+    vkCmdWriteTimestamp(e.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, e.query, 0);
+    vkCmdWriteTimestamp(e.cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, e.query,
+                        1);
+    vkCmdBindPipeline(e.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(e.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pl, 0, 1,
+                            &e.ds, 0, 0);
+    uint32_t pc[5]{tw, th, 3, 6, 1};
+    vkCmdPushConstants(e.cmd, pl, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc),
+                       pc);
+    vkCmdDispatch(e.cmd, uint32_t((blocks + 63) / 64), 1, 1);
+    vkCmdWriteTimestamp(e.cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, e.query,
+                        2);
+    VkBufferMemoryBarrier ob{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    ob.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ob.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    ob.srcQueueFamilyIndex = ob.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ob.buffer = e.output.b;
+    ob.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(e.cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, 0, 1, &ob, 0, 0);
+    VkBufferCopy bc{0, 0, outBytes};
+    vkCmdCopyBuffer(e.cmd, e.output.b, e.readback.b, 1, &bc);
+    VkBufferMemoryBarrier hb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    hb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    hb.srcQueueFamilyIndex = hb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    hb.buffer = e.readback.b;
+    hb.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(e.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, 0, 1, &hb, 0, 0);
+    vkCmdWriteTimestamp(e.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, e.query,
+                        3);
+    ck(vkEndCommandBuffer(e.cmd), "end dispatch");
+  }
+  double query(Eye &e, int x, int y) {
+    uint64_t q[4];
+    ck(vkGetQueryPoolResults(device, e.query, 0, 4, sizeof(q), q,
+                             sizeof(uint64_t),
+                             VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+       "query results");
+    uint64_t mask =
+        validBits == 64 ? UINT64_MAX : ((uint64_t(1) << validBits) - 1);
+    return double((q[y] - q[x]) & mask) * timestampPeriod / 1e6;
+  }
+};
+static std::vector<uint8_t> pack_packet(Compressor &c,
+                                        const std::vector<uint8_t> &raw,
+                                        int level, bool compact_mode,
+                                        double &compact_ms, double &zms) {
+  using namespace wivrn::nxastc_packet;
+  const uint8_t *input = raw.data();
+  size_t input_bytes = raw.size();
+  bool compact_input = false;
+  if (compact_mode) {
+    auto t = Clock::now();
+    c.compact.resize(raw.size() / 16 * 14);
+    compact_input = compact_blocks(raw, c.compact);
+    compact_ms = ms(t, Clock::now());
+    if (compact_input) {
+      input = c.compact.data();
+      input_bytes = c.compact.size();
+    }
+  }
+  auto t = Clock::now();
+  c.zbuf.resize(ZSTD_compressBound(input_bytes));
+  size_t zn = ZSTD_compressCCtx(c.ctx, c.zbuf.data(), c.zbuf.size(), input,
+                                input_bytes, level);
+  zms = ms(t, Clock::now());
+  bool zok = !ZSTD_isError(zn) && zn > 0;
+  int ln = 0;
+  if (!zok || zn > raw.size() / 2) {
+    c.lbuf.resize(LZ4_compressBound(int(raw.size())));
+    ln = LZ4_compress_default((const char *)raw.data(), c.lbuf.data(),
+                              int(raw.size()), int(c.lbuf.size()));
+  }
+  compression enc = compression::none;
+  const uint8_t *data = raw.data();
+  size_t n = raw.size();
+  if (ln > 0 && size_t(ln) < n) {
+    enc = compression::lz4;
+    data = (const uint8_t *)c.lbuf.data();
+    n = size_t(ln);
+  }
+  if (zok && zn * 100 <= n * 90 && (!compact_input || zn <= input_bytes)) {
+    enc = compact_input ? compression::compact_zstd : compression::zstd;
+    data = (const uint8_t *)c.zbuf.data();
+    n = zn;
+  }
+  auto h = make_header(2176, 2176, uint32_t(n), enc);
+  std::vector<uint8_t> out(h.size() + n);
+  std::copy(h.begin(), h.end(), out.begin());
+  std::memcpy(out.data() + h.size(), data, n);
+  return out;
+}
+static bool verify_packet(const std::vector<uint8_t> &p,
+                          const std::vector<uint8_t> &raw) {
+  using namespace wivrn::nxastc_packet;
+  auto h = parse_packet(p);
+  if (!h)
+    return false;
+  std::vector<uint8_t> d(raw.size());
+  return decode_payload(*h,
+                        std::span<const uint8_t>(p.data() + h->header_bytes,
+                                                 h->payload_bytes),
+                        d) == decode_status::ok &&
+         d == raw;
+}
+static Sample run(App &a, Compressor &z0, Compressor &z1, bool parallel,
+                  int level, bool compact) {
+  auto begin = Clock::now();
+  auto r0 = Clock::now();
+  a.record(a.eye[0]);
+  a.record(a.eye[1]);
+  auto recordEnd = Clock::now();
+  ck(vkResetFences(
+         a.device, 2,
+         std::array<VkFence, 2>{a.eye[0].fence, a.eye[1].fence}.data()),
+     "reset fences");
+  VkSubmitInfo si0{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  si0.commandBufferCount = 1;
+  si0.pCommandBuffers = &a.eye[0].cmd;
+  auto s0 = Clock::now();
+  ck(vkQueueSubmit(a.queue, 1, &si0, a.eye[0].fence), "submit eye0");
+  VkSubmitInfo si1{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+  si1.commandBufferCount = 1;
+  si1.pCommandBuffers = &a.eye[1].cmd;
+  ck(vkQueueSubmit(a.queue, 1, &si1, a.eye[1].fence), "submit eye1");
+  auto subEnd = Clock::now();
+  Sample s;
+  s.start_s = std::chrono::duration<double>(begin.time_since_epoch()).count();
+  s.record = ms(r0, recordEnd);
+  s.submit = ms(s0, subEnd);
+  auto readpack = [&](int i, Compressor &z, double &wait, double &gpu,
+                      double &gpuread, double &zms, double &compactms,
+                      double &pk, std::vector<uint8_t> &raw,
+                      std::vector<uint8_t> &packet) {
+    auto w = Clock::now();
+    ck(vkWaitForFences(a.device, 1, &a.eye[i].fence, VK_TRUE, UINT64_MAX),
+       "eye fence wait");
+    auto we = Clock::now();
+    wait = ms(w, we);
+    VkMappedMemoryRange inv{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+    inv.memory = a.eye[i].readback.m;
+    inv.size = VK_WHOLE_SIZE;
+    ck(vkInvalidateMappedMemoryRanges(a.device, 1, &inv),
+       "invalidate readback");
+    gpu = a.query(a.eye[i], 1, 2);
+    gpuread = a.query(a.eye[i], 0, 3);
+    raw.resize(a.outBytes);
+    std::memcpy(raw.data(), a.eye[i].readback.map, a.outBytes);
+    auto p = Clock::now();
+    packet = pack_packet(z, raw, level, compact, compactms, zms);
+    pk = ms(p, Clock::now());
+  };
+  if (parallel) {
+    auto launch = Clock::now();
+    auto fut = std::async(std::launch::async, [&] {
+      readpack(1, z1, s.wait1, s.gpu1, s.gpuRead1, s.zstd1, s.compact1, s.pack1,
+               s.raw1, s.pkt1);
+    });
+    s.launch = ms(launch, Clock::now());
+    readpack(0, z0, s.wait0, s.gpu0, s.gpuRead0, s.zstd0, s.compact0, s.pack0,
+             s.raw0, s.pkt0);
+    fut.get();
+  } else {
+    readpack(0, z0, s.wait0, s.gpu0, s.gpuRead0, s.zstd0, s.compact0, s.pack0,
+             s.raw0, s.pkt0);
+    readpack(1, z1, s.wait1, s.gpu1, s.gpuRead1, s.zstd1, s.compact1, s.pack1,
+             s.raw1, s.pkt1);
+  }
+  s.wall = ms(begin, Clock::now());
+  return s;
+}
+int main(int ac, char **av) {
+  try {
+    if (ac != 4)
+      throw std::runtime_error(
+          "usage: stereo-gpu dark.rgba forest.rgba output-dir");
+    std::string out = av[3];
+    if (out.size() && out.back() != '/')
+      out += '/';
+    constexpr uint32_t sw = 2176, sh = 2176;
+    App a;
+    a.blocks = uint64_t(sw / 8) * (sh / 8);
+    a.outBytes = a.blocks * 16;
+    auto src0 = load(av[1], size_t(sw) * sh * 4),
+         src1 = load(av[2], size_t(sw) * sh * 4);
+    VkApplicationInfo ai{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    ai.pApplicationName = "stereo-gpu-bench";
+    ai.apiVersion = VK_API_VERSION_1_1;
+    VkInstanceCreateInfo ii{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    ii.pApplicationInfo = &ai;
+    ck(vkCreateInstance(&ii, 0, &a.instance), "instance");
+    uint32_t n = 0;
+    ck(vkEnumeratePhysicalDevices(a.instance, &n, nullptr), "devices");
+    std::vector<VkPhysicalDevice> ps(n);
+    ck(vkEnumeratePhysicalDevices(a.instance, &n, ps.data()), "devices");
+    int best = -1;
+    VkPhysicalDeviceProperties props{};
+    for (auto p : ps) {
+      VkPhysicalDeviceProperties q;
+      vkGetPhysicalDeviceProperties(p, &q);
+      uint32_t nq = 0;
+      vkGetPhysicalDeviceQueueFamilyProperties(p, &nq, nullptr);
+      std::vector<VkQueueFamilyProperties> qs(nq);
+      vkGetPhysicalDeviceQueueFamilyProperties(p, &nq, qs.data());
+      for (uint32_t j = 0; j < nq; j++)
+        if ((qs[j].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+            qs[j].timestampValidBits) {
+          int score =
+              q.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 10 : 0;
+          if (std::string(q.deviceName).find("7900 XTX") != std::string::npos)
+            score += 100;
+          if (score > best) {
+            best = score;
+            a.physical = p;
+            a.family = j;
+            a.validBits = qs[j].timestampValidBits;
+            props = q;
+          }
+        }
+    }
+    if (best < 0)
+      throw std::runtime_error("no timestamped compute queue");
+    a.timestampPeriod = props.limits.timestampPeriod;
+    vkGetPhysicalDeviceMemoryProperties(a.physical, &a.mem);
+    float pri = 1;
+    VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+    qi.queueFamilyIndex = a.family;
+    qi.queueCount = 1;
+    qi.pQueuePriorities = &pri;
+    VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    di.queueCreateInfoCount = 1;
+    di.pQueueCreateInfos = &qi;
+    ck(vkCreateDevice(a.physical, &di, 0, &a.device), "device");
+    vkGetDeviceQueue(a.device, a.family, 0, &a.queue);
+    VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    sci.magFilter = sci.minFilter = VK_FILTER_NEAREST;
+    sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sci.addressModeU = sci.addressModeV = sci.addressModeW =
+        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    ck(vkCreateSampler(a.device, &sci, 0, &a.sampler), "sampler");
+    VkDescriptorSetLayoutBinding bind[3]{};
+    for (int i = 0; i < 3; i++) {
+      bind[i].binding = i;
+      bind[i].descriptorCount = 1;
+      bind[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+      bind[i].descriptorType = i < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                     : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    }
+    VkDescriptorSetLayoutCreateInfo dl{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    dl.bindingCount = 3;
+    dl.pBindings = bind;
+    ck(vkCreateDescriptorSetLayout(a.device, &dl, 0, &a.dsl),
+       "descriptor layout");
+    VkPushConstantRange range{VK_SHADER_STAGE_COMPUTE_BIT, 0, 20};
+    VkPipelineLayoutCreateInfo pl{
+        VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    pl.setLayoutCount = 1;
+    pl.pSetLayouts = &a.dsl;
+    pl.pushConstantRangeCount = 1;
+    pl.pPushConstantRanges = &range;
+    ck(vkCreatePipelineLayout(a.device, &pl, 0, &a.pl), "pipeline layout");
+    auto code = spv("build/encode_primary.spv");
+    VkShaderModuleCreateInfo sm{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    sm.codeSize = code.size() * 4;
+    sm.pCode = code.data();
+    ck(vkCreateShaderModule(a.device, &sm, 0, &a.shader), "shader");
+    VkPipelineShaderStageCreateInfo stage{
+        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+    stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage.module = a.shader;
+    stage.pName = "main";
+    VkComputePipelineCreateInfo pi{
+        VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    pi.stage = stage;
+    pi.layout = a.pl;
+    ck(vkCreateComputePipelines(a.device, VK_NULL_HANDLE, 1, &pi, nullptr,
+                                &a.pipeline),
+       "pipeline");
+    VkDescriptorPoolSize sizes[2]{
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2}};
+    VkDescriptorPoolCreateInfo dpi{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    dpi.maxSets = 2;
+    dpi.poolSizeCount = 2;
+    dpi.pPoolSizes = sizes;
+    ck(vkCreateDescriptorPool(a.device, &dpi, 0, &a.dp), "descriptor pool");
+    std::array<VkDescriptorSetLayout, 2> layouts{a.dsl, a.dsl};
+    VkDescriptorSetAllocateInfo dai{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    dai.descriptorPool = a.dp;
+    dai.descriptorSetCount = 2;
+    dai.pSetLayouts = layouts.data();
+    std::array<VkDescriptorSet, 2> sets{};
+    ck(vkAllocateDescriptorSets(a.device, &dai, sets.data()),
+       "descriptor sets");
+    VkCommandPoolCreateInfo cpi{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    cpi.queueFamilyIndex = a.family;
+    cpi.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    ck(vkCreateCommandPool(a.device, &cpi, 0, &a.pool), "command pool");
+    std::array<VkCommandBuffer, 2> cmds{};
+    VkCommandBufferAllocateInfo cai{
+        VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    cai.commandPool = a.pool;
+    cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cai.commandBufferCount = 2;
+    ck(vkAllocateCommandBuffers(a.device, &cai, cmds.data()), "commands");
+    std::array<const std::vector<uint8_t> *, 2> src{&src0, &src1};
+    for (int i = 0; i < 2; i++) {
+      auto &e = a.eye[i];
+      e.ds = sets[i];
+      e.cmd = cmds[i];
+      VkImageCreateInfo ic{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+      ic.imageType = VK_IMAGE_TYPE_2D;
+      ic.format = VK_FORMAT_R8G8B8A8_UNORM;
+      ic.extent = {sw, sh, 1};
+      ic.mipLevels = ic.arrayLayers = 1;
+      ic.samples = VK_SAMPLE_COUNT_1_BIT;
+      ic.tiling = VK_IMAGE_TILING_OPTIMAL;
+      ic.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+      ic.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      ck(vkCreateImage(a.device, &ic, 0, &e.image), "image");
+      VkMemoryRequirements mr;
+      vkGetImageMemoryRequirements(a.device, e.image, &mr);
+      VkMemoryAllocateInfo ma{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+      ma.allocationSize = mr.size;
+      ma.memoryTypeIndex =
+          a.mt(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      ck(vkAllocateMemory(a.device, &ma, 0, &e.im), "image memory");
+      ck(vkBindImageMemory(a.device, e.image, e.im, 0), "bind image");
+      VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+      vi.image = e.image;
+      vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      vi.format = ic.format;
+      vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+      ck(vkCreateImageView(a.device, &vi, 0, &e.view), "view");
+      e.staging = a.buffer(src[i]->size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                           true);
+      memcpy(e.staging.map, src[i]->data(), src[i]->size());
+      e.output = a.buffer(a.outBytes,
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
+      e.readback = a.buffer(a.outBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                            true);
+      VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+      ck(vkCreateFence(a.device, &fi, 0, &e.fence), "fence");
+      VkQueryPoolCreateInfo qci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+      qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+      qci.queryCount = 4;
+      ck(vkCreateQueryPool(a.device, &qci, 0, &e.query), "query pool");
+      VkDescriptorImageInfo im{a.sampler, e.view,
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+      VkDescriptorBufferInfo bo{e.output.b, 0, a.outBytes};
+      VkWriteDescriptorSet wr[3]{};
+      for (int j = 0; j < 3; j++) {
+        wr[j].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wr[j].dstSet = e.ds;
+        wr[j].dstBinding = j;
+        wr[j].descriptorCount = 1;
+        if (j < 2) {
+          wr[j].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+          wr[j].pImageInfo = &im;
+        } else {
+          wr[j].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+          wr[j].pBufferInfo = &bo;
+        }
+      }
+      vkUpdateDescriptorSets(a.device, 3, wr, 0, nullptr);
+      a.upload(e, *src[i]);
+    }
+    Compressor z0, z1;
+    constexpr int warm = 5, count = 20;
+    std::array<std::vector<uint8_t>, 2> reference;
+    std::array<std::array<std::vector<uint8_t>, 2>, 2> representative{};
+    std::array<std::array<bool, 2>, 2> have{};
+    std::array<std::vector<uint8_t>, 2> packetReference;
+    struct Mode {
+      const char *name;
+      int level;
+      bool compact, parallel;
+    };
+    std::array<Mode, 2> modes{{{"serial_l3", 3, false, false},
+                               {"parallel_l3", 3, false, true}}};
+    std::array<std::vector<Sample>, 2> samples;
+    for (auto &v : samples)
+      v.reserve(count);
+    std::ofstream csv(out + "three-mode.csv");
+    csv << "sequence,mode,monotonic_s,wall_ms,record_ms,submit_ms,eye0_wait_ms,"
+           "eye1_wait_ms,eye0_gpu_dispatch_ms,eye1_gpu_dispatch_ms,eye0_gpu_"
+           "dispatch_readback_ms,eye1_gpu_dispatch_readback_ms,eye0_zstd_ms,"
+           "eye1_zstd_ms,eye0_compact_ms,eye1_compact_ms,eye0_pack_ms,eye1_"
+           "pack_ms,async_launch_ms,eye0_astc_bytes,eye1_astc_bytes,eye0_"
+           "packet_bytes,eye1_packet_bytes,eye0_codec,eye1_codec\n";
+    auto validate = [&](const Sample &s, int mi) {
+      if (reference[0].empty()) {
+        reference[0] = s.raw0;
+        reference[1] = s.raw1;
+      }
+      if (s.raw0 != reference[0] || s.raw1 != reference[1])
+        throw std::runtime_error("ASTC bytes changed between modes");
+      for (int e = 0; e < 2; e++) {
+        const auto &pkt = e ? s.pkt1 : s.pkt0;
+        if (!have[mi][e]) {
+          representative[mi][e] = pkt;
+          have[mi][e] = true;
+        }
+        if (packetReference[e].empty())
+          packetReference[e] = pkt;
+        else if (pkt != packetReference[e])
+          throw std::runtime_error("packet bytes changed between serial and parallel runs");
+      }
+    };
+    auto runmode = [&](int mi, bool warmup, int seq) {
+      const auto &m = modes[mi];
+      Sample s = run(a, z0, z1, m.parallel, m.level, m.compact);
+      validate(s, mi);
+      if (!warmup) {
+        csv << seq << ',' << m.name << ',' << s.start_s << ',' << s.wall << ','
+            << s.record << ',' << s.submit << ',' << s.wait0 << ',' << s.wait1
+            << ',' << s.gpu0 << ',' << s.gpu1 << ',' << s.gpuRead0 << ','
+            << s.gpuRead1 << ',' << s.zstd0 << ',' << s.zstd1 << ','
+            << s.compact0 << ',' << s.compact1 << ',' << s.pack0 << ','
+            << s.pack1 << ',' << s.launch << ',' << s.raw0.size() << ','
+            << s.raw1.size() << ',' << s.pkt0.size() << ',' << s.pkt1.size()
+            << ',' << unsigned(s.pkt0[5]) << ',' << unsigned(s.pkt1[5]) << '\n';
+        samples[mi].push_back(std::move(s));
+      }
+    };
+    // Matched pairs alternate serial→parallel and parallel→serial.
+    int seq = 0;
+    for (int pair = 0; pair < warm; pair++) {
+      int first = pair & 1;
+      runmode(first, true, seq++);
+      runmode(1 - first, true, seq++);
+    }
+    for (int pair = 0; pair < count; pair++) {
+      int first = pair & 1;
+      runmode(first, false, seq++);
+      runmode(1 - first, false, seq++);
+    }
+    auto pct = [](std::vector<double> v, double p) {
+      std::sort(v.begin(), v.end());
+      return v[size_t((v.size() - 1) * p)];
+    };
+    auto report = [&](int mi, const char *field, auto f) {
+      std::vector<double> x;
+      for (auto &s : samples[mi])
+        x.push_back(f(s));
+      std::cout << modes[mi].name << '_' << field << "=" << pct(x, .5) << "/"
+                << pct(x, .95) << "ms ";
+    };
+    std::cout
+        << "device=" << props.deviceName << " inputs=" << av[1] << "+" << av[2]
+        << " 2176x2176 q6 ASTC8 warm_per_mode=" << warm
+        << " samples_per_mode=" << count
+        << " upload=excluded one_device_one_queue both_submitted_before_wait "
+           "order=alternating_serial_parallel_parallel_serial production_selector\n";
+    for (int mi = 0; mi < 2; mi++)
+      for (const auto &sample : samples[mi])
+        if (!verify_packet(sample.pkt0, sample.raw0) ||
+            !verify_packet(sample.pkt1, sample.raw1))
+          throw std::runtime_error("production packet decoder mismatch");
+    for (int mi = 0; mi < 2; mi++) {
+      report(mi, "wall", [](auto &s) { return s.wall; });
+      report(mi, "fence_wait_sum", [](auto &s) { return s.wait0 + s.wait1; });
+      report(mi, "gpu_dispatch_sum", [](auto &s) { return s.gpu0 + s.gpu1; });
+      report(mi, "dispatch_to_readback_sum",
+             [](auto &s) { return s.gpuRead0 + s.gpuRead1; });
+      report(mi, "zstd_sum", [](auto &s) { return s.zstd0 + s.zstd1; });
+      report(mi, "compact_sum",
+             [](auto &s) { return s.compact0 + s.compact1; });
+      report(mi, "pack_sum", [](auto &s) { return s.pack0 + s.pack1; });
+      report(mi, "async_launch", [](auto &s) { return s.launch; });
+    }
+    std::cout << "raw_astc_exact=1 packet_exact=1 production_decoder_roundtrip=1 raw_bytes="
+              << reference[0].size() << '/' << reference[1].size();
+    for (int mi = 0; mi < 2; mi++)
+      std::cout << ' ' << modes[mi].name
+                << "_packet_bytes=" << representative[mi][0].size() << '/'
+                << representative[mi][1].size()
+                << "_codecs=" << unsigned(representative[mi][0][5]) << '/'
+                << unsigned(representative[mi][1][5]);
+    std::cout << '\n';
+    auto save = [&](const std::string &name, const std::vector<uint8_t> &data) {
+      std::ofstream f(out + name, std::ios::binary);
+      f.write(reinterpret_cast<const char *>(data.data()), data.size());
+    };
+    save("eye0.astc.raw", reference[0]);
+    save("eye1.astc.raw", reference[1]);
+    save("serial.eye0.packet", representative[0][0]);
+    save("serial.eye1.packet", representative[0][1]);
+    save("parallel.eye0.packet", representative[1][0]);
+    save("parallel.eye1.packet", representative[1][1]);
+    return 0;
+  } catch (const std::exception &e) {
+    std::cerr << "error: " << e.what() << '\n';
+    return 1;
+  }
+}

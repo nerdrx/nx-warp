@@ -1,0 +1,103 @@
+{
+  "rows": 40,
+  "summary": {
+    "serial_l3": {
+      "wall_ms": {
+        "mean": 7.25553,
+        "p50_lower_rank": 7.6961,
+        "p95_lower_rank": 7.84326
+      },
+      "eye0_wait_ms": {
+        "mean": 0.9358503,
+        "p50_lower_rank": 0.935773,
+        "p95_lower_rank": 0.946732
+      },
+      "eye1_wait_ms": {
+        "mean": 0.0015465,
+        "p50_lower_rank": 0.00144,
+        "p95_lower_rank": 0.00188
+      },
+      "eye0_gpu_dispatch_ms": {
+        "mean": 0.715928,
+        "p50_lower_rank": 0.71524,
+        "p95_lower_rank": 0.7234
+      },
+      "eye1_gpu_dispatch_ms": {
+        "mean": 0.52423,
+        "p50_lower_rank": 0.52424,
+        "p95_lower_rank": 0.52804
+      },
+      "eye0_pack_ms": {
+        "mean": 3.405342,
+        "p50_lower_rank": 3.61739,
+        "p95_lower_rank": 3.7305
+      },
+      "eye1_pack_ms": {
+        "mean": 2.3650595,
+        "p50_lower_rank": 2.44176,
+        "p95_lower_rank": 2.65472
+      }
+    },
+    "parallel_l3": {
+      "wall_ms": {
+        "mean": 4.63582,
+        "p50_lower_rank": 4.88647,
+        "p95_lower_rank": 5.0021
+      },
+      "eye0_wait_ms": {
+        "mean": 0.9149167,
+        "p50_lower_rank": 0.915292,
+        "p95_lower_rank": 0.930022
+      },
+      "eye1_wait_ms": {
+        "mean": 1.5210485,
+        "p50_lower_rank": 1.51939,
+        "p95_lower_rank": 1.53679
+      },
+      "eye0_gpu_dispatch_ms": {
+        "mean": 0.7172540000000001,
+        "p50_lower_rank": 0.71648,
+        "p95_lower_rank": 0.72444
+      },
+      "eye1_gpu_dispatch_ms": {
+        "mean": 0.523422,
+        "p50_lower_rank": 0.5224,
+        "p95_lower_rank": 0.52944
+      },
+      "eye0_pack_ms": {
+        "mean": 3.4021845,
+        "p50_lower_rank": 3.64332,
+        "p95_lower_rank": 3.70891
+      },
+      "eye1_pack_ms": {
+        "mean": 2.412146,
+        "p50_lower_rank": 2.43829,
+        "p95_lower_rank": 2.79957
+      }
+    }
+  },
+  "paired_wall_deltas_ms": [
+    -2.22023,
+    -2.89227,
+    -2.6837,
+    -2.8784799999999997,
+    -2.85473,
+    -2.9669600000000003,
+    -2.60837,
+    -2.7167200000000005,
+    -2.6691400000000005,
+    -2.89032,
+    -2.79009,
+    -2.90581,
+    -2.88774,
+    -2.83624,
+    -2.6445700000000008,
+    -2.46258,
+    -2.23493,
+    -2.09817,
+    -2.0150999999999994,
+    -2.13805
+  ],
+  "paired_mean": -2.61971,
+  "paired_p50_lower_rank": -2.7167200000000005
+}
