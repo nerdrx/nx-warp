@@ -1,0 +1,1 @@
+Root independently verifies the complete projected process_packets definition occurs exactly once and differs from production only in its member qualification. The exact client_session::poll function from the production header occurs exactly once, unchanged. Normal/SAN final logs each contain 96 method and 72 joined checks, zero failures. Source 6e2293d5.

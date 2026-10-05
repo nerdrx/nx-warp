@@ -1,0 +1,12 @@
+gate=actual extracted accumulator methods; virtual time; excludes constructor, push/process_packets, network thread, decoder/XR
+checks=96 failures=0
+kernel integration: exact process_packets + poll templates; host monotonic stand-in, no incoming packets
+case,1,1,1,wait_ms=13,elapsed_ns=13066495,polls=1,front=2,completed=1
+case,0,1,1,wait_ms=100,elapsed_ns=100114917,polls=2,front=0,completed=0
+case,1,0,1,wait_ms=100,elapsed_ns=100116697,polls=2,front=0,completed=0
+FAIL:320 a.nack_requests==1
+FAIL:321 a.nack_requests==2
+FAIL:322 a.window.front().nack_rounds==2
+FAIL:616 a->nack_requests==2
+case,1,1,0,wait_ms=100,elapsed_ns=100116677,polls=2,front=0,completed=0
+checks=64 failures=4

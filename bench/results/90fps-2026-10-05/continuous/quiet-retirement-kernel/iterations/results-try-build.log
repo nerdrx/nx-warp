@@ -1,0 +1,205 @@
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/fec.h:22,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client/decoder/shard_set.h:22,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:22:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static constexpr void wivrn::serialization_traits<wivrn::data_holder>::type_hash(wivrn::details::hash_context&)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:65: warning: unused parameter ‘h’ [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                         ~~~~~~~~~~~~~~~~~~~~~~~~^
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp: At global scope:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:542:12: error: redefinition of ‘int checks’
+  542 | static int checks=0,failures=0;
+      |            ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:300:12: note: ‘int checks’ previously defined here
+  300 | static int checks=0, failures=0;
+      |            ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:542:21: error: redefinition of ‘int failures’
+  542 | static int checks=0,failures=0;
+      |                     ^~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:300:22: note: ‘int failures’ previously defined here
+  300 | static int checks=0, failures=0;
+      |                      ^~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:564:6: error: reference to ‘scenes’ is ambiguous
+  564 | void scenes::stream::process_packets()
+      |      ^~~~~~
+  • there are 2 candidates
+    • candidate 1: ‘namespace wivrn::scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:31:11:
+         31 | namespace scenes { struct stream { std::vector<from_headset::nack> requests; XrDuration period=11'111'111; void send_nack(const from_headset::nack&n){requests.push_back(n);} XrDuration display_period_ns()const{return period;} }; }
+            |           ^~~~~~
+    • candidate 2: ‘namespace scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:555:11:
+        555 | namespace scenes {
+            |           ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp: In function ‘void process_packets()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:569:40: error: ‘recovery_poll_enabled’ was not declared in this scope; did you mean ‘caller_projection::recovery_poll_enabled’?
+  569 |         const bool use_recovery_poll = recovery_poll_enabled();
+      |                                        ^~~~~~~~~~~~~~~~~~~~~
+      |                                        caller_projection::recovery_poll_enabled
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:545:69: note: ‘caller_projection::recovery_poll_enabled’ declared here
+  545 | namespace caller_projection { inline bool enabled=true; inline bool recovery_poll_enabled(){return enabled;} }
+      |                                                                     ^~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:570:16: error: ‘state_’ was not declared in this scope; did you mean ‘statx’?
+  570 |         while (state_ != state::shutdown)
+      |                ^~~~~~
+      |                statx
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:570:26: error: ‘state’ has not been declared; did you mean ‘statx’?
+  570 |         while (state_ != state::shutdown)
+      |                          ^~~~~
+      |                          statx
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:578:33: error: ‘network_session’ was not declared in this scope
+  578 |                                 network_session->poll(*this, std::chrono::milliseconds(100));
+      |                                 ^~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:578:56: error: invalid use of ‘this’ in non-member function
+  578 |                                 network_session->poll(*this, std::chrono::milliseconds(100));
+      |                                                        ^~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:581:49: error: invalid use of ‘this’ in non-member function
+  581 |                                 auto timeout = [this]() {
+      |                                                 ^~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp: In lambda function:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:582:58: error: ‘instance’ was not declared in this scope; did you mean ‘XrInstance’?
+  582 |                                         const auto now = instance.now();
+      |                                                          ^~~~~~~~
+      |                                                          XrInstance
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:584:63: error: ‘decoder_mutex’ was not declared in this scope
+  584 |                                         std::shared_lock lock(decoder_mutex);
+      |                                                               ^~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:585:59: error: ‘decoders’ was not declared in this scope
+  585 |                                         for (auto & item: decoders)
+      |                                                           ^~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp: In function ‘void process_packets()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:590:33: error: ‘network_session’ was not declared in this scope
+  590 |                                 network_session->poll(*this, std::chrono::milliseconds(100), timeout);
+      |                                 ^~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:590:56: error: invalid use of ‘this’ in non-member function
+  590 |                                 network_session->poll(*this, std::chrono::milliseconds(100), timeout);
+      |                                                        ^~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:591:47: error: ‘state’ has not been declared; did you mean ‘statx’?
+  591 |                                 if (state_ != state::shutdown)
+      |                                               ^~~~~
+      |                                               statx
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:593:60: error: ‘instance’ was not declared in this scope; did you mean ‘XrInstance’?
+  593 |                                         const XrTime now = instance.now();
+      |                                                            ^~~~~~~~
+      |                                                            XrInstance
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:594:63: error: ‘decoder_mutex’ was not declared in this scope
+  594 |                                         std::shared_lock lock(decoder_mutex);
+      |                                                               ^~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:595:59: error: ‘decoders’ was not declared in this scope
+  595 |                                         for (auto & item: decoders)
+      |                                                           ^~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:609:33: error: ‘try_seamless_reconnect’ was not declared in this scope
+  609 |                         if (not try_seamless_reconnect())
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:612:37: error: too few arguments to function ‘void exit(int)’
+  612 |                                 exit();
+      |                                 ~~~~^~
+In file included from /usr/include/c++/16/cstdlib:83,
+                 from /usr/include/c++/16/bits/stl_algo.h:71,
+                 from /usr/include/c++/16/algorithm:63,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/client/decoder/frame_window.h:21,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:20:
+/usr/include/stdlib.h:778:13: note: declared here
+  778 | extern void exit (int __status) __THROW __attribute__ ((__noreturn__));
+      |             ^~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp: In function ‘void integrated_case(bool, bool, bool)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:619:352: error: reference to ‘scenes’ is ambiguous
+  619 |  constexpr XrDuration period=11'111'111;auto a=std::make_shared<shard_accumulator>();a->nxastc_codec=native;std::shared_ptr<wivrn::scenes::stream>scene;XrTime start=host_ns()-10'000'000;setup(*a,scene,deadline,start);service_two_nack_rounds(*a,start);a->instance.value=std::max<XrTime>(a->instance.value,host_ns());caller_projection::enabled=recovery;scenes::stream loop(a);loop.process_packets();auto&s=*loop.network_session;bool expected=recovery&&deadline&&native;CHECK(a->window.front_index()==(expected?2u:0u));CHECK(a->decoder_->completed.size()==(expected?1u:0u));CHECK(a->nack_requests==2);CHECK(!s.requested_ms.empty());if(expected){CHECK(s.requested_ms[0]>0&&s.requested_ms[0]<100);CHECK(s.elapsed_ns[0]>=0);CHECK(loop.state_==scenes::stream::state::shutdown);}else{CHECK(s.requested_ms[0]==100);CHECK(s.requested_ms.size()==2);CHECK(loop.state_==scenes::stream::state::shutdown);}std::printf("case,%d,%d,%d,wait_ms=%d,elapsed_ns=%lld,polls=%zu,front=%llu,completed=%zu\n",recovery,deadline,native,s.requested_ms[0],(long long)s.elapsed_ns[0],s.calls,(unsigned long long)a->window.front_index(),a->decoder_->completed.size());}
+      |                                                                                                                                                                                                                                                                                                                                                                ^~~~~~
+  • there are 2 candidates
+    • candidate 1: ‘namespace wivrn::scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:31:11:
+         31 | namespace scenes { struct stream { std::vector<from_headset::nack> requests; XrDuration period=11'111'111; void send_nack(const from_headset::nack&n){requests.push_back(n);} XrDuration display_period_ns()const{return period;} }; }
+            |           ^~~~~~
+    • candidate 2: ‘namespace scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:555:11:
+        555 | namespace scenes {
+            |           ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:619:375: error: ‘loop’ was not declared in this scope
+  619 |  constexpr XrDuration period=11'111'111;auto a=std::make_shared<shard_accumulator>();a->nxastc_codec=native;std::shared_ptr<wivrn::scenes::stream>scene;XrTime start=host_ns()-10'000'000;setup(*a,scene,deadline,start);service_two_nack_rounds(*a,start);a->instance.value=std::max<XrTime>(a->instance.value,host_ns());caller_projection::enabled=recovery;scenes::stream loop(a);loop.process_packets();auto&s=*loop.network_session;bool expected=recovery&&deadline&&native;CHECK(a->window.front_index()==(expected?2u:0u));CHECK(a->decoder_->completed.size()==(expected?1u:0u));CHECK(a->nack_requests==2);CHECK(!s.requested_ms.empty());if(expected){CHECK(s.requested_ms[0]>0&&s.requested_ms[0]<100);CHECK(s.elapsed_ns[0]>=0);CHECK(loop.state_==scenes::stream::state::shutdown);}else{CHECK(s.requested_ms[0]==100);CHECK(s.requested_ms.size()==2);CHECK(loop.state_==scenes::stream::state::shutdown);}std::printf("case,%d,%d,%d,wait_ms=%d,elapsed_ns=%lld,polls=%zu,front=%llu,completed=%zu\n",recovery,deadline,native,s.requested_ms[0],(long long)s.elapsed_ns[0],s.calls,(unsigned long long)a->window.front_index(),a->decoder_->completed.size());}
+      |                                                                                                                                                                                                                                                                                                                                                                                       ^~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:619:738: error: reference to ‘scenes’ is ambiguous
+  619 |  constexpr XrDuration period=11'111'111;auto a=std::make_shared<shard_accumulator>();a->nxastc_codec=native;std::shared_ptr<wivrn::scenes::stream>scene;XrTime start=host_ns()-10'000'000;setup(*a,scene,deadline,start);service_two_nack_rounds(*a,start);a->instance.value=std::max<XrTime>(a->instance.value,host_ns());caller_projection::enabled=recovery;scenes::stream loop(a);loop.process_packets();auto&s=*loop.network_session;bool expected=recovery&&deadline&&native;CHECK(a->window.front_index()==(expected?2u:0u));CHECK(a->decoder_->completed.size()==(expected?1u:0u));CHECK(a->nack_requests==2);CHECK(!s.requested_ms.empty());if(expected){CHECK(s.requested_ms[0]>0&&s.requested_ms[0]<100);CHECK(s.elapsed_ns[0]>=0);CHECK(loop.state_==scenes::stream::state::shutdown);}else{CHECK(s.requested_ms[0]==100);CHECK(s.requested_ms.size()==2);CHECK(loop.state_==scenes::stream::state::shutdown);}std::printf("case,%d,%d,%d,wait_ms=%d,elapsed_ns=%lld,polls=%zu,front=%llu,completed=%zu\n",recovery,deadline,native,s.requested_ms[0],(long long)s.elapsed_ns[0],s.calls,(unsigned long long)a->window.front_index(),a->decoder_->completed.size());}
+      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:544:35: note: in definition of macro ‘CHECK’
+  544 | #define CHECK(x) do{++checks;if(!(x)){++failures;std::printf("FAIL:%d %s\n",__LINE__,#x);}}while(false)
+      |                                   ^
+  • there are 2 candidates
+  • in definition of macro ‘CHECK’
+      544 | #define CHECK(x) do{++checks;if(!(x)){++failures;std::printf("FAIL:%d %s\n",__LINE__,#x);}}while(false)
+          |                                   ^
+    • candidate 1: ‘namespace wivrn::scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:31:11:
+         31 | namespace scenes { struct stream { std::vector<from_headset::nack> requests; XrDuration period=11'111'111; void send_nack(const from_headset::nack&n){requests.push_back(n);} XrDuration display_period_ns()const{return period;} }; }
+            |           ^~~~~~
+    • candidate 2: ‘namespace scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:555:11:
+        555 | namespace scenes {
+            |           ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:619:858: error: reference to ‘scenes’ is ambiguous
+  619 |  constexpr XrDuration period=11'111'111;auto a=std::make_shared<shard_accumulator>();a->nxastc_codec=native;std::shared_ptr<wivrn::scenes::stream>scene;XrTime start=host_ns()-10'000'000;setup(*a,scene,deadline,start);service_two_nack_rounds(*a,start);a->instance.value=std::max<XrTime>(a->instance.value,host_ns());caller_projection::enabled=recovery;scenes::stream loop(a);loop.process_packets();auto&s=*loop.network_session;bool expected=recovery&&deadline&&native;CHECK(a->window.front_index()==(expected?2u:0u));CHECK(a->decoder_->completed.size()==(expected?1u:0u));CHECK(a->nack_requests==2);CHECK(!s.requested_ms.empty());if(expected){CHECK(s.requested_ms[0]>0&&s.requested_ms[0]<100);CHECK(s.elapsed_ns[0]>=0);CHECK(loop.state_==scenes::stream::state::shutdown);}else{CHECK(s.requested_ms[0]==100);CHECK(s.requested_ms.size()==2);CHECK(loop.state_==scenes::stream::state::shutdown);}std::printf("case,%d,%d,%d,wait_ms=%d,elapsed_ns=%lld,polls=%zu,front=%llu,completed=%zu\n",recovery,deadline,native,s.requested_ms[0],(long long)s.elapsed_ns[0],s.calls,(unsigned long long)a->window.front_index(),a->decoder_->completed.size());}
+      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:544:35: note: in definition of macro ‘CHECK’
+  544 | #define CHECK(x) do{++checks;if(!(x)){++failures;std::printf("FAIL:%d %s\n",__LINE__,#x);}}while(false)
+      |                                   ^
+  • there are 2 candidates
+  • in definition of macro ‘CHECK’
+      544 | #define CHECK(x) do{++checks;if(!(x)){++failures;std::printf("FAIL:%d %s\n",__LINE__,#x);}}while(false)
+          |                                   ^
+    • candidate 1: ‘namespace wivrn::scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:31:11:
+         31 | namespace scenes { struct stream { std::vector<from_headset::nack> requests; XrDuration period=11'111'111; void send_nack(const from_headset::nack&n){requests.push_back(n);} XrDuration display_period_ns()const{return period;} }; }
+            |           ^~~~~~
+    • candidate 2: ‘namespace scenes { }’
+      /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:555:11:
+        555 | namespace scenes {
+            |           ^~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/quiet-retirement-kernel/results-try/kernel-gate.cpp:619:23: error: unused variable ‘period’ [-Werror=unused-variable]
+  619 |  constexpr XrDuration period=11'111'111;auto a=std::make_shared<shard_accumulator>();a->nxastc_codec=native;std::shared_ptr<wivrn::scenes::stream>scene;XrTime start=host_ns()-10'000'000;setup(*a,scene,deadline,start);service_two_nack_rounds(*a,start);a->instance.value=std::max<XrTime>(a->instance.value,host_ns());caller_projection::enabled=recovery;scenes::stream loop(a);loop.process_packets();auto&s=*loop.network_session;bool expected=recovery&&deadline&&native;CHECK(a->window.front_index()==(expected?2u:0u));CHECK(a->decoder_->completed.size()==(expected?1u:0u));CHECK(a->nack_requests==2);CHECK(!s.requested_ms.empty());if(expected){CHECK(s.requested_ms[0]>0&&s.requested_ms[0]<100);CHECK(s.elapsed_ns[0]>=0);CHECK(loop.state_==scenes::stream::state::shutdown);}else{CHECK(s.requested_ms[0]==100);CHECK(s.requested_ms.size()==2);CHECK(loop.state_==scenes::stream::state::shutdown);}std::printf("case,%d,%d,%d,wait_ms=%d,elapsed_ns=%lld,polls=%zu,front=%llu,completed=%zu\n",recovery,deadline,native,s.requested_ms[0],(long long)s.elapsed_ns[0],s.calls,(unsigned long long)a->window.front_index(),a->decoder_->completed.size());}
+      |                       ^~~~~~
+cc1plus: all warnings being treated as errors
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.h:24,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:20:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static constexpr void wivrn::serialization_traits<wivrn::data_holder>::type_hash(wivrn::details::hash_context&)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:65: warning: unused parameter ‘h’ [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                         ~~~~~~~~~~~~~~~~~~~~~~~~^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘std::pair<wivrn::deserialization_packet, sockaddr_in6> wivrn::UDP::receive_from_raw()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:320:30: warning: comparison of integer expressions of different signedness: ‘ssize_t’ {aka ‘long int’} and ‘long unsigned int’ [-Wsign-compare]
+  320 |                 if (received < sizeof(uint64_t))
+      |                     ~~~~~~~~~^~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘wivrn::deserialization_packet wivrn::UDP::receive_raw()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  410 |                 };
+      |                 ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘size_t wivrn::UDP::send_many_raw(std::span<wivrn::serialization_packet>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  547 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size() + 1}});
+      |                         ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_iov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  549 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size()}});
+      |                         ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_iov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]

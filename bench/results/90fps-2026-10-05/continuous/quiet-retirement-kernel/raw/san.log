@@ -1,0 +1,8 @@
+gate=actual extracted accumulator methods; virtual time; excludes constructor, push/process_packets, network thread, decoder/XR
+checks=96 failures=0
+kernel integration: exact process_packets + poll templates; host monotonic stand-in, no incoming packets
+case,1,1,1,wait_ms=13,elapsed_ns=13100360,polls=1,front=2,completed=1,received_bytes=0,poll_return=0
+case,0,1,1,wait_ms=100,elapsed_ns=100128457,polls=2,front=0,completed=0,received_bytes=0,poll_return=0
+case,1,0,1,wait_ms=100,elapsed_ns=100064157,polls=2,front=0,completed=0,received_bytes=0,poll_return=0
+case,1,1,0,wait_ms=100,elapsed_ns=100123397,polls=2,front=0,completed=0,received_bytes=0,poll_return=0
+checks=72 failures=0
