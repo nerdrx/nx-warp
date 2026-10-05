@@ -17,10 +17,12 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 5. **ASTC same-byte mode audit:** current grid is5x5 Q8. Source equations suggest6x6 Q4 and8x8 binary candidates at same8x8 footprint/16B blocks, trading precision for finer spatial weights. Not yet packed/decoded, no shader change or hardware-cost claim. Dual-plane already exists; rejected two-partition3x3 trial must not be repeated. [Exact capacities and proposed gate](ASTC_FINE_WEIGHTS_AUDIT.md).
 
+6. **Send batching audit:** ordinary typed UDP video shards remain individually paced/retried; batching would change pacing/FEC/striping. Existing batch helper deliberately permits a dropped tail on positive partial send and returns intended payload bytes. Prior production-typed IPv6 loopback probe already showed only~0.07–0.10us/datagram apparent savings; at2k repair shards/s ceiling this is~0.2ms CPU/s, not a measured bottleneck. No new test or source change justified. [Actual path and prior gate](SEND_BATCH_AUDIT.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
 - Reused cheap Luna `zstd_worker_gate`, next25min CPU-only gate starting08:25UTC: pack/reference-decode baseline mode0x0F3 (5x5 Q8), balanced0x108 (6x6 Q4) and aggressive0x544 (8x8 Q2) on synthetic edges/gradient/colour patches. Same16B blocks/CEM8, exact decoded mode/grid/no-error gate before shader changes. Compare RGB SSE, edge spread and one-texel phase sensitivity; runnable synthetic visual if feasible. No production edits, GPU/Pico/app activity, private-photo publishing, or cost/live-quality claims. Scratch `overnight-recovery/astc-fine-weights-gate`. Keep25min bound, record blocker if unavailable; do not install dependencies.
-- Root: finish queue diagnostic evidence and preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
+- Root: queue diagnostic/source/docs evidence published; send batching audit reviewed and rejected as a worthwhile current optimization. Preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
 
 ## Next bounded gates
 
