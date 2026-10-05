@@ -17,6 +17,16 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 5 October: parallel packing, unchanged native texture
+
+A fresh matched **2176²-per-eye, ordinary Zstd3** offscreen check submits both eyes before readback. Serial/parallel complete-call **p50/p95 falls 7.696/7.843 → 4.886/5.002 ms**; all 20 matched pairs improve, with a **2.620 ms paired mean reduction**. ASTC texture and packet bytes match exactly. GPU intervals stay effectively unchanged: this saves host time through overlap. The source option remains **default off**, and the production ownership audit found no unconditional same-frame barrier. Live compositor contention, fresh FPS and photon latency remain unmeasured. [Runnable PC check, graph and scope](bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/README.md) · [Production ordering audit](bench/results/90fps-2026-10-04/overnight-recovery/production-overlap-gate/AUDIT.md).
+
+![Matched native stereo host overlap](bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/overlap.png)
+
+### 5 October: recover an unknown lost tail
+
+A new **default-off, server-only** repair assist appends the actual cached frame-ending data shard after a successful ordinary NACK. The unchanged receiver can then request the remaining tail instead of discovering one shard per round. In the deterministic 256-shard fixture with parity withheld, two rounds recover **all 64 missing tail shards**, versus **2** with baseline. The 64/request cap and original loss accounting remain unchanged. Normal and strict sanitizer checks pass; source is built/pushed without activation. A newest prefix with no ordinary request still cannot use the assist, and a 128-shard tail remains incomplete. **This is state-machine recovery proof, not measured Wi-Fi or display latency.** [Source revision, runnable checks, graph and limits](bench/results/90fps-2026-10-04/overnight-recovery/end-shard-assist/README.md).
+
 ### 4 October: request repairs while the stream is quiet
 
 A new **default-off** client trial checks repair deadlines even without another video packet. An isolated host pipe adapter changes first request opportunity from **20.06 to about 3.08 ms** when the next signal arrives at 20 ms; this excludes WiVRn runtime, Wi-Fi, Pico and repair delivery. **225 checks and Android native build pass.** Source is pushed; no installation or activation. [Graph, runnable checks and remaining gates](bench/results/90fps-2026-10-04/overnight-recovery/recovery-poll/README.md). Follow-up source removes repeated shard readiness scans: the asleep Pico metadata helper due-query mean falls **5.287→2.932 µs**, with matching decisions and correctness checks. This is a small CPU component gain, not a stream latency or FPS measurement. [Host/Pico graphs and exact scope](bench/results/90fps-2026-10-04/overnight-recovery/received-count/README.md).
