@@ -1,0 +1,72 @@
+diff --git a/server/compositor/compositor.cpp b/server/compositor/compositor.cpp
+index de5c12f3..db9b6d19 100644
+--- a/server/compositor/compositor.cpp
++++ b/server/compositor/compositor.cpp
+@@ -806,6 +806,19 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		return XRT_SUCCESS;
+ 	}
+ 
++	// Never reset recording resources while the previous submission is pending.
++	// A compute timeline wait does not cover a later mirror transfer.
++	if (submission_pending)
++	{
++		if (vk.device.waitForFences(*submission_fence, true, 0) == vk::Result::eTimeout)
++		{
++			comp_frame_clear_locked(&frame.rendering);
++			return XRT_SUCCESS;
++		}
++		submission_pending = false;
++		motion_unsafe = false;
++	}
++
+ 	int i = acquire_image();
+ 	if (i < 0)
+ 	{
+@@ -1150,7 +1163,7 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 
+ 	const vk::SemaphoreSubmitInfo sem_info{
+ 	        .semaphore = *sem,
+-	        .value = ++sem_value,
++	        .value = sem_value + 1,
+ 	        .stageMask = vk::PipelineStageFlagBits2::eComputeShader,
+ 	};
+ 
+@@ -1159,12 +1172,15 @@ xrt_result_t compositor::layer_commit(xrt_graphics_sync_handle_t sync_handle)
+ 		        .commandBuffer = cmd,
+ 		};
+ 		std::unique_lock lock{vk.queue.mutex};
++		vk.device.resetFences(*submission_fence);
+ 		vk.queue.queue.submit2(vk::SubmitInfo2{
+ 		        .commandBufferInfoCount = 1,
+ 		        .pCommandBufferInfos = &cmd_info,
+ 		        .signalSemaphoreInfoCount = 1,
+ 		        .pSignalSemaphoreInfos = &sem_info,
+-		});
++		}, *submission_fence);
++		sem_value = sem_info.value;
++		submission_pending = true;
+ 	}
+ 
+ #if WIVRN_USE_PIPEWIRE
+@@ -1806,6 +1822,7 @@ compositor::compositor(wivrn_session & session) :
+         images{make_images(vk, cmd_pool, settings)},
+         cmd{std::move(vk.device.allocateCommandBuffers({.commandPool = *cmd_pool, .commandBufferCount = 1})[0])},
+         sem{make_semaphore(vk)},
++        submission_fence{vk.device, vk::FenceCreateInfo{}},
+         frame_rate(settings[0].fps),
+         pacer(U_TIME_1S_IN_NS / frame_rate),
+         squasher(vk, render_extent(session.get_info())),
+diff --git a/server/compositor/compositor.h b/server/compositor/compositor.h
+index cf7bd848..9f851e9e 100644
+--- a/server/compositor/compositor.h
++++ b/server/compositor/compositor.h
+@@ -106,6 +106,9 @@ private:
+ 	vk::raii::CommandBuffer cmd;
+ 	vk::raii::Semaphore sem;
+ 	uint64_t sem_value = 0;
++	// The compute timeline can signal before the recording submission retires.
++	vk::raii::Fence submission_fence;
++	bool submission_pending = false;
+ 
+ 	std::atomic<float> requested_refresh_rate;
+ 	std::atomic<float> frame_rate;

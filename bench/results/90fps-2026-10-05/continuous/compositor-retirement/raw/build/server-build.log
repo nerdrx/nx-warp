@@ -1,0 +1,46 @@
+[0/2] Re-checking globbed directories...
+[1/91] cd /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server && /usr/bin/cmake -D GIT_EXECUTABLE=/usr/bin/git -D INPUT_FILE=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/version.cpp.in -D OUTPUT_FILE=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/version.cpp -D INPUT_FILE_1=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/u_git_tag.cpp.in -D OUTPUT_FILE_1=/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/u_git_tag.cpp -D GIT_TAG="" -D GIT_DESC="" -D GIT_COMMIT="" -P /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/cmake/GitVersion.cmake
+-- Setting version to nx-1.4.1-400-g09e7951a from git
+-- Setting commit to 09e7951a6e3273e35dccfacefebdd27303211866
+[2/91] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/build-server/version.cpp for CXX dependencies
+[3/91] Generating CXX dyndep file common/CMakeFiles/wivrn-common-base.dir/CXX.dd
+[4/89] Building CXX object _deps/monado-build/src/xrt/auxiliary/util/CMakeFiles/aux_util.dir/__/__/__/__/__/__/u_git_tag.cpp.o
+[5/89] Linking CXX static library _deps/monado-build/src/xrt/auxiliary/util/libaux_util.a
+[6/89] Building CXX object common/CMakeFiles/wivrn-common-base.dir/__/version.cpp.o
+[7/89] Linking CXX static library common/libwivrn-common-base.a
+[8/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/accept_connection.cpp for CXX dependencies
+[9/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/target_instance_wivrn.cpp for CXX dependencies
+[10/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/compositor/compositor.cpp for CXX dependencies
+[11/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/ipc_server_cb.cpp for CXX dependencies
+[12/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/encoder/encoder_settings.cpp for CXX dependencies
+[13/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_controller.cpp for CXX dependencies
+[14/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/encoder/video_encoder.cpp for CXX dependencies
+[15/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_hmd.cpp for CXX dependencies
+[16/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_eye_tracker.cpp for CXX dependencies
+[17/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_gamepad.cpp for CXX dependencies
+[18/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_body_tracker.cpp for CXX dependencies
+[19/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_android_face_tracker.cpp for CXX dependencies
+[20/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_fb_face2_tracker.cpp for CXX dependencies
+[21/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_htc_face_tracker.cpp for CXX dependencies
+[22/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_session.cpp for CXX dependencies
+[23/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/driver/wivrn_generic_tracker.cpp for CXX dependencies
+[24/89] Scanning /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/server/audio/audio_pipewire.cpp for CXX dependencies
+[25/89] Generating CXX dyndep file server/CMakeFiles/wivrn-server.dir/CXX.dd
+[26/44] Building CXX object server/CMakeFiles/wivrn-server.dir/ipc_server_cb.cpp.o
+[27/44] Building CXX object server/CMakeFiles/wivrn-server.dir/target_instance_wivrn.cpp.o
+[28/44] Building CXX object server/CMakeFiles/wivrn-server.dir/accept_connection.cpp.o
+[29/44] Building CXX object server/CMakeFiles/wivrn-server.dir/compositor/compositor.cpp.o
+[30/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_hmd.cpp.o
+[31/44] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/encoder_settings.cpp.o
+[32/44] Building CXX object server/CMakeFiles/wivrn-server.dir/encoder/video_encoder.cpp.o
+[33/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_controller.cpp.o
+[34/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_eye_tracker.cpp.o
+[35/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_gamepad.cpp.o
+[36/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_android_face_tracker.cpp.o
+[37/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_body_tracker.cpp.o
+[38/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_fb_face2_tracker.cpp.o
+[39/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_htc_face_tracker.cpp.o
+[40/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_generic_tracker.cpp.o
+[41/44] Building CXX object server/CMakeFiles/wivrn-server.dir/audio/audio_pipewire.cpp.o
+[42/44] Building CXX object server/CMakeFiles/wivrn-server.dir/driver/wivrn_session.cpp.o
+[43/44] Linking CXX executable server/wivrn-server

@@ -1,0 +1,7 @@
+# Retirement fence patch review
+
+Reviewed the current `server/compositor/compositor.cpp/.h` diff only; no edits, build, or runtime test.
+
+The state transition is coherent on the Monado multi-system worker route established in `RETIREMENT_OWNERSHIP.md`: the first successful `submit2` sets `submission_pending`; each later commit polls the fence before `acquire_image` or command/query-pool reset; timeout clears this frame and returns; fence success clears pending before reuse. Reset occurs under the queue mutex immediately before submit. `sem_value` is committed only after submit returns successfully, so it no longer advances on a failed submission. The fence is attached to the whole `submit2` batch and is a stronger completion condition than the compute-stage timeline signal. Normal timeline signal, wait, query, and encoder consumer scopes remain unchanged.
+
+I found no concrete missing API/state transition in this diff for that serialized route. On timeout, the patch deliberately drops the frame before acquisition and does not run per-frame GC. This is not proof of desktop mirror reader completion or downstream encoder/resource ownership; mirror/encoder code still uses the existing timeline semaphore. The teardown `device.waitIdle()` remains the final destruction guard. Other direct native-compositor callers and behavior after submit/device errors remain outside this source-only review. Root's build and API validation are still required.
