@@ -60,6 +60,7 @@ struct harness {
     uint32_t astc_sender_wait_samples = 0;
     uint64_t astc_sender_wait_total_ns = 0;
     uint64_t astc_sender_wait_max_ns = 0;
+    bool astc_slot_wait_timing_enabled = false;
     harness(bool native_astc, fake_sender * sender) : is_native_astc(native_astc), shared_sender(sender) {
 @CONSTRUCTOR_GATE@
     }
@@ -76,6 +77,7 @@ static void add_sample(int64_t & now, int64_t duration) {
 }
 
 int main() {
+    unsetenv("WIVRN_ASTC_SLOT_WAIT_TIMING");
     fake_sender sender;
 
     unsetenv("WIVRN_ASTC_SENDER_WAIT_TIMING");

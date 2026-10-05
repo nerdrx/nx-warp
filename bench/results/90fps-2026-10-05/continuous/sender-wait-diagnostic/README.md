@@ -82,3 +82,11 @@ async/latest-frame policy from source speculation. The
 [owned-frame audit](../SENDER_OWNED_FRAME_AUDIT.md) explains the immutable metadata,
 paired-eye supersession and serialized FEC/history prerequisites. Existing
 sender-wait relocation remains rejected; this change only exposes missing data.
+
+### Constructor compatibility follow-up
+
+Commit dc012b1 adds a separate default-off base slot-wait flag. The retained
+sender mock gained that constructor field and clears its environment in the
+child test. Root independently reran the existing sender assertions against the
+new source; `root-current-regression.log` passes. Original build/check logs
+remain historical evidence for a98d5ac, not overwritten current results.

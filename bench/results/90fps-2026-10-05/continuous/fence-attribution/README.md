@@ -128,3 +128,9 @@ Raw rows are retained unchanged in `retained-serial.csv`; original source
 No private images/payloads are published. The next small implementation targets
 only the base CPU busy gate as default-off180-call mean/max; detailed
 per-generation GPU/compositor traces remain a separate future gate.
+
+### Implemented narrow follow-up
+
+The [base CPU slot-wait diagnostic](../slot-busy-diagnostic/README.md) is now
+built and checked, default off. This does not implement the proposed detailed
+GPU generation trace or measure either wait in a live compositor.
