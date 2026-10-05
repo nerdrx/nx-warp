@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 09:05 UTC
+## Current verified state — 09:35 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed831aafed. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -21,10 +21,12 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 7. **Native-paired binary weights rejected:** exact retained2176²RGBA8 and actual q6 production-shader blocks match hashes/conversion/archivedpacketbytes. All73,984 Q2 candidates/eye legal. All-Q2 saves26.9% packetbytes but RGBMSE grows4.30×/8.27×. Strict20% error-improvement selector chooses158/1blocks, combinedSSE only−0.163%, packets+29B. Root independently rebuilt generic-path publicharness and reproducedbothfull-eye rows. No productionshaderchange justified for this candidate; no GPU/Pico/timing claim. [Raw rows, provenance, runnable code and figure](astc-production-selector-gate/README.md).
 
+8. **Balanced6x6Q4 rejected:** same verified native inputs/baselines; exact36x64 pseudoinverse of ASTC decimation computedonce. All73,984 blocks/eye legal Q4/Q80, CEM8/9. All-Q4 grows error/bytes. Strictselector picks10.57%/15.84% blocks; combinedRGBSSE−2.24% but packets+8.40% (+56,531B). Root independently rebuilds/reproduces bothfull-eye rows. No useful candidate tradeoff; further finer-weight probes held. [Methods, raw rows and figure](astc-balanced-selector-gate/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Reused cheap Luna `zstd_worker_gate`, next25min CPU-only balanced6x6Q4 gate on same verified2176²source/baseline pairs. Precompute actual ASTC decimation pseudoinverse36x64 once, fit source projections against baseline endpoints, pack Q80 endpoints/Q4 weights. Reference-decode and strict20% SSE selector; recordMSE/selectedshare/full-eyeZstd3 bytes. Scratch `overnight-recovery/astc-balanced-selector-gate`. No GPU/Pico/source/runtime edit or privatephoto/payload output; no timing/liveclaim. Record blocker if exact grid fit exceedsbound. Inspect running agent before dispatching anything.
-- Root: native-paired Q2 candidate independently replayed/rejected; report/figure published. Both ASTC synthetic gates independently replayed; labeled figures inspected and published. Public oracle main now explicitly returns0 for warning-free helper inclusion; results unchanged. Queue diagnostic/source/docs evidence published; send batching audit reviewed and rejected as a worthwhile current optimization. Preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
+- Reused cheap Luna `zstd_worker_gate`, bounded15min readonly sender repair-history hot-path audit. Inspect actual normal independentASTC record copies/allocations/mutex spans and previous endpoint concurrency evidence. Identify minimal avoidable work only if snapshot/lifetime contract survives; propose actual-class benchmark gate, no production edit or repeatedcheck. Scratch `overnight-recovery/history-cost-audit`. No GPU/Pico/user app/network/options change; no timing claim from source. Inspect running task before dispatching anything.
+- Root: balanced6x6 gate independently replayed/rejected; report/figure published. Native-paired Q2 candidate independently replayed/rejected; report/figure published. Both ASTC synthetic gates independently replayed; labeled figures inspected and published. Public oracle main now explicitly returns0 for warning-free helper inclusion; results unchanged. Queue diagnostic/source/docs evidence published; send batching audit reviewed and rejected as a worthwhile current optimization. Preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
 
 ## Next bounded gates
 
@@ -33,6 +35,7 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 ## Do not repeat
 
+- Rejected reused-endpoint8x8Q2 and6x6Q4 finer grids on native pairs. Hold further weight-mode microprobes without a new justified fitter/representation.
 - Rejected entropy layouts, weak motion savings, naive repeated conversion, packed shared-cache GPU probe, sender-wait relocation with missing old fixtures, unsafe early image release or idealised band transport.
 - Do not call an option live/proven merely because source built. Existing ordinary-L3 stereo overlap saves2.620ms paired mean offscreen; real compositor/Pico motion gate remains.
 - Native90/240freshFPS, fullscenequality/HEVCparity and physical photon latency remain unproven.

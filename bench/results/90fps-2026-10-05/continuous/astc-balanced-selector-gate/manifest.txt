@@ -1,0 +1,24 @@
+Retained local fixture provenance: dimensions, hashes and conversion contract only. Private inputs and derived pixels/payloads are not published.
+
+
+Dimensions/bytes:
+- Each RGBA input: 2176x2176x4 = 18,939,904 bytes.
+- Each ASTC payload: ceil(2176/8)^2*16 = 1,183,744 bytes (272x272 blocks).
+- Input SHA eye0 dark-left.rgba: 9d1aa653c578751e6491d8c7786183b283de190d1928dc172959387e0da1355e
+- Input SHA eye1 forest-left.rgba: 8dbe4a025512bd0cff3dfd38f632ee7c487b6430eb5090ddba8c6ca2705e5f5f
+- Baseline ASTC SHA eye0: 0fd34edf33c98730f399f70c6b1295490b16dc620edc3ad3af86ea07488a2d06
+- Baseline ASTC SHA eye1: 022c14587c4e9adb3aab06b429d4b7f574198d20e3076b60a94fe227d0171f80
+- Shader SHA astc_encode.comp: 05ec2dbb1bc7934ac4bece93b07df4049dfdfac3e02c145011ccad50cad8287d
+- Recheck input hashes in fence-recheck/input-hashes.txt tie them to the original local dark/forest image conversion. `fence-recheck/commands.txt`, README, and run.log document the 2176x2176 q6 ASTC8 direct-RGB path.
+- The Vulkan harness uploads `VK_FORMAT_R8G8B8A8_UNORM`; shader `direct_rgb=1` reads RGB and scales by 255, ignoring alpha. Its raw ASTC output SHA matches both fence-recheck and fence-overlap-recheck payloads byte-for-byte; archived ASTC containers add a 16B ASTC header.
+- The shader source hash is the source used in the retained recheck; GPU work is not repeated here.
+
+This scratch gate uses the local prebuilt astcenc AVX2 static library and host libzstd. Candidate and mixed payloads stay in memory only. The CSV contains aggregate RGB error/byte counts only.
+- astcenc AVX2 static library SHA-256: 36181d9993627558a218ed20317c7de48868ce50d1b518ad5c91aff0b4d945fa
+- Host libzstd version: 1.5.7 (`/usr/lib/libzstd.so.1`). Baseline measured Zstd frame bytes exactly match the archived production packet totals minus the standard 24-byte header for both eyes.
+- No full-resolution decoded pixels, generated ASTC blocks, packet payloads, or private images were saved; `raw.csv` is aggregate-only.
+- Balanced Q4 gate source SHA-256: 9523c27f2e7eef1deb65fe8b1736941ba18b24bb2bd402b315b9f6f59840943d
+- Candidate block mode: 0x108, verified as 6x6 Q4; endpoint quantization verified as Q80 for every encoded block.
+- Candidate CEM mix is recorded in raw.csv; astcenc chooses CEM8 direct RGB or CEM9 RGB delta under the same endpoint bit budget.
+
+Public harness replaces local hardcoded fixture paths with four arguments and rejects extra input bytes; candidate algorithm is unchanged. Private inputs and generated payloads are not published.
