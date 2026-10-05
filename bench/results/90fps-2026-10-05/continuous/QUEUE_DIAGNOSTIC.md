@@ -11,3 +11,5 @@ The complete Android arm64 **RelWithDebInfo native `wivrn` target built successf
 No standalone decoder instance test was possible without application/device/Vulkan ownership. **Runtime metric correctness and enabled-path overhead remain unmeasured**. No fresh-FPS, Wi-Fi or latency improvement is claimed for this diagnostic.
 
 [Source configuration and metric boundaries](https://github.com/nerdrx/wivrn-nx/blob/pyrowave-probe/docs/ASTC_QUEUE_TIMING.md)
+
+The [unsigned Android package gate](queue-diagnostic-apk/STATUS.md) now passes after using Gradle’s supported explicit `nxwarp_dir` property to select the correct existing native cache. Packaged native bytes match Gradle stripped output; manifest, diagnostic strings and alignment are independently verified. No signing/install/property activation or runtime measurement.
