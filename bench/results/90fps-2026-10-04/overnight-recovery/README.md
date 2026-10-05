@@ -38,8 +38,7 @@ The offscreen two-eye test now includes both native image dispatches, readback,
 fence waits and packet compression on one RX 7900 XTX device/queue. Async eye
 processing reduces complete-call p50/p95 from **13.865/15.432 to
 11.364/13.007 ms**, with identical ASTC and packet bytes. GPU dispatch durations
-are unchanged; this is CPU overlap. Dominant CPU fence waits remain about 9ms
-and are being investigated. Upload is excluded; actual live compositor, Wi-Fi,
+are unchanged; this is CPU overlap. That earlier run showed about9ms CPU fence waits. A later20-call recheck using byte-identical shader/input payloads finds0.934ms first-eye wait and5.628ms complete serial call p50; it does not reproduce the large wait. Before/after GPU activity differs, without proving a cause. [Current recheck and exact shader reproduction](fence-recheck/README.md). Upload is excluded; actual live compositor, Wi-Fi,
 viewer and photon latency are not measured. [Source, 100 interleaved pairs,
 external decode checks and graph](stereo-gpu/README.md).
 
