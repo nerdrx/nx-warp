@@ -1,10 +1,10 @@
-# Active bounded queue — until06:00 Berlin
+# Closed bounded queue — 06:00 Berlin
 
 Deadline **2026-10-05 04:00UTC /06:00 Europe/Berlin**. Heartbeat `nx-warp-two-hour-optimization`. Keep advancing useful bounded work; no repeated weak entropy probes. [Archived completed evidence and earlier queue](OVERNIGHT_ARCHIVE_20261005_0031.md). Reports below are relative to `../overnight-recovery/`.
 
-## State and boundaries (03:41UTC)
+## Final state (04:00UTC)
 
-- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, `pyrowave-probe`, clean pushed **7b7ae360**. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, `main`, pushed **0243861**. Preserve unrelated README logo/branding, wordmark/bisect/scratch and private photos. Stage only owned files; no raw private RGBA/ASTC/packet outputs.
+- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, `pyrowave-probe`, clean pushed **7b7ae360**. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, `main`, pushed **c43d9bf**. Preserve unrelated README logo/branding, wordmark/bisect/scratch and private photos. Stage only owned files; no raw private RGBA/ASTC/packet outputs.
 - Native2176×2176/eye, ASTC8×8, stream_scale1, no foveation/JPEG/blur/object-motion warp. Last recorded client **c514841f**; no installation by this run. Compactv4, parallel eyes, quiet recovery poll and GPU diagnostics remain source experiments/default off; do not install/enable/restart silently. DirectRGB is opt-in; don't infer launcher settings.
 - No WiVRn server/dashboard process at03:35UTC; root has not restarted it. Old PIDs are stale after19:29UTC reboot. Pico PA8150MGGB110166G/A8110 last observed asleep/OFF/thermal0 before/after earlier CPU checks; recheck before device work. No mouse/focus/UI/routes/drivers/clocks/active-app changes. Headset unused CPU tests only; offscreen GPU jobs serialized.
 - Existing real cheap Luna **deadline_patch_finish**; restored coarse_encode_probe/structural_budget are pending_init ghosts. Inspect agents first and reuse Luna; never duplicate jobs.
@@ -31,8 +31,13 @@ Deadline **2026-10-05 04:00UTC /06:00 Europe/Berlin**. Heartbeat `nx-warp-two-ho
 - **Endpoint concurrency gate complete**, actual helper/FEC with20k4-shard frames,2readers+500enable/disablecycles. Strengthened independent full64bitframe/16bitindex payload oracle, frame-derived timing, nonzero hits/bounded ring/publication checks. Agent normal+SAN+TSan allpass; root independently executed published wrapper, all3pass and noidentity/racediagnostics. Finitevalidationonly, no network/performanceclaim. Report `endpoint-concurrency` contains compactsource/logs/hashes/driver. Public end-assist replay trimmed1048→488lines byremovingneverexecutedcopiedtests; normal/SAN rerun468checks/identicalCSVpass. Source7bunchanged, no install/enable.
 - **Old-client compatibility gate completed** by reused Luna. Exact archived client/common c514841f87b9718a50c974e79c3e902ef38a3a82 parses current7b server-serialized data packets and generates an archived NACK; current history helper selects the real terminal shard. Old receiver stays incomplete after ordinary interior repair, then completes after terminal arrival. Normal/strictSAN pass320 payload-byte checks plus identity, length and timing. Root strengthened all-five current-FEC-blob versus old-parsed-packet equivalence; independent published wrapper normal/strictSAN pass; root logs and manifest retained. Temporary archives/binaries/synthetic packets stay outside public report. Valid nonempty foveation fixture avoids archived empty-vector UBSan issue; this does not validate native-empty vectors, handshake, actual private encoder, installed Pico or network timing. Source/runtime/device/GPU unchanged. Report `end-assist-compat`.
 
+- **Newest-tail next-index probe audited, held**: existing NACK schema can express one next-index bit, but receiver currently permits that only after a newer frame. A speculative newest-frame request can consume one of two rounds while its shard is still uncached; ordinary collection may hit already-cached data before `end_frame`, but terminal assist has no completed count yet. Delayed parity may make probing redundant. No source change or measured latency win; local `unknown-tail-next-index/AUDIT.md`. Need a bounded deadline/arrival replay before adding probe policy or once-per-frame state.
 - Review final actual source/raw results, publish runnable gate/figure if useful, update this small queue. Keep measured helper/wall/GPU/live scopes separate. Viewer loops are not fresh FPS, HEVC parity or photon proof.
 
 ## Deadline
 
 At/after04:00UTC stop only owned benchmark jobs, preserve user/live sessions and app data/certificates, publish concise actual wins/remaining gates, then pause heartbeat through tool. Never hand-edit automation TOML. No90fresh-motion/240fps/HEVCparity/photon claim without actual evidence.
+
+## Window closed
+
+2026-10-05 04:00UTC: all owned test processes finished normally; reused Luna completed its final audit. No user/live process was stopped, restarted or installed. Source7b7ae360 remains clean and pushed; all experimental activation gates remain. Compatibility gate c43d9bf is pushed; final status/queue publication follows. Source, raw rows and runnable-check provenance retained. Native90/240freshFPS, HEVCparity, fullscenequality and physical photon latency remain unproven. The heartbeat schedule is being removed because its authorized window has ended. [Final report](OVERNIGHT_STATUS.md).
