@@ -2,7 +2,7 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 10:40 UTC
+## Current verified state — 10:48 UTC
 
 - Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed831aafed. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
@@ -29,7 +29,7 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 ## Active bounded tasks — inspect agents before starting anything
 
-- Cheap Luna `zstd_worker_gate`, bounded15min read-only endpoint-precision audit: first inspect prior rejected compression probes, then determine whether reducing already-refitted q6 endpoints while keeping exact weight grid/modes is genuinely new. No timed jobs, source/runtime changes or private pixels. Scratch `overnight-recovery/endpoint-precision-audit`. Reject duplicates and propose only one supported next gate.
+- Cheap Luna `zstd_worker_gate`, bounded20min CPU-only ordinary-q6 endpoint gate. Audit confirms post-refit q6 coarsening differs from ordinary q5. Preserve exact modes/weights, dual-plane and other blocks unchanged; guard endpoint-order flips; use matched private native inputs, legal parse/reference decode, Zstd3 bytes and raw metrics. Predeclared practical gate: ≥5% bytes saved on BOTH fixtures and ≤0.1dB PSNR loss each. No shader/source/runtime changes, private pixel publication or speed claim. Scratch `overnight-recovery/q6-coarse-endpoints-gate`. [Audit and dispatch scope](ENDPOINT_PRECISION_AUDIT.md).
 - Root: repair-history source audit reviewed and NACK lock/publication boundary corrected; published. Balanced6x6 gate independently replayed/rejected; report/figure published. Native-paired Q2 candidate independently replayed/rejected; report/figure published. Both ASTC synthetic gates independently replayed; labeled figures inspected and published. Public oracle main now explicitly returns0 for warning-free helper inclusion; results unchanged. Queue diagnostic/source/docs evidence published; send batching audit reviewed and rejected as a worthwhile current optimization. Preserve unrelated README branding. All owned timed jobs and builds finished; `deadline_patch_finish` completed. Pico CPU files cleaned up; display remained OFF, VR mode false, thermal0.
 
 ## Next bounded gates
