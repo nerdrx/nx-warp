@@ -1,0 +1,35 @@
+{
+  "packages": {
+    "command": [
+      "adb",
+      "-s",
+      "DEVICE",
+      "shell",
+      "pm",
+      "list",
+      "packages"
+    ],
+    "wivrn_lines": [
+      "package:org.meumeu.wivrn.nx.warp",
+      "package:org.meumeu.wivrn.nx",
+      "package:org.meumeu.wivrn.github"
+    ]
+  },
+  "processes": {
+    "command": [
+      "adb",
+      "-s",
+      "DEVICE",
+      "shell",
+      "ps",
+      "-A",
+      "-o",
+      "PID,NAME"
+    ],
+    "wivrn_lines": [
+      " 9926 org.meumeu.wivrn.nx"
+    ]
+  },
+  "utc": "2026-10-05T20:38:21.541720+00:00",
+  "scope": "Read-only inventory; excludes other app names and device serial."
+}

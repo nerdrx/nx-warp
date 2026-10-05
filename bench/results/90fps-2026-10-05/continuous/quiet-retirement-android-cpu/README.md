@@ -4,9 +4,15 @@ The existing host socket fixture now runs successfully on the connected Pico's A
 
 ![Pico CPU functional outcomes](pico-outcomes.png)
 
+## Process-guard correction — 20:35 UTC
+
+The original runner queried `org.meumeu.wivrn.nx.local`, which is not installed on this Pico. A later read-only inventory finds the actual `org.meumeu.wivrn.nx` process running even though power state is Asleep/OFF. The earlier logs therefore establish screen/power state and absence of the queried process, **not absence of the installed client or an idle device**. The 168 functional outcomes remain recorded; no idle-load or performance claim is justified. We did not stop that client.
+
+The runner now refuses any process named `org.meumeu.wivrn*`, including colon-suffixed services, or the owned fixture. Its actual read-only preflight refuses the current Pico before any push or executable launch. [11 process-guard checks](guard-check.py) pass without device calls. The original runner used for the successful replay is archived in `public-device-repro/original-run-device.py`; the hardened runner has not executed the CPU fixture on this device. No new device benchmark was run after discovery.
+
 ## Hardware and execution
 
-ADB reports model `A8110`, arm64-v8a, Android 10 / API 29. Before each short execution, the headset is `Asleep`, display `OFF`, target WiVRn process absent and no owned test process. Recovery/deadline/queue properties are unset. A single owned ELF is pushed to `/data/local/tmp/nx_quiet_gate`, byte-verified with SHA256, run under a 5 second timeout, then removed. The headset remains asleep/OFF and properties unchanged after both runs. No APK, app launch, screen wake, signing, session restart, route/driver/clock changes or property activation occurs. Device serial remains in scratch and is omitted from public metadata.
+ADB reports model `A8110`, arm64-v8a, Android 10 / API 29. Before each recorded short execution, the headset is `Asleep`, display `OFF`, queried `.nx.local` process absent and no owned test process. Actual installed WiVRn client activity was not checked then; see the correction above. Recovery/deadline/queue properties are unset. A single owned ELF is pushed to `/data/local/tmp/nx_quiet_gate`, byte-verified with SHA256, run under a 5 second timeout, then removed. The headset remains asleep/OFF and properties unchanged after both runs. No APK, app launch, screen wake, signing, session restart, route/driver/clock changes or property activation occurs. Device serial remains in scratch and is omitted from public metadata.
 
 The ELF is API 29 AArch64, built with cached NDK 29.0.14206865, static libc++, OpenSSL and spdlog. It needs only Android system `libc`, `libm`, `libdl`, `liblog`; no extra shared runtimes are copied. [Build recipe](build-android.sh), compiler logs, dependency/output hashes and ELF inspection are retained. Source is unchanged [`6e2293d5`](https://github.com/nerdrx/wivrn-nx/commit/6e2293d58acc8b7a20e9276ae25f5e97257b37d9).
 
@@ -20,7 +26,7 @@ Actual accumulator/stream construction, `push_shard`, real repair transmission, 
 
 ## Reproduce
 
-Requires this checkout's existing native cache and an explicitly authorized idle headset; the runner refuses an awake display or running target process or owned test process.
+Requires this checkout's existing native cache and an explicitly authorized idle headset; the hardened runner refuses an awake display, any running WiVRn process or an owned test process.
 
 ```sh
 bash build-android.sh /path/to/wivrn-nx /path/to/android-ndk /path/to/scratch-output
@@ -28,4 +34,4 @@ python3 run-device.py DEVICE_SERIAL /path/to/scratch-output/kernel-gate-android 
 python3 figure.py
 ```
 
-The build recipe has a fixed configured arm64 cache and Linux NDK toolchain layout; another configuration needs corresponding paths. `run-device.py` was actually replayed successfully and retains its results in `public-device-repro/`. Binaries stay in scratch/build, not GitHub. Next meaningful gate is explicitly authorized live Android execution with matched binaries and actual frame receipts/retirement/fresh display correlation; do not repeat unchanged CPU checks as a viewer claim.
+The build recipe has a fixed configured arm64 cache and Linux NDK toolchain layout; another configuration needs corresponding paths. The original runner was replayed successfully and retains its results in `public-device-repro/`; the current hardened runner has passed the refusal preflight and standalone guard checks, not a new CPU run. Binaries stay in scratch/build, not GitHub. Next meaningful gate is explicitly authorized live Android execution with matched binaries and actual frame receipts/retirement/fresh display correlation; do not repeat unchanged CPU checks as a viewer claim.

@@ -12,18 +12,8 @@ def power_state():
  assert 'mWakefulness=Asleep' in text and 'state=OFF' in text
  return text
 before=power_state();(a.output/'immediate-preflight.txt').write_text(before)
-def require_idle_processes():
- r=adb('shell','ps','-A','-o','PID,NAME')
- assert r.returncode==0 and 'PID' in r.stdout and 'NAME' in r.stdout, 'Cannot inspect Android process names'
- (a.output/'process-preflight.txt').write_text(r.stdout)
- active=[]
- for line in r.stdout.splitlines()[1:]:
-  parts=line.split()
-  if len(parts)>=2 and (parts[-1].startswith('org.meumeu.wivrn') or parts[-1].rsplit('/',1)[-1]=='nx_quiet_gate'):
-   active.append(line.strip())
- if active:
-  raise SystemExit('Refusing CPU test: WiVRn or owned fixture process is running: '+ '; '.join(active))
-require_idle_processes()
+for process in ['org.meumeu.wivrn.nx.local','nx_quiet_gate']:
+ r=adb('shell','pidof',process);assert r.returncode==1 and not r.stdout.strip()
 r=adb('shell','command','-v','timeout');assert r.returncode==0 and r.stdout.strip()
 keys=['debug.wivrn.nx.recovery_poll','debug.wivrn.nx.astc_deadline','debug.wivrn.nx.astc_queue_timing']
 def properties():
