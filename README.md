@@ -17,6 +17,12 @@
 > [!IMPORTANT]
 > **Research prototype:** there is no end-user release or download yet. Developers can build the experimental code using the [instructions below](#building).
 
+### 5 October: fixed Zstd jobs, same encoded detail
+
+A new **default-off, server-only** packing option gives ordinary Zstd3 explicit 512 KiB worker jobs. Two short replays against the **actual bundled server library** save **0.864 / 1.025 ms paired mean**; native ASTC blocks remain identical and bytes rise only **0.165%**. A separate asleep Pico CPU replay shows essentially unchanged decode cost. **One host run regressed at p95**, so stable live latency is unproven. Compatibility, fallback and sanitizer harnesses plus the actual server build pass; source is pushed without installation or activation. [Both runs, Pico gate, graphs and exact boundaries](bench/results/90fps-2026-10-05/continuous/zstd-jobs/README.md).
+
+![Actual server-library packing, including the slower tail](bench/results/90fps-2026-10-05/continuous/zstd-jobs/bundled.png)
+
 ### 5 October: parallel packing, unchanged native texture
 
 A fresh matched **2176²-per-eye, ordinary Zstd3** offscreen check submits both eyes before readback. Serial/parallel complete-call **p50/p95 falls 7.696/7.843 → 4.886/5.002 ms**; all 20 matched pairs improve, with a **2.620 ms paired mean reduction**. ASTC texture and packet bytes match exactly. GPU intervals stay effectively unchanged: this saves host time through overlap. The source option remains **default off**, and the production ownership audit found no unconditional same-frame barrier. Live compositor contention, fresh FPS and photon latency remain unmeasured. [Runnable PC check, graph and scope](bench/results/90fps-2026-10-04/overnight-recovery/fence-overlap-recheck/README.md) · [Production ordering audit](bench/results/90fps-2026-10-04/overnight-recovery/production-overlap-gate/AUDIT.md).

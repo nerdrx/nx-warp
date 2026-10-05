@@ -1,0 +1,10 @@
+case,baseline_complete,candidate_complete,requests,replies,notes
+sender_complete_terminal_lost,0,1,1,1,"one request; exact cached terminal; no new frame required"
+uncached_then_cached,0,1,2,1,"first miss consumes round; second gets terminal"
+cached_terminal_before_end_frame,0,1,1,1,"ordinary hit succeeds; end assist unavailable"
+delayed_parity_before_probe,0,1,0,0,"late parity reconstructs exact terminal; no request"
+parity_before_nack_reply,0,1,1,1,"one requested reply may be redundant; actual duplicate insert is ignored"
+two_round_cap,0,0,0,0,"no third probe"
+interior_hole_priority,0,0,1,0,"ordinary confirmed hole blocks speculative tail probe"
+newer_frame_arrives,0,0,1,0,"existing frame_over rule requests next index"
+stereo_stream_metadata,0,0,0,0,"existing set retains stream index and first-shard view metadata"

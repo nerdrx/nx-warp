@@ -1,0 +1,3 @@
+rtk proxy g++ -O1 -g -std=c++20 -fsanitize=address,undefined -fno-omit-frame-pointer -Icommon -Ibuild-server/_deps/nx_zstd-src/lib -Ibuild-server/_deps/nx_lz4-src/lib tests/nxastc_zstd_jobs_test.cpp build-server/common/libwivrn-lz4.a build-server/_deps/nx_zstd-build/lib/libzstd.a -pthread -o /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/zstd-workers/test-server-zstd-san && ASAN_OPTIONS=detect_leaks=1 /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/zstd-workers/test-server-zstd-san
+Zstd jobs config, repeated frames, legacy L3/L1 packets, and sub-job-size fallback passed
+exit=0

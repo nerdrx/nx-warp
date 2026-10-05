@@ -1,0 +1,10 @@
+context_setup_ms=0.0299
+mode,nbWorkers,jobSize,overlapLog
+parallel_eye_l3,0,0,0
+parallel_eye_worker2_job512k_nooverlap,2,524288,1
+parallel_eye_worker2_auto,2,0,0
+boundary_256k,worker_request=2,job_size=524288,overlap_log=1,encoding=0,packet_bytes=262168,decode=exact
+real 0.41
+user 0.66
+sys 0.02
+exit=0
