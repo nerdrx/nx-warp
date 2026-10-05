@@ -1,0 +1,72 @@
+{
+  "noisy_rows_per_mode": 122400,
+  "capacity_byte_exact": [
+    {
+      "case": "fall250-clean",
+      "rows": 3600,
+      "first_840_seconds": null,
+      "byte_exact": true
+    },
+    {
+      "case": "fall300-clean",
+      "rows": 3600,
+      "first_840_seconds": null,
+      "byte_exact": true
+    },
+    {
+      "case": "rise10-clean",
+      "rows": 3600,
+      "first_840_seconds": 10.344444341,
+      "byte_exact": true
+    },
+    {
+      "case": "rise10-late",
+      "rows": 3600,
+      "first_840_seconds": 10.344444341,
+      "byte_exact": true
+    },
+    {
+      "case": "rise20-clean",
+      "rows": 3600,
+      "first_840_seconds": 20.833333125,
+      "byte_exact": true
+    },
+    {
+      "case": "rise20-late",
+      "rows": 3600,
+      "first_840_seconds": 20.833333125,
+      "byte_exact": true
+    },
+    {
+      "case": "rise3-clean",
+      "rows": 3600,
+      "first_840_seconds": 3.447220016,
+      "byte_exact": true
+    },
+    {
+      "case": "rise3-late",
+      "rows": 3600,
+      "first_840_seconds": 3.447220016,
+      "byte_exact": true
+    },
+    {
+      "case": "rise5-clean",
+      "rows": 3600,
+      "first_840_seconds": 5.236384184,
+      "byte_exact": true
+    },
+    {
+      "case": "rise5-late",
+      "rows": 3600,
+      "first_840_seconds": 5.236384184,
+      "byte_exact": true
+    }
+  ],
+  "focused_cases_pass": 19,
+  "pacing_only_all_rows_byte_exact": true,
+  "limitations": [
+    "Virtual control traces, not throughput or photon tests.",
+    "Sender service and pacing regimes are models, not measured sender spans.",
+    "Loss-only bandwidth_estimate exposes controller fallback when no sample exists; not a wire sample."
+  ]
+}

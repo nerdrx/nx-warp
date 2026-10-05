@@ -1,0 +1,24 @@
+Part A: the survivor counter collapses a clean link to the floor
+  survivor counter, no loss reports: 50.0 -> 50.0 Mbit/s (0 changes)
+Part B: the wire frame id holds the ceiling on the same link
+  wire frame id, no loss reports:    50.0 -> 50.0 Mbit/s (0 changes)
+Part C: reporting losses does not fire on a link that loses nothing
+  loss reports on, no holes:         50.0 Mbit/s (0 changes)
+Part D: real loss is visible, backs off, and recovers
+  under sustained loss:              10.0 Mbit/s
+  after 40 s of clean link:          50.0 Mbit/s
+Part E: how often NX Warp may lose a frame before the ceiling goes
+  one lost frame per 10 s:           50.0 Mbit/s
+  one lost frame per 2 s:            35.3 Mbit/s (by design: a lost
+                                     frame in every window means no
+                                     clean stretch to increase from)
+Part F: eyes paced apart on a clean link hold the ceiling
+  eye 1 skips 1 in 90 :               50.0 Mbit/s
+  eye 1 skips 1 in 45 :               50.0 Mbit/s
+  eye 1 skips 1 in 20 :               50.0 Mbit/s
+Part G: AIMD drops stay bounded and recover without overshoot
+  gradual: 500.0 -> 450.0 -> 405.0 Mbit/s, next step +766 ms
+  severe: 500.0 -> 400.0 Mbit/s
+  recovered: 168.2 Mbit/s, 11 total changes
+
+31 checks, 0 failure(s)

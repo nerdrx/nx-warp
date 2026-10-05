@@ -2,9 +2,9 @@
 
 User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc-continuous-improvements`; no fixed deadline. Keep tasks bounded and token use low. Quiet unchanged state; notify meaningful outcomes only. [Completed overnight report](../../90fps-2026-10-04/motion-packing/OVERNIGHT_STATUS.md).
 
-## Current verified state — 15:15 UTC
+## Current verified state — 15:52 UTC
 
-- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed412a2bfe; source hashes match tested code. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
+- Source `/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe`, branch `pyrowave-probe`, clean/pushed09e7951a; controller D hashes unchanged; exact built timing-diagnostic source verified. Verify actual dirty state before resuming. Reports `/run/media/nerdrx/Lex/claude/nx-warp`, main; preserve unrelated README logo/branding, bisect/scratch and supplied private photos. Commit/push owned files only. Check actual dirty files before resuming.
 - No WiVRn server/dashboard process observed at resume. No installation, restart or option activation. Last recorded native baseline2176²/eye ASTC8×8, no foveation/JPEG/blur/object-motion warp; last recorded installed clientc514841f. Verify current device/runtime before any live work. Experimental v4, parallel-eye, quiet poll and terminal assist remain off.
 - Use cheap Luna, Ponytail, Caveman, RTK. Offscreen tests only; no mouse/focus/global runtime/routes/drivers/clocks/user app manipulation. Pico testing only when verified unused. Serialise owned timed workloads; CPU/GPU component or viewer-loop timings never prove freshFPS, HEVCparity, livequality or photon latency.
 
@@ -58,13 +58,17 @@ User resumed work on 2026-10-05, until explicitly told to stop. Automation `nxvc
 
 25. **Steady-evidence F held; actual timestamp provenance audited:** F caps selected single/repeated1.5× noisy cases at ordinary26.4Mbps probe instead of30.6/39.6 and removes16.8Mbps cuts in those cases. Root61,200-row noisy dataset and independent14CSV legacy reproduction retained; five normal/SAN suites pass. Clean3/5/10 recovery timing unchanged, but20s ≥840Mbps recovery delays20.833→23.900s (+3.067virtuals); failed recovery gate retained, no production integration/build/install. Four-panel inspected figure and scoped audits show software receive timestamps and existing per-eye send metadata. [Evidence, source and research direction](steady-evidence/README.md).
 
+26. **Matched sender/receiver G held; exact capture added:** root two timing regimes ×61,200rows/mode (244,800noisy total), 19 independent boundary cases and ten valid-metadata stereo capacity traces. Service model selected1.5× spike peak39.6→26.4Mbps and later minimum16.8→20.4; pacing-only all61,200rows exactD, including bad spike/cut. All ten capacity traces exactD;20s recovery unchanged20.833333125virtuals. Five normal/SAN suites pass (BBR101); G remains scratch, no fullserverbuild/integration/live claim. Source09e7951a adds seven CSV-guarded lines capturing exact feedback send/receive pairs and byte counts with existing WIVRN_DUMP_TIMINGS, no new clocks/formatting disabled. Fullserver build passes; parser checks/public replay retained. No install/restart/activation or Pico work. [Four-panel figure, raw data, held source, extractor and scope](matched-delivery-spans/README.md).
+
 ## Active bounded tasks — inspect agents before starting anything
 
-- Root F/noisy/stereo gates and bounded Luna source/test/timestamp audits completed; no owned test jobs running at publication. Source412a2bfe clean/pushed, last fullserver buildD; no runtime/Pico changes. Inspect actual state before resuming. Scratch `steady-evidence-root`, `steady-evidence-candidate`, `arrival-timestamp-audit` retained. E/F remain held public snapshots.
+- Root matched-span independent gates and both bounded Luna prototype/semantics/diagnostic tasks completed. No owned tests remain at publication. Scratch `matched-spans-root` and `matched-spans-candidate` retained. Source09e7951a built/pushed; controller D unchanged, G held. Inspect actual jobs/state before resuming.
 
 ## Next bounded gates
 
-- Next bounded gate: matched sender/receiver interval sampling using existing per-eye feedback send endpoints, rather than more percentile/growth heuristics. Read `steady-evidence/RESEARCH.md` and both actual-source audits. Test ACK/dispatch-compressed arrivals, complete matching streams, serial/overlapping eyes, clock-origin shifts, missing/zero/reversed metadata, repair/late completion and existing clean rises/collapses/noisy controls. Preserve receive-based utilisation and app-limited admission; no new protocol fields or arbitrary timestamp margin justified. Do not repeat unchanged A/B/C/E/F.
+- Next measurement gate: exact matched feedback spans and frame bytes now have CSV hooks plus `matched-delivery-spans/extract_spans.py`. No existing matched live capture found. In a later explicitly authorized isolated session, correlate send/receive unions, sender/slot/fence waits and fresh stereo delivery; measure whether sender backpressure actually bounds compressed receive spans. Do not claim G helps from the service model or repeat unchanged D/E/F/G synthetic variants. Existing broad send_end trace marker is not the exact in-band endpoint. No silent install/restart/activation.
+- Useful offscreen work can proceed on actual PC producer fence/slot wait diagnostics and independent recovery while live capture is unavailable; inspect retained source/queue before choosing a new bounded gate. Avoid adding another recovery heuristic without evidence.
+
 
 - Matched accounting still needs actual per-stream arrival/byte correlation. Pair those with producer/slot waits and fresh stereo delivery before any live benefit claim; default-off diagnostic source exists. No silent install/activation of an active session.
 

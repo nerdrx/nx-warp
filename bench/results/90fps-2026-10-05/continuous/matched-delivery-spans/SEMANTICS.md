@@ -1,0 +1,9 @@
+# Matched sender/receiver span semantics
+
+Read-only audit of source `412a2bfe9ef54333fdc35cf9919c6443fa409909`.
+
+Native ASTC uses base `video_encoder::SendData`. Its `send_begin` is sampled before first-shard setup; `send_end` is sampled when constructing the final shard, after pacing waits, but before that final `send_stream` call (`server/encoder/video_encoder.cpp:903–911, 960–970, 1052–1062`). Thus sender span includes intentional inter-shard pacing and prior send-call time, excludes the final send call, and is not a measurement of NIC departure or link serialization. Earlier send calls may include socket/backpressure time; the timestamps do not separate it from setup/work. The client receive span is sampled in shard handlers/reassembly, so it can also include dispatch effects (see `arrival-timestamp-audit/AUDIT.md`).
+
+With the current receive-loaded threshold retained (`server/driver/bitrate_controller.cpp:440–478`), an eligible frame whose paced sender span exceeds its receive span would use the longer denominator under `max(send, receive)`. That can damp receive-span compression, but can also cap the estimate at a sender-paced sample; source comments explicitly describe paced samples as sender-limited (`server/driver/bitrate_controller.h:107–116`). No live effect is established.
+
+Instrumentation can pair `send_begin/end` with `receive_begin/end` by frame and stream: sender dumps OS-monotonic events (`video_encoder.cpp:909–910, 1079–1080`); feedback dumps receive stamps converted back to server clock (`server/driver/wivrn_session.cpp:1021–1029, 1518–1525`). No matched live per-frame rows were present in inspected overnight-recovery CSV/log files; existing controller CSVs are synthetic gate results. So metadata and dump hooks exist, but matched spans have not been measured here.
