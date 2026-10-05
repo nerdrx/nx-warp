@@ -1,0 +1,73 @@
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/fec.h:22,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:39:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static constexpr void wivrn::serialization_traits<wivrn::data_holder>::type_hash(wivrn::details::hash_context&)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:65: warning: unused parameter ‘h’ [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                         ~~~~~~~~~~~~~~~~~~~~~~~~^
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp: In function ‘data_shard make_shard(uint64_t, uint16_t, bool)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:369:266: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::pose’ [-Wmissing-field-initializers]
+  369 | static data_shard make_shard(uint64_t f,uint16_t i,bool end=false){data_shard d{};d.stream_item_idx=2;d.frame_idx=f;d.shard_idx=i;auto &bytes=payloads[f%100][i%4];bytes.fill(uint8_t(i+10));d.payload=bytes;if(i==0)d.view_info=data_shard::view_info_t{.display_time=42};if(end)d.timing_info=data_shard::timing_info_t{1,2,3,4};return d;}
+      |                                                                                                                                                                                                                                                                          ^
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:369:266: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::fov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:369:266: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::foveation’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:369:266: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::alpha’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:369:266: warning: missing initializer for member ‘wivrn::to_headset::video_stream_data_shard::view_info_t::quad’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp: In function ‘int main()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:380:47: warning: missing initializer for member ‘pollfd::revents’ [-Wmissing-field-initializers]
+  380 |  pollfd pf{.fd=sock.tx.get_fd(),.events=POLLIN};CHECK(::poll(&pf,1,100)==1);auto packet=sock.tx.receive();CHECK(packet.has_value());auto nack=std::get<from_headset::nack>(std::move(*packet));auto want=requested(nack);CHECK(nack.stream_index==2&&nack.frame_idx==40&&want.size()==2&&want[0]==1&&want[1]==2);std::printf("peer_nack,%lld,40,%u,%zu\n",(long long)ns(),unsigned(nack.first_shard_idx),want.size());
+      |                                               ^
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:382:2: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  382 |  for(int i=0;i<3&&!set.complete();++i)session.poll(visitor,10ms,[&]{return 2ms;});CHECK(set.complete()&&completion_logged);CHECK(set.shards()[0]->view_info.has_value()&&set.shards()[3]->timing_info.has_value());for(uint16_t i=1;i<=2;++i)CHECK(set.shards()[i]->payload.size()==frame[i].payload.size()&&std::equal(set.shards()[i]->payload.begin(),set.shards()[i]->payload.end(),frame[i].payload.begin()));
+      |  ^~~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:63:18: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+   63 | #define CHECK(x) do{++checks;if(!(x)){++failures;std::printf("FAIL:%d %s\n",__LINE__,#x);}}while(false)
+      |                  ^~
+/run/media/nerdrx/Lex/claude/nx-scratch/overnight-recovery/network-repair-loopback/results-finalized/loopback-gate.cpp:382:83: note: in expansion of macro ‘CHECK’
+  382 |  for(int i=0;i<3&&!set.complete();++i)session.poll(visitor,10ms,[&]{return 2ms;});CHECK(set.complete()&&completion_logged);CHECK(set.shards()[0]->view_info.has_value()&&set.shards()[3]->timing_info.has_value());for(uint16_t i=1;i<=2;++i)CHECK(set.shards()[i]->payload.size()==frame[i].payload.size()&&std::equal(set.shards()[i]->payload.begin(),set.shards()[i]->payload.end(),frame[i].payload.begin()));
+      |                                                                                   ^~~~~
+In file included from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.h:24,
+                 from /run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:20:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static std::string wivrn::deserialization_error::hexdump(std::span<unsigned char>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:100:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::span<unsigned char>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  100 |                 for (int i = 0; i < raw_data.size(); i += 16)
+      |                                 ~~^~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h: In static member function ‘static constexpr void wivrn::serialization_traits<wivrn::data_holder>::type_hash(wivrn::details::hash_context&)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_serialization.h:992:65: warning: unused parameter ‘h’ [-Wunused-parameter]
+  992 |         static constexpr void type_hash(details::hash_context & h)
+      |                                         ~~~~~~~~~~~~~~~~~~~~~~~~^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘std::pair<wivrn::deserialization_packet, sockaddr_in6> wivrn::UDP::receive_from_raw()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:320:30: warning: comparison of integer expressions of different signedness: ‘ssize_t’ {aka ‘long int’} and ‘long unsigned int’ [-Wsign-compare]
+  320 |                 if (received < sizeof(uint64_t))
+      |                     ~~~~~~~~~^~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘wivrn::deserialization_packet wivrn::UDP::receive_raw()’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  410 |                 };
+      |                 ^
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:410:17: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp: In member function ‘size_t wivrn::UDP::send_many_raw(std::span<wivrn::serialization_packet>)’:
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  547 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size() + 1}});
+      |                         ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_iov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:547:40: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_name’ [-Wmissing-field-initializers]
+  549 |                         mmsgs.push_back({.msg_hdr = {.msg_iovlen = data.size()}});
+      |                         ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_namelen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_iov’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_control’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_controllen’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘msghdr::msg_flags’ [-Wmissing-field-initializers]
+/run/media/nerdrx/Lex/claude/nx-scratch/wt-pyrowave-probe/common/wivrn_sockets.cpp:549:40: warning: missing initializer for member ‘mmsghdr::msg_len’ [-Wmissing-field-initializers]

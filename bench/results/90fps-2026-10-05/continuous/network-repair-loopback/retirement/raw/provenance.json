@@ -1,0 +1,36 @@
+{
+  "void shard_accumulator::pump(XrTime now)": {
+    "lines": [
+      222,
+      238
+    ],
+    "sha256": "8e25f1b4f5f0ba0ee00a5ef99bfc9640d74b5889c15a2b63a8ed12d8218e712e"
+  },
+  "shard_accumulator::window_t::step shard_accumulator::try_submit_front(shard_set & current)": {
+    "lines": [
+      410,
+      475
+    ],
+    "sha256": "987d262a7097f5294c21074b5268bcc3ff8f1442ecb7c88895a94047964d08c5"
+  },
+  "void shard_accumulator::poll_nacks(XrTime now)": {
+    "lines": [
+      118,
+      122
+    ],
+    "sha256": "809652e5543def5bb4c133015a3bf85f5dad51407774985bf1aee5424545851c"
+  },
+  "void shard_accumulator::try_nack(XrTime now)": {
+    "lines": [
+      300,
+      383
+    ],
+    "sha256": "9b5b59fbe7105e0cfa0cea02f24fbd890b563140ab600ee0226cbab49d19aeb5"
+  },
+  "files": {
+    "client/decoder/shard_accumulator.cpp": "8adba5d0f3a84a92fe668ebea0d0320c69cb72c2960c227ff379265d5eaa7265",
+    "client/decoder/shard_accumulator.h": "95bc4aee2ef6bbc8c3c6a462252f8f9a1a4e450e0d1b00900db05f015ec22afa",
+    "client/decoder/frame_window.h": "deb86c683aae304b01e86190432a617106b38d89322a1c98eb1a270634f1e5b4",
+    "client/decoder/shard_set.h": "d404a9f90deb57d82f7a33b51200848d2398b9480004d6f6097fbdcab2d73e05"
+  }
+}
