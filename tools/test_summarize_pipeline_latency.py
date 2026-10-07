@@ -1,3 +1,10 @@
+import csv
+import gzip
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 from summarize_pipeline_latency import summarize
 
@@ -18,6 +25,27 @@ class PipelineLatency(unittest.TestCase):
         result = summarize(self.fixture(), 'nx', 0)['stages']
         self.assertEqual(result['blit'], {'count': 2, 'p50_p95_p99_ms': [3, 3, 3]})
         self.assertEqual(result['receive_begin']['p50_p95_p99_ms'], [2, 2, 2])
+
+    def test_cli_plain_and_gzip_csv_equivalent(self):
+        script = Path(__file__).with_name('summarize_pipeline_latency.py')
+        with tempfile.TemporaryDirectory() as directory:
+            plain = Path(directory) / 'latency.csv'
+            compressed = Path(directory) / 'latency.csv.gz'
+            with plain.open('w', newline='') as destination:
+                csv.writer(destination).writerows(self.fixture())
+            with gzip.open(compressed, 'wt', newline='') as destination:
+                csv.writer(destination).writerows(self.fixture())
+            results = []
+            for path in (plain, compressed):
+                completed = subprocess.run(
+                    [sys.executable, str(script), str(path), '--codec', 'nx', '--warmup', '0'],
+                    capture_output=True, text=True)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                result = json.loads(completed.stdout)
+                self.assertEqual(result.pop('file'), str(path))
+                results.append(result)
+            self.assertEqual(results[0], summarize(self.fixture(), 'nx', 0))
+            self.assertEqual(results[0], results[1])
 
     def test_min_duplicates_and_stream_isolation(self):
         rows = self.fixture() + [row('blit', 65535, 99_000_000),
