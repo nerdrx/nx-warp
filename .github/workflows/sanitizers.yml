@@ -44,7 +44,7 @@ jobs:
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
       ASAN_OPTIONS: detect_leaks=1:abort_on_error=0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the toolchain
         run: |
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload the logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: asan-ubsan-logs
           if-no-files-found: ignore
@@ -102,7 +102,7 @@ jobs:
       CXX: clang++
       TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the toolchain
         run: |
@@ -137,7 +137,7 @@ jobs:
 
       - name: Upload the logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tsan-logs
           if-no-files-found: ignore
@@ -158,7 +158,7 @@ jobs:
       CC: clang
       CXX: clang++
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the toolchain
         run: |
@@ -203,7 +203,7 @@ jobs:
 
       - name: Upload crashers
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-smoke-artifacts
           if-no-files-found: ignore
