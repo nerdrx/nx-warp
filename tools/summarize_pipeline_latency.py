@@ -6,6 +6,7 @@ clocks are converted to server time by WiVRn; blit is selection, not photons.
 """
 import argparse
 import csv
+import gzip
 import json
 
 
@@ -89,7 +90,8 @@ def main():
     if args.warmup < 0:
         parser.error('warmup must be nonnegative')
     try:
-        with open(args.csv, newline='') as source:
+        opener = gzip.open if args.csv.endswith('.gz') else open
+        with opener(args.csv, 'rt', newline='') as source:
             result = summarize(csv.reader(source), args.codec, args.warmup)
     except ValueError as error:
         parser.exit(1, f'{error}\n')
