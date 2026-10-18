@@ -284,5 +284,18 @@ int main() {
     cfg.entropy_lite = 1;
     compare("intra/entropy-lite", cfg, c420);
 
+    // 9. Neighbour gathers must retain each tile's own lookup position while
+    // workers evaluate predictors concurrently (the TSan atlas regression).
+    nxvc_config_default(&cfg);
+    cfg.width = 128;
+    cfg.height = 128;
+    cfg.inter = 1;
+    cfg.atlas = 1;
+    cfg.atlas_static_skip = 1;
+    cfg.atlas_nbr = 1;
+    cfg.intra_period = 999;
+    cfg.custom_tables = 0;
+    compare("atlas/neighbour-gather", cfg, make_clip(128, 128, 1, false, 4));
+
     return test_report("threads");
 }

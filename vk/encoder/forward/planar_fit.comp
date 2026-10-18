@@ -26,6 +26,7 @@ shared int splitAxis;
 shared int gy, gu, gv, qy0, qy1, qu0, qu1, qv0, qv1;
 shared int fp[48];
 shared int r4c[12], r4sum[12], r4count[4], r4label[256];
+shared uint planarPacked[26], planarExpanded[26];
 shared uint cadenceReuse, cadenceRefresh, cadencePromote, cadenceQuiet;
 
 int read_sample(uint base, uint i) {
@@ -216,28 +217,28 @@ void main() {
             r4label[i] = pick;
         }
         uint map_bytes = fine ? 64u : 16u;
-        uint packed[26]; for (uint i = 0u; i < 26u; ++i) packed[i] = 0u;
-        packed[0] = fine ? 10u : 2u;
+        for (uint i = 0u; i < 26u; ++i) planarPacked[i] = 0u;
+        planarPacked[0] = fine ? 10u : 2u;
         for (int i = 0; i < nc; ++i) {
             uint bit = 8u + uint(i * 2); // serialized map starts at byte 1
-            packed[bit >> 5u] |= uint(r4label[i]) << (bit & 31u);
+            planarPacked[bit >> 5u] |= uint(r4label[i]) << (bit & 31u);
         }
         uint co = 1u + map_bytes;
         for (int i = 0; i < 12; ++i)
-            packed[(co + uint(i) * 3u) >> 2u] |= uint(q[i] & 255) << (((co + uint(i) * 3u) & 3u) * 8u);
+            planarPacked[(co + uint(i) * 3u) >> 2u] |= uint(q[i] & 255) << (((co + uint(i) * 3u) & 3u) * 8u);
         uint dst = tile * 26u;
-        for (uint i = 0u; i < 26u; ++i) body[dst + i] = packed[i];
-        uint expanded[26]; for (uint i = 0u; i < 26u; ++i) expanded[i] = 0u;
-        expanded[0] = fine ? 10u : 2u;
+        for (uint i = 0u; i < 26u; ++i) body[dst + i] = planarPacked[i];
+        for (uint i = 0u; i < 26u; ++i) planarExpanded[i] = 0u;
+        planarExpanded[0] = fine ? 10u : 2u;
         for (uint i = 0u; i < map_bytes; ++i) {
-            uint v = (packed[(1u + i) >> 2u] >> (((1u + i) & 3u) * 8u)) & 255u;
-            expanded[1u + (i >> 2u)] |= v << ((i & 3u) * 8u);
+            uint v = (planarPacked[(1u + i) >> 2u] >> (((1u + i) & 3u) * 8u)) & 255u;
+            planarExpanded[1u + (i >> 2u)] |= v << ((i & 3u) * 8u);
         }
         for (uint i = 0u; i < 36u; ++i) {
-            uint v = (packed[(co + i) >> 2u] >> (((co + i) & 3u) * 8u)) & 255u;
-            expanded[17u + (i >> 2u)] |= v << ((i & 3u) * 8u);
+            uint v = (planarPacked[(co + i) >> 2u] >> (((co + i) & 3u) * 8u)) & 255u;
+            planarExpanded[17u + (i >> 2u)] |= v << ((i & 3u) * 8u);
         }
-        for (uint i = 0u; i < 26u; ++i) recon[dst + i] = expanded[i];
+        for (uint i = 0u; i < 26u; ++i) recon[dst + i] = planarExpanded[i];
     }
     barrier();
     if (doFit && (pc.colourAware & 2u) != 0u) {
@@ -326,13 +327,13 @@ void main() {
     barrier();
     if (doFit && lid == 0u) {
         uint dst = tile * 26u;
-        uint packed[26]; for (uint i = 0u; i < 26u; ++i) packed[i] = 0u;
+        for (uint i = 0u; i < 26u; ++i) planarPacked[i] = 0u;
         const uint map_bytes = fine ? 32u : 8u;
-        packed[0] = fine ? 8u : 0u; // R=2, fine bit when selected
+        planarPacked[0] = fine ? 8u : 0u; // R=2, fine bit when selected
         for (uint i = 0u; i < dim * dim; ++i) {
             if ((splitAxis == 0 ? cy[i] - gy : splitAxis == 1 ? cu[i] - gu : cv[i] - gv) >= 0) {
                 const uint bit = i;
-                packed[((1u + bit / 8u) >> 2u)] |=
+                planarPacked[((1u + bit / 8u) >> 2u)] |=
                     1u << (((1u + bit / 8u) & 3u) * 8u + (bit & 7u));
             }
         }
@@ -340,25 +341,24 @@ void main() {
         const uint q[6] = {uint(qy0 & 255), uint(qu0 & 255), uint(qv0 & 255),
                            uint(qy1 & 255), uint(qu1 & 255), uint(qv1 & 255)};
         for (uint i = 0u; i < 6u; ++i)
-            packed[((co + i * 3u) >> 2u)] |=
+            planarPacked[((co + i * 3u) >> 2u)] |=
                 q[i] << (((co + i * 3u) & 3u) * 8u);
-        for (uint i = 0u; i < 26u; ++i) body[dst + i] = packed[i];
+        for (uint i = 0u; i < 26u; ++i) body[dst + i] = planarPacked[i];
         // Reconstruct uses an expanded layout: header word, 16 map words,
         // then 18 coefficient bytes. Serialized map/coefficients are unaligned.
-        uint expanded[26];
-        for (uint i = 0u; i < 26u; ++i) expanded[i] = 0u;
-        expanded[0] = fine ? 8u : 0u;
+        for (uint i = 0u; i < 26u; ++i) planarExpanded[i] = 0u;
+        planarExpanded[0] = fine ? 8u : 0u;
         for (uint i = 0u; i < map_bytes; ++i) {
             uint src_byte = 1u + i;
-            uint value = (packed[src_byte >> 2u] >> ((src_byte & 3u) * 8u)) & 255u;
-            expanded[1u + (i >> 2u)] |= value << ((i & 3u) * 8u);
+            uint value = (planarPacked[src_byte >> 2u] >> ((src_byte & 3u) * 8u)) & 255u;
+            planarExpanded[1u + (i >> 2u)] |= value << ((i & 3u) * 8u);
         }
         for (uint i = 0u; i < 18u; ++i) {
             uint src_byte = co + i;
-            uint value = (packed[src_byte >> 2u] >> ((src_byte & 3u) * 8u)) & 255u;
-            expanded[17u + (i >> 2u)] |= value << ((i & 3u) * 8u);
+            uint value = (planarPacked[src_byte >> 2u] >> ((src_byte & 3u) * 8u)) & 255u;
+            planarExpanded[17u + (i >> 2u)] |= value << ((i & 3u) * 8u);
         }
-        for (uint i = 0u; i < 26u; ++i) recon[dst + i] = expanded[i];
+        for (uint i = 0u; i < 26u; ++i) recon[dst + i] = planarExpanded[i];
     }
     barrier();
     if ((pc.cadenceMode & 1u) != 0u && lid == 0u) {

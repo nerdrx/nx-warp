@@ -2154,16 +2154,18 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
     // applied to the SAD motion search below, which only chooses a candidate
     // vector: the candidate is then predicted for real through this, so the
     // search costs a little accuracy and can cost nothing else.
-    AtlasGather agather;
-    u32 gather_entries = 0;
+    // Workers predict different tiles concurrently. Keep their gather
+    // descriptors immutable, including the co-located tile position.
+    std::vector<AtlasGather> agathers;
     if (atlas && e->atlas_nbr) {
-        agather.ents = &e->at.ent_prev;
-        agather.used = &gather_entries;
+        agathers.resize((size_t)ntiles);
+        for (int t = 0; t < ntiles; ++t) {
+            agathers[(size_t)t].ents = &e->at.ent_prev;
+            agathers[(size_t)t].t0 = t;
+        }
     }
     auto ag_for = [&](int t) -> const AtlasGather * {
-        if (!agather.ents) return nullptr;
-        agather.t0 = t;
-        return &agather;
+        return agathers.empty() ? nullptr : &agathers[(size_t)t];
     };
     // 13.12.4: a tile whose own entry is invalid has no reference at all.
     auto tile_has_ref = [&](int t) -> bool {
@@ -4451,7 +4453,7 @@ extern "C" nxvc_status nxvc_encoder_encode_frame(
         std::memcpy(o, table_bytes.data(), table_bytes.size());
         o += table_bytes.size();
     }
-    std::memcpy(o, body.b.data(), body.size());
+    if (body.size()) std::memcpy(o, body.b.data(), body.size());
     o += body.size();
     *out_len = (size_t)(o - buf);
     if (e->cfg.collect_stats) {

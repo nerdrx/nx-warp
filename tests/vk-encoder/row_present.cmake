@@ -1,3 +1,5 @@
+cmake_policy(SET CMP0007 NEW) # Preserve the empty options field in each test case.
+
 # vk.encoder.rowpresent -- row_present() (SYNTAX.md 3.1.2, tool bit 32).
 #
 # This test does NOT compare against nxv-enc, and the reason is not a spec
