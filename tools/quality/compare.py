@@ -71,7 +71,8 @@ from nxq.codec import CodecCLI, CodecError  # noqa: E402
 from nxq.sequence import Sequence  # noqa: E402
 from nxq.yuv import Format, read_sequence, read_pose_log  # noqa: E402
 
-DEFAULT_SCRATCH = "/run/media/nerdrx/Lex/claude/nx-scratch/nx-warp"
+DEFAULT_SCRATCH = os.environ.get(
+    "NXQ_SCRATCH", os.path.join(tempfile.gettempdir(), "nxq-scratch"))
 
 #: The perceptual metrics of PAPER.md 5.3, selected with ``--metric``.
 #: ``psnr`` and ``ssim`` are always computed; these are the ones that cost
