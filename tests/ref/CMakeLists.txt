@@ -72,7 +72,9 @@ if(NXVC_FUZZ)
     file(GLOB NXVC_FUZZ_REF_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/ref/src/*.cpp)
     add_executable(nxvc_fuzz_decode fuzz_decode.cpp ${NXVC_FUZZ_REF_SOURCES})
     target_link_libraries(nxvc_fuzz_decode PRIVATE nxvc_warp_ref)
-    target_include_directories(nxvc_fuzz_decode PRIVATE ${NXVC_REF_TEST_INC})
+    target_include_directories(nxvc_fuzz_decode PRIVATE
+                               ${NXVC_REF_TEST_INC}
+                               ${CMAKE_SOURCE_DIR}/vk/encoder/forward)
     target_compile_options(nxvc_fuzz_decode PRIVATE
                            -fsanitize=fuzzer,address,undefined)
     target_link_options(nxvc_fuzz_decode PRIVATE
